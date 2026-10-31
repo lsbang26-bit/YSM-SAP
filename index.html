@@ -2698,7 +2698,7 @@ function coverHTML(){
       <div class="mm-chips">${g.items.map(i=>`<button data-cgo="${i}">${esc(MODS[i].name)}</button>`).join('')}</div></section>`).join('')}</div>`;
 }
 function showCover(){const c=$('#cover');c.innerHTML=coverHTML();c.hidden=false;document.body.classList.add('cover-on');closeSide();c.scrollTop=0;
-  voiceUI();if(SR&&!voice.on&&!voice.denied)micPerm().then(st=>{if(!coverOn()||voice.on)return;if(st==='granted'||voice.micOk)voiceToggle();else if(st==='denied'){voice.denied=true;voice.err='Chrome에서 마이크가 차단돼 있어요 · 눌러서 다시 시도';voiceUI(voice.err);micHelp('browser')}else voiceUI('화면을 한 번 누르면 마이크를 켭니다')});
+  voiceUI();if(SR&&!voice.on&&!voice.denied)micPerm().then(st=>{if(!coverOn()||voice.on)return;if(isPhone()){if(st==='denied'){voice.denied=true;voice.err='Chrome에서 마이크가 차단돼 있어요 · 눌러서 다시 시도';voiceUI(voice.err)}else voiceUI();return}if(st==='granted'||voice.micOk)voiceToggle();else if(st==='denied'){voice.denied=true;voice.err='Chrome에서 마이크가 차단돼 있어요 · 눌러서 다시 시도';voiceUI(voice.err);micHelp('browser')}else voiceUI('화면을 한 번 누르면 마이크를 켭니다')});
   clearInterval(showCover.t);showCover.t=setInterval(()=>{const el=$('#mmTime');if(!el){clearInterval(showCover.t);return}const n=new Date();el.textContent=pad(n.getHours())+':'+pad(n.getMinutes())},15000)}
 function hideCover(){if(voice.on){voice.on=false;voice.awake=false;try{voice.rec.stop()}catch(e){}}try{speechSynthesis.cancel()}catch(e){}const c=$('#cover');c.hidden=true;c.innerHTML='';document.body.classList.remove('cover-on')}
 
@@ -2874,7 +2874,7 @@ function sndUI(on){const b=$('#mmSnd');if(b)b.classList.toggle('on',!!on)}
 ['pointerdown','keydown'].forEach(ev=>document.addEventListener(ev,function un(){document.removeEventListener(ev,un,true);try{if(window.speechSynthesis&&!voice.unlocked){voice.unlocked=1;const u=new SpeechSynthesisUtterance(' ');u.volume=0;speechSynthesis.speak(u)}}catch(e){}},true));
 function voiceUI(msg){const b=$('#mmMic'),s=$('#mmVs');if(b){b.classList.toggle('on',voice.on);b.classList.toggle('awake',voice.awake)}
   document.querySelectorAll('#cover [data-vlang]').forEach(x=>x.classList.toggle('on',x.dataset.vlang===voice.lang));
-  if(s)s.textContent=msg||(voice.awake?{ko:'듣고 있어요…',en:'Listening…',es:'Escuchando…'}[voice.lang]:voice.on?'':voice.err||(SR?'음성인식 꺼짐 · 눌러서 켜기':noSRmsg()))}
+  if(s)s.textContent=msg||(voice.awake?{ko:'듣고 있어요…',en:'Listening…',es:'Escuchando…'}[voice.lang]:voice.on?'':voice.err||(SR?(isPhone()?{ko:'파형을 누르고 말씀하세요',en:'Tap the wave and speak',es:'Toca la onda y habla'}[voice.lang]:'음성인식 꺼짐 · 눌러서 켜기'):noSRmsg()))}
 function wake(){voice.awake=true;voice.t=voice.gt=Date.now();CL=voice.lang;voiceUI();answer({title:GREET[CL],examples:1,greet:1,say:GREET[CL]})}
 const WAKE=/(?:^|[\s,.!?])(?:(?:하이|헤이|해이|아이|하이요|hi|hey|high|hai|hola|oye)[\s,.!]*)?(?:제니|재니|젠니|쩨니|지니|jenny|jennie|jenni|jeni|jenna|genie|jeanie|yeni|yenny)(?:야|아|님|씨)?(?=[\s,.!?]|$)[\s,.!?]*(.*)$/i;
 function voiceHear(txt,final){
@@ -2894,7 +2894,7 @@ function micAsk(){
   if(isFramed()){micFail({name:'Framed'});return}
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){voice.micOk=true;voiceToggle();return}
   voiceUI('마이크 권한 확인 중… 위쪽 창에서 "허용"을 눌러 주세요');
-  navigator.mediaDevices.getUserMedia({audio:true}).then(st=>{st.getTracks().forEach(t=>t.stop());voice.micOk=true;voice.denied=false;voiceToggle()},micFail);
+  navigator.mediaDevices.getUserMedia({audio:true}).then(st=>{st.getTracks().forEach(t=>t.stop());voice.micOk=true;voice.denied=false;if(isPhone())setTimeout(pttStart,150);else voiceToggle()},micFail);
 }
 function micFail(e){
   const n=e&&e.name||'', sys=/system/i.test(e&&e.message||'');
@@ -2918,10 +2918,26 @@ function micHelp(kind){
 }
 const isPhone=()=>{try{return matchMedia('(pointer:coarse)').matches}catch(e){return false}};
 const noSRmsg=()=>/iPhone|iPad|iPod/.test(navigator.userAgent)?'아이폰은 Safari에서만 음성인식이 돼요 · Safari로 열어 주세요':/Android/.test(navigator.userAgent)?'이 브라우저는 음성인식 미지원 · Chrome으로 열어 주세요':'이 브라우저는 음성인식 미지원 · Chrome·Edge 사용';
+// phones (Android Chrome, iPhone Safari): continuous listening is unreliable there, so one tap = one question.
+// One-shot recognition with live text; when it ends, the last text (final or not) is the question. No wake word needed.
+function pttStart(){
+  try{speechSynthesis.cancel()}catch(e){}voice.speaking=false;
+  const r=new SR();r.lang=LANGS[voice.lang].rec;r.continuous=false;r.interimResults=true;r.maxAlternatives=1;
+  voice.rec=r;voice.on=true;voice.awake=true;voice.denied=false;voice.err='';let txt='',got=false;
+  r.onresult=e=>{let t='';for(let i=0;i<e.results.length;i++)t+=e.results[i][0].transcript;txt=t.trim();got=true;voiceUI('🎙 '+txt)};
+  r.onerror=e=>{if(e.error==='no-speech'){voice.err={ko:'잘 안 들렸어요 · 다시 누르고 말씀하세요',en:"I didn't hear anything · tap and try again",es:'No te escuché · toca e inténtalo de nuevo'}[voice.lang]}
+    else if(e.error==='not-allowed'||e.error==='service-not-allowed'){voice.micOk=false;voice.denied=true;voice.err='Chrome에서 마이크가 차단돼 있어요 · 눌러서 다시 시도';micHelp('browser')}
+    else if(e.error==='network'){voice.err='음성 서버에 연결할 수 없어요 · 인터넷 확인'}
+    else if(e.error==='audio-capture'){voice.err='마이크를 쓸 수 없어요 · 다른 앱이 쓰는지 확인';micHelp('busy')}};
+  r.onend=()=>{if(voice.rec!==r)return;voice.on=false;voice.awake=false;
+    if(txt){voice.err='';const m=txt.match(WAKE), cmd=m?m[1].trim():txt;voiceUI();if(!cmd){CL=voice.lang;answer({title:GREET[CL],examples:1,say:GREET[CL]});return}voice.heard=txt;runCmd(cmd,voice.lang)}
+    else{if(!voice.err&&!got)voice.err={ko:'잘 안 들렸어요 · 다시 누르고 말씀하세요',en:"I didn't hear anything · tap and try again",es:'No te escuché · toca e inténtalo de nuevo'}[voice.lang];voiceUI(voice.err);voice.err=''}};
+  try{r.start();voiceUI({ko:'말씀하세요…',en:'Speak now…',es:'Habla ahora…'}[voice.lang])}catch(e){voice.on=false;voice.awake=false;voiceUI('음성인식을 시작하지 못했어요 · 다시 눌러 주세요')}
+}
 function voiceToggle(){
   if(!SR){voiceUI(noSRmsg());return}
   if(!window.isSecureContext&&location.protocol!=='file:'){voice.denied=true;voice.err='https 주소에서만 마이크를 쓸 수 있어요';voiceUI(voice.err);return}
-  if(voice.on&&isPhone()&&Date.now()-(voice.tapT||0)<1500){if(Date.now()-(voice.gt||0)>1500)wake();return}
+  if(isPhone()){if(voice.on){try{voice.rec.stop()}catch(e){}return}if(!voice.micOk){micAsk();return}pttStart();return}
   if(voice.on){voice.on=false;voice.awake=false;voice.userOff=true;try{voice.rec.stop()}catch(e){}voiceUI();return}
   if(!voice.micOk){voice.userOff=false;micAsk();return}
   voice.denied=false;voice.userOff=false;
@@ -2932,7 +2948,7 @@ function voiceToggle(){
     if(fatal){voice.on=false;voice.denied=true;voice.awake=false;voice.err=fatal;voiceUI(fatal);if(e.error==='not-allowed'||e.error==='service-not-allowed'){voice.micOk=false;micHelp(framed?'frame':'browser')}else if(e.error==='audio-capture')micHelp('none')}};
   r.onend=()=>{if(voice.rec!==r)return;if(voice.on&&coverOn()){setTimeout(()=>{if(voice.on&&voice.rec===r)try{r.start()}catch(e){}},250)}else{voice.on=false;voiceUI(voice.err)}};
   voice.err='';
-  try{r.start();voiceUI();if(isPhone()&&Date.now()-(voice.tapT||0)<20000)setTimeout(()=>{if(voice.on&&!voice.awake)wake()},400)}catch(e){voice.on=false;voice.err='음성인식을 시작하지 못했어요 · 눌러서 다시 시도';voiceUI(voice.err)}
+  try{r.start();voiceUI()}catch(e){voice.on=false;voice.err='음성인식을 시작하지 못했어요 · 눌러서 다시 시도';voiceUI(voice.err)}
 }
 
 /* ---------- nav ---------- */
@@ -3003,7 +3019,7 @@ document.addEventListener('click',e=>{
   if(e.target.closest('#cover [data-copy]')){const b=e.target.closest('[data-copy]');try{navigator.clipboard.writeText(b.dataset.copy).then(()=>{b.textContent='복사됨'})}catch(x){}return}
   if(e.target.closest('#mmMic'))voice.tapT=Date.now();
   if(e.target.closest('#mmMic')){if(voice.denied&&!voice.on){voice.denied=false;voice.micOk=false;voice.err=''}voiceToggle();return}
-  if(coverOn()&&SR&&!voice.on&&!voice.denied&&!voice.userOff){voice.tapT=Date.now();voiceToggle()}
+  if(coverOn()&&SR&&!voice.on&&!voice.denied&&!voice.userOff&&!isPhone()){voice.tapT=Date.now();voiceToggle()}
   const cg=e.target.closest('#cover [data-cgo]');if(cg){hideCover();go(cg.dataset.cgo);return}
   if(coverOn()&&!e.target.closest('.mm-search')){const rb=$('#mmRes');if(rb)rb.hidden=true}
   if(e.target.closest('[data-cover]')){showCover();return}
