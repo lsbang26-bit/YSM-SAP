@@ -696,7 +696,7 @@ function compact(v){const x=Math.round(+v||0),a=Math.abs(x),s=x<0?'−':'';retur
 const ACCOUNTS={
   '자산매입':['기계장치','차량운반구','공구기구','비품','건물·시설','외상매입금 지급'],
   '제조비용':['원재료비','부재료비','노무비','전력비','수선비','외주가공비','소모품비','외상매입금 지급'],
-  '판관비용':['급여','퇴직급여','미지급금 지급','본사관리비 지급','임차료','운반비','통신비','사무용품비','접대비','지급수수료','보험료','세금과공과','기타','외상매입금 지급'],
+  '판관비용':['급여','퇴직급여','미지급금 지급','본사관리비 지급','임차료','차량유지비','운반비','통신비','사무용품비','접대비','지급수수료','보험료','세금과공과','기타','외상매입금 지급'],
   '차입금':['차입금 입금','원금 상환','이자비용'],
   '매출수입':['매출대금 수금','이자수익','기타수입'],
   '세금납부':['부가세 납부','법인세 납부','원천세 납부']};
@@ -1138,7 +1138,9 @@ const rmInv=d=>invVal(d).rm;
 // expenses = 외상매입 발생분 + 경리자료 직접 지급분 (by account)
 // IVA: amounts are stored including IVA; the IVA part is creditable only with a CFDI (Factura), otherwise it stays in the cost
 const ivaRt=r=>IVA_RATES[r.iva]||0;
-const ivaPart=(r,k='amount')=>{const t=ivaRt(r);return t?mx(r,k)*t/(1+t):0};
+// ivaAmt: the exact IVA printed on a CFDI (fuel invoices carry IEPS, so IVA is not 16/116 of the total)
+const hasIvaAmt=r=>r.ivaAmt!=null&&r.ivaAmt!==''&&isFinite(+r.ivaAmt);
+const ivaPart=r=>{if(hasIvaAmt(r))return(+r.ivaAmt)*rate(r.cur);const t=ivaRt(r);return t?mx(r,'amount')*t/(1+t):0};
 const hasCfdi=r=>r.factura==='발행'||r.factura==='수입(Pedimento)';
 const expAmt=r=>mx(r,'amount')-(hasCfdi(r)?ivaPart(r):0);
 const expBy=(cat,acc,p)=>sumBy(DB.ap.filter(r=>r.cat===cat&&r.account===acc&&inP(r,p)),expAmt)+sumBy(DB.cash.filter(r=>r.type==='출금'&&r.cat===cat&&r.account===acc&&inP(r,p)),expAmt);
@@ -1223,7 +1225,7 @@ function citMonthly(y){
   return rows;
 }
 const vatAR=end=>sumBy(DB.ar.filter(r=>r.date<=end),r=>{const t=ivaRt(r);return t?arBal(r)*t/(1+t):0});
-const vatAP=end=>sumBy(DB.ap.filter(r=>r.date<=end&&hasCfdi(r)),r=>{const t=ivaRt(r);return t?apBal(r)*t/(1+t):0});
+const vatAP=end=>sumBy(DB.ap.filter(r=>r.date<=end&&hasCfdi(r)),r=>{const a=mx(r,'amount');return a?ivaPart(r)*apBal(r)/a:0});
 function balance(end){
   const cashBal=cashBefore(addDs(end,1));
   const ar=sumBy(DB.ar.filter(r=>r.date<=end),arBal);
@@ -1280,7 +1282,7 @@ const FACTC=C('factura','Factura','sel',{opts:FACT,pill:1}), FACTC_AR=C('factura
 const SUB=o=>C('sub','금액','money',o||{}), VATR=o=>C('vat','부가세 (세율)','money',Object.assign({calc:r=>ivaPart(r),rateNote:1},o||{})), TOT=o=>C('amount','합계','money',Object.assign({calc:r=>mx(r,'amount')},o||{}));
 const IVAF=C('iva','부가세율','sel',{opts:Object.keys(IVA_RATES),pct:1,noTable:1});
 const r2=v=>Math.round(v*100)/100;
-function fixRow(m,r){if(m.cols.some(c=>c.bank)){const b=BANKS().find(x=>x.name===r.bank);if(!b||(b.cur||'MXN')!==(r.cur||'MXN'))r.bank=bankFor(r.cur)}if(m.cols.some(c=>c.k==='sub'))r.amount=r2((+r.sub||0)*(1+ivaRt(r)));if(m.cols.some(c=>c.k==='fx')){if(r.cur==='USD'){if(!(+r.fx>0))r.fx=FX()}else r.fx=''}return r}
+function fixRow(m,r){if(m.cols.some(c=>c.bank)){const b=BANKS().find(x=>x.name===r.bank);if(!b||(b.cur||'MXN')!==(r.cur||'MXN'))r.bank=bankFor(r.cur)}if(m.cols.some(c=>c.k==='sub'))r.amount=hasIvaAmt(r)?r2((+r.sub||0)+(+r.ivaAmt)):r2((+r.sub||0)*(1+ivaRt(r)));if(m.cols.some(c=>c.k==='fx')){if(r.cur==='USD'){if(!(+r.fx>0))r.fx=FX()}else r.fx=''}return r}
 const MODS={
   cash:{name:'경리자료',desc:'입금·출금 전표와 기간 현금 흐름. 분류를 고르면 그 분류의 계정과목만 선택됩니다.',data:'cash',dated:true,tight:1,
     cols:[C('date','일자','date'),BANKC,C('type','구분','sel',{opts:['입금','출금'],pill:1}),C('cat','분류','sel',{opts:[...CATS4,'매출수입','세금납부'],pill:1}),ACCT,
@@ -1633,6 +1635,7 @@ function headerHTML(id,m,p){
       <h1>${esc(m.name)}</h1><span class="saved" id="saved">${savedText()}</span>
       <div class="hbtns">
         ${id==='bank'?`<button class="btn primary" data-bankopenm="1">기초시재 입력</button>`:''}
+        ${id==='ap'?`<button class="btn primary" data-cfdi="1">⇪ Factura 등록 (PDF · XML)</button>`:''}
         ${impOf(id)?`<button class="btn primary" data-import="${impOf(id)}">⇪ 엑셀 일괄등록</button>`:''}
         ${g.id!=='dash'?`<button class="btn" data-go="dash-${g.id}">▦ 대쉬보드</button>`:''}
         <button class="btn" data-layedit="1" title="항목 위치와 글씨를 바꿉니다">✎ 화면 편집</button>
@@ -2049,6 +2052,112 @@ function doRaya(){
     DB.payroll.unshift(payFill(r));n++;
   });
   raya=null;save();closeModal();renderMain();toast(`lista de raya ${n}명을 등록했습니다${sk?` · ${sk}명 건너뜀`:''}`);
+}
+/* ---------- Factura (CFDI 4.0) 등록: PDF 또는 XML → 외상매입 ---------- */
+let cfdi=null;
+const OWN_RFC=['YAU150512JB4','XAXX010101000','XEXX010101000'];
+const numM=v=>{const n=parseFloat(String(v==null?'':v).replace(/[$,\s]/g,''));return isFinite(n)?n:0};
+const FUELS=[[/\bMAGNA\b|REGULAR/i,'Gasolina Magna'],[/\bPREMIUM\b/i,'Gasolina Premium'],[/\bDI[EÉ]SEL\b/i,'Diésel']];
+function cfdiFuel(desc,txt,qty){
+  const f=FUELS.find(([re])=>re.test(desc||''))||(/15101514|15101505|petrol[ií]feros|gasolina/i.test(txt||'')&&FUELS.find(([re])=>re.test(txt)));
+  return f?`${f[1]}${qty?` ${+(+qty).toFixed(3)} L`:''}`:'';
+}
+function cfdiFromXml(xml){
+  const doc=new DOMParser().parseFromString(xml,'application/xml'), q=n=>doc.getElementsByTagNameNS('*',n)[0], a=(el,k)=>el?el.getAttribute(k)||'':'';
+  const c=q('Comprobante');if(!c)return null;
+  const em=q('Emisor'), tfd=q('TimbreFiscalDigital'), imp=[...doc.getElementsByTagNameNS('*','Impuestos')].find(x=>x.parentNode===c);
+  const cons=[...doc.getElementsByTagNameNS('*','Concepto')], desc=cons.map(x=>a(x,'Descripcion')).filter(Boolean).join(', ');
+  const total=numM(a(c,'Total')), ivaT=[...doc.getElementsByTagNameNS('*','Traslado')].filter(x=>x.parentNode&&x.parentNode.parentNode===imp&&a(x,'Impuesto')==='002');
+  const iva=ivaT.length?ivaT.reduce((s,x)=>s+numM(a(x,'Importe')),0):numM(a(imp,'TotalImpuestosTrasladados'));
+  const qty=cons.length===1?a(cons[0],'Cantidad'):'';
+  return {vendor:a(em,'Nombre'),rfc:a(em,'Rfc').toUpperCase(),date:a(c,'Fecha').slice(0,10),folio:[a(c,'Serie'),a(c,'Folio')].filter(Boolean).join(' '),uuid:a(tfd,'UUID').toLowerCase(),
+    cur:a(c,'Moneda')==='USD'?'USD':'MXN',fx:numM(a(c,'TipoCambio')),total,iva,ret:numM(a(imp,'TotalImpuestosRetenidos')),metodo:a(c,'MetodoPago'),forma:a(c,'FormaPago'),tipo:a(c,'TipoDeComprobante'),
+    item:cfdiFuel(desc,'',qty)||desc.slice(0,80)};
+}
+function cfdiFromPdf(lines){
+  const L=lines.map(c=>c.join('  ')), T=L.join('\n'), flat=T.replace(/\s+/g,''), last=(re)=>{let m,v=null;re.lastIndex=0;while((m=re.exec(T)))v=m[1];return v};
+  const U=/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
+  const uuid=((flat.match(/\|\|1\.1\|([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\|/i)||[])[1]||(T.match(/folio\s*fiscal[^\n]*?([0-9a-f-]{36})/i)||[])[1]||(T.match(U)||[])[1]||(flat.match(U)||[])[1]||'').toLowerCase();
+  const rfcs=[...T.matchAll(/\b([A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3})\b/g)].map(m=>m[1]).filter(r=>!OWN_RFC.includes(r));
+  let date='';const d1=T.match(/fecha[^\n\d]{0,20}(\d{2})\/(\d{2})\/(\d{4})/i), d2=T.match(/fecha[^\n\d]{0,20}(\d{4}-\d{2}-\d{2})/i), d3=T.match(/(\d{4}-\d{2}-\d{2})T\d{2}:\d{2}/);
+  if(d1)date=`${d1[3]}-${d1[2]}-${d1[1]}`;else if(d2)date=d2[1];else if(d3)date=d3[1];
+  const folio=((T.match(/factura\s*no\.?\s*:?\s*([A-Z]{0,6}\s?\d{1,12})/i)||[])[1]||(T.match(/\bfolio(?!\s*fiscal)\s*:?\s*([A-Z]{0,6}\s?\d{1,12})\b/i)||[])[1]||(L.slice(0,15).join('\n').match(/\b([A-Z]{2,6}\d{5,})\b/)||[])[1]||'').trim();
+  const total=numM(last(/(?<![A-Za-z])total(?:\s+comprobante)?\s*:?\s*\$?\s*([\d,]+\.\d{2})/gi)), sub=numM((T.match(/sub\s*-?\s*total\s*:?\s*\$?\s*([\d,]+\.\d{2})/i)||[])[1]);
+  let iva=numM((T.match(/impuestos\s+trasladados\s*:?\s*\$?\s*([\d,]+\.\d{2})/i)||[])[1]||last(/I\.?V\.?A\.?[^$\n]{0,25}\$\s*([\d,]+\.\d{2})/gi));
+  const ret=numM((T.match(/impuestos\s+retenidos\s*:?\s*\$?\s*([\d,]+\.\d{2})/i)||[])[1]);
+  if(!iva&&sub&&total&&total-sub>0.004)iva=r2(total-sub+ret);
+  const nameLine=L.slice(0,14).map(l=>l.split(/\s{2,}/).find(c=>/^[A-ZÁÉÍÓÚÑÜ&][A-ZÁÉÍÓÚÑÜ&.,'\- ]{5,}$/.test(c)&&!/FACTURA|CFDI|COMPROBANTE|R\.?F\.?C|^(NOMBRE|DIRECCI|DOMICILIO|CIUDAD|ESTADO|COLONIA|CLIENTE|R[EÉ]GIMEN|MONEDA)|YSM/.test(c))).find(Boolean)||'';
+  const curM=T.match(/moneda\s*:?\s*(USD|MXN)/i), fxM=T.match(/tipo\s+de\s+cambio\s*:?\s*([\d.]+)/i);
+  const qty=(T.match(/(\d+(?:\.\d+)?)\s+(?:LTR|Litros?)\b/i)||[])[1]||'';
+  const ci=L.findIndex(l=>/descripci[oó]n/i.test(l)), body=ci>=0?L.slice(ci+1,ci+8).join(' '):'';
+  const gen=ci>=0?(L.slice(ci+1,ci+8).find(l=>/^\s*\d{8}\b/.test(l))||'').split(/\s{2,}/).filter(c=>/[A-Za-z]{3,}/.test(c)&&!/^(H87|E48|LTR|KGM|ACT|Pieza|Litro|Servicio|Unidad|S[ií] objeto|002|IVA|Tasa)/i.test(c)).sort((a,b)=>b.length-a.length)[0]:'';
+  return {vendor:nameLine.trim(),rfc:rfcs[0]||'',date,folio:folio.replace(/\s+/,' '),uuid,cur:curM&&curM[1].toUpperCase()==='USD'?'USD':'MXN',fx:fxM?numM(fxM[1]):0,total,iva,ret,
+    metodo:(T.match(/\b(PUE|PPD)\b/)||[])[1]||'',forma:(T.match(/forma\s+de\s+pago\s*:?\s*(\d{2})/i)||[])[1]||'',tipo:(T.match(/tipo\s+(?:de\s+)?comprobante\s*:?\s*([IEPTN])\b/i)||[])[1]||'I',
+    item:cfdiFuel(body,T,qty)||(gen||'').slice(0,80)};
+}
+function cfdiFinish(x,file){
+  const v=(DB.vendors||[]).find(e=>x.rfc&&String(e.rfc||'').toUpperCase()===x.rfc);
+  x.file=file;if(v)x.vendor=v.name;x.terms=v&&+v.terms>0?+v.terms:30;
+  x.vendor=x.vendor||x.rfc||'(공급사 미확인)';x.iva=r2(x.iva);x.total=r2(x.total);x.sub=r2(x.total-x.iva+(x.ret||0));
+  x.rate=x.iva<=0.004?'0%':(x.iva/Math.max(0.01,x.sub))<0.11?'8%':'16%';
+  x.fuel=FUELS.some(([,n])=>x.item.startsWith(n));
+  const u=x.uuid, seen=u&&(DB.ap.concat(DB.cash)).some(r=>String(r.uuid||'').toLowerCase()===u);
+  x.dup=seen?'이미 등록':'';
+  if(!x.total)x.err='합계 금액을 찾지 못했습니다';else if(!validD(x.date))x.err='발행일을 찾지 못했습니다';else if(x.tipo&&x.tipo!=='I')x.err=`수입(I) Factura가 아닙니다 (${x.tipo})`;
+  return x;
+}
+async function parseCfdiFiles(files){
+  const box=$('#cfdiPreview');if(box)box.innerHTML='<p class="note">파일을 읽는 중…</p>';
+  const rows=[];
+  for(const f of files){
+    try{
+      const buf=new Uint8Array(await f.arrayBuffer()), isXml=/\.xml$/i.test(f.name)||/xml/.test(f.type);
+      const x=isXml?cfdiFromXml(new TextDecoder().decode(buf)):cfdiFromPdf(await pdfLines(buf));
+      rows.push(x?cfdiFinish(x,f.name):{file:f.name,err:'CFDI 형식이 아닙니다'});
+    }catch(e){rows.push({file:f.name,err:/\.pdf$/i.test(f.name)?'PDF를 읽지 못했습니다 (인터넷 연결 또는 스캔 이미지 여부 확인)':'파일을 읽지 못했습니다'})}
+  }
+  const u=new Set();rows.forEach(x=>{if(x.err||x.dup||!x.uuid)return;if(u.has(x.uuid))x.dup='같은 파일 중복';u.add(x.uuid)});
+  cfdi={rows};renderCfdi();
+}
+function cfdiAcct(x){const cat=($('#cf-cat')||{}).value||'판관비용';return x.fuel?['판관비용','차량유지비']:[cat,($('#cf-acc')||{}).value||'기타']}
+function renderCfdi(){
+  const box=$('#cfdiPreview'), btn=$('[data-docfdi]');if(!box||!btn)return;
+  if(!cfdi){box.innerHTML='';btn.disabled=true;return}
+  const ok=cfdi.rows.filter(x=>!x.err&&!x.dup), pue=($('#cf-pue')||{}).checked;
+  box.innerHTML=`<div class="tw" style="border:1px solid var(--line);border-radius:10px"><table><thead><tr><th>발행일</th><th>공급사</th><th>Folio</th><th>품목</th><th>계정과목</th><th class="n">금액</th><th class="n">IVA</th><th class="n">합계</th><th>결제</th><th>상태</th></tr></thead><tbody>
+    ${cfdi.rows.map(x=>x.err?`<tr><td colspan="9">${esc(x.file)}</td><td><span class="neg">${esc(x.err)}</span></td></tr>`:`<tr><td>${esc(x.date)}</td><td>${esc(x.vendor)}</td><td>${esc(x.folio)}</td><td>${esc(x.item)}</td><td>${esc(cfdiAcct(x)[1])}</td>
+      <td class="n">${fmtCur(x.sub,x.cur,1)}</td><td class="n">${fmtCur(x.iva,x.cur,1)}</td><td class="n">${fmtCur(x.total,x.cur,1)}</td><td>${esc(x.metodo||'–')}${x.metodo==='PUE'&&pue?' · 지급':''}</td><td>${x.dup?`<span class="neg">${esc(x.dup)}</span>`:'<span class="ok">신규</span>'}</td></tr>`).join('')}</tbody>
+    ${ok.length?`<tfoot><tr><td colspan="5">신규 ${ok.length}건</td><td class="n">${money(sumBy(ok,x=>x.sub*rate(x.cur)))}</td><td class="n">${money(sumBy(ok,x=>x.iva*rate(x.cur)))}</td><td class="n">${money(sumBy(ok,x=>x.total*rate(x.cur)))}</td><td colspan="2"></td></tr></tfoot>`:''}</table></div>`;
+  btn.disabled=!ok.length;btn.textContent=ok.length?`${ok.length}건 등록`:'등록';
+}
+function cfdiModal(){
+  const cats=['판관비용','제조비용','자산매입'], accs=c=>(ACCOUNTS[c]||[]).filter(x=>!/지급$|입금$|상환$/.test(x)), bn=bankNames('MXN').length?bankNames('MXN'):bankNames();
+  return `<div class="modal-bg"><div class="modal lg" role="dialog" aria-modal="true" aria-labelledby="mt">
+    <header><h3 id="mt">Factura 등록 (PDF · XML)</h3><button type="button" class="x" data-close="1" aria-label="닫기">×</button></header>
+    <div class="mbody" style="display:grid;gap:14px;grid-template-columns:minmax(0,1fr)">
+      <div class="form"><label>기본 분류<select id="cf-cat">${cats.map(c=>`<option>${c}</option>`).join('')}</select></label>
+        <label>기본 계정과목<select id="cf-acc">${accs('판관비용').map(a=>`<option${a==='기타'?' selected':''}>${esc(a)}</option>`).join('')}</select></label>
+        <label>PUE 지급 은행<select id="cf-bank">${bn.map(n=>`<option${n===bankFor('MXN')?' selected':''}>${esc(n)}</option>`).join('')}</select></label>
+</div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:0"><input type="checkbox" id="cf-pue" checked style="width:auto;margin:0">PUE 건은 지급 완료로 처리</label>
+      <label class="filebox" for="cfdiFile">Factura 파일 선택 (여러 개 가능 · PDF, XML)<input type="file" id="cfdiFile" multiple accept=".pdf,application/pdf,.xml,text/xml,application/xml"></label>
+      <div id="cfdiPreview"></div></div>
+    <footer><button type="button" class="btn" data-close="1">취소</button><button type="button" class="btn primary" data-docfdi="1" disabled>등록</button></footer></div></div>`;
+}
+function doCfdi(){
+  const pue=$('#cf-pue').checked, bank=$('#cf-bank').value;let n=0,np=0,last=null;
+  cfdi.rows.filter(x=>!x.err&&!x.dup).forEach(x=>{
+    const [cat,account]=cfdiAcct(x), cur=x.cur, fx=cur==='USD'?(x.fx||FX()):'';
+    const r=fixRow(MODS.ap,{id:uid(),date:x.date,vendor:x.vendor,cat,account,item:x.item||'Factura '+x.folio,cur,fx,sub:x.sub,ivaAmt:x.iva,iva:x.rate,factura:'발행',uuid:x.uuid,folio:x.folio,rfc:x.rfc,paid:0,
+      due:x.metodo==='PUE'?x.date:addDs(x.date,x.terms),src:'CFDI'});
+    if(pue&&x.metodo==='PUE'){
+      r.paid=r.amount;const b=bankNames(cur).includes(bank)?bank:bankFor(cur);
+      DB.cash.unshift({id:uid(),date:x.date,bank:b,type:'출금',cat,account:'외상매입금 지급',party:x.vendor,memo:`${r.item} 대금 지급 (Factura ${x.folio})`,cur,fx,amount:r.amount,sub:r.sub,ivaAmt:x.iva,iva:x.rate,factura:'발행',uuid:x.uuid,link:r.id,linkMod:'ap'});np++;
+    }
+    DB.ap.unshift(r);last=r.id;n++;
+  });
+  if(bank)UI.lastBank=bank;flashId=last;cfdi=null;save();closeModal();renderMain();
+  toast(`Factura ${n}건을 외상매입에 등록했습니다${np?` · PUE ${np}건은 지급 완료 처리하고 경리자료에 출금 전표를 만들었습니다`:''}`,np?{label:'경리자료 보기',fn:()=>go('cash')}:null);
 }
 function rayaTemplate(){
   if(!window.XLSX){toast('엑셀 기능을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.');return}
@@ -2570,6 +2679,7 @@ function renderModal(){
   const host=$('#modalHost');
   if(modal&&modal.type==='import'){host.innerHTML=importModal(modal.mod);imp=null;return}
   if(modal&&modal.type==='raya'){host.innerHTML=rayaModal();raya=null;return}
+  if(modal&&modal.type==='cfdi'){host.innerHTML=cfdiModal();cfdi=null;return}
   if(modal&&modal.type==='add'){const m=MODS[modal.mod];
     host.innerHTML=`<div class="modal-bg"><div class="modal${m.big?' lg':''}" role="dialog" aria-modal="true" aria-labelledby="mt"><form data-reg="${modal.mod}">
       <header><h3 id="mt">${modal.mod==='employees'?'직원 추가':esc(m.name)+' 등록'}</h3><button type="button" class="x" data-close="1" aria-label="닫기">×</button></header>
@@ -3048,6 +3158,8 @@ document.addEventListener('click',e=>{
   if(d.raya){modal={type:'raya'};renderModal();return}
   if(d.rayatpl){rayaTemplate();return}
   if(d.dorays){if(raya&&raya.rows&&raya.rows.length)doRaya();return}
+  if(d.cfdi){modal={type:'cfdi'};renderModal();return}
+  if(d.docfdi){if(cfdi&&cfdi.rows.some(x=>!x.err&&!x.dup))doCfdi();return}
   if(d.settle){modal={type:'settle',mod:d.m,id:d.settle};renderModal();return}
   if(d.bankopenm){modal={type:'bankopen'};renderModal();return}
   if(d.addrow){modal={type:'add',mod:d.addrow};renderModal();return}
@@ -3115,6 +3227,9 @@ document.addEventListener('change',e=>{
     if(em){set('dept',em.dept);set('daily',em.daily);set('cur',em.cur||'MXN');const dy=parseFloat(F.querySelector('[name="days"]').value)||0;if(dy&&!parseFloat(F.querySelector('[name="sueldo"]').value))set('sueldo',Math.round(dy*em.daily*100)/100)}return;
   }
   if(t.id==='rayaFile'){if(t.files&&t.files[0])parseRaya(t.files[0]);return}
+  if(t.id==='cfdiFile'){if(t.files&&t.files.length)parseCfdiFiles([...t.files]);return}
+  if(t.id==='cf-cat'){const a=$('#cf-acc');if(a){a.innerHTML=(ACCOUNTS[t.value]||[]).filter(x=>!/지급$|입금$|상환$/.test(x)).map(x=>`<option>${esc(x)}</option>`).join('')}renderCfdi();return}
+  if(t.id==='cf-acc'||t.id==='cf-pue'){renderCfdi();return}
   if(t.id==='impFile'){if(t.files&&t.files[0])parseImport(t.files[0],modal.mod);return}
   if(t.dataset&&t.dataset.range){if(validD(t.value)){if(t.dataset.range==='s')UI.rs=t.value;else UI.re=t.value;if(UI.rs>UI.re)[UI.rs,UI.re]=[UI.re,UI.rs];saveUI();renderMain()}return}
   if(t.id==='rangeStart'||t.id==='rangeEnd'){if(validD(t.value)){if(t.id==='rangeStart')UI.rs=t.value;else UI.re=t.value;if(UI.rs>UI.re)[UI.rs,UI.re]=[UI.re,UI.rs];saveUI();renderMain()}return}
@@ -3167,6 +3282,7 @@ document.addEventListener('submit',e=>{
     const bank=(f.querySelector('[name="sbank"]')||{}).value||bankFor(r.cur);UI.lastBank=bank;
     DB.cash.unshift({id:uid(),date,bank,type:isAR?'입금':'출금',cat:isAR?'매출수입':(r.cat==='차입금'?'판관비용':r.cat),account:isAR?'매출대금 수금':'외상매입금 지급',party:isAR?r.customer:r.vendor,
       memo:`${r.item} ${isAR?'대금 수금':'대금 지급'} (외상${isAR?'매출':'매입'} 연계)`,cur:r.cur||'MXN',amount:amt,sub:r2(amt/(1+ivaRt(r))),iva:r.iva||'16%',factura:r.factura||'발행',uuid:r.uuid||'',link:r.id,linkMod:mod});
+    if(hasIvaAmt(r)&&+r.amount){const v=r2(r.ivaAmt*amt/r.amount);Object.assign(DB.cash[0],{ivaAmt:v,sub:r2(amt-v)})}
     let fxMsg='';
     if(r.cur==='USD'){const sfx=parseFloat((f.querySelector('[name="sfx"]')||{}).value)||FX();DB.cash[0].fx=sfx;const d=amt*(sfx-bookFx(r))*(isAR?1:-1);if(Math.abs(d)>=0.5)fxMsg=` · 외환${d>0?'차익':'차손'} ${plain(Math.abs(d))}`}
     flashId=r.id;save();closeModal();renderMain();
@@ -3179,6 +3295,7 @@ document.addEventListener('submit',e=>{
     if(m===MODS.vendors&&v.name!==r.name)[DB.inbound,DB.ap].forEach(a=>a.forEach(x=>{if(x.vendor===r.name)x.vendor=v.name}));
     if(m===MODS.entities&&v.name!==r.name){DB.entfs.forEach(x=>{if(x.entity===r.name)x.entity=v.name});DB.ic.forEach(x=>{if(x.seller===r.name)x.seller=v.name;if(x.buyer===r.name)x.buyer=v.name})}
     if(m===MODS.customers&&v.name!==r.name)[DB.outbound,DB.ar].forEach(a=>a.forEach(x=>{if(x.customer===r.name)x.customer=v.name}));
+    if(hasIvaAmt(r)&&((v.sub!=null&&+v.sub!==+r.sub)||(v.iva!=null&&v.iva!==r.iva)||(v.cur!=null&&v.cur!==r.cur)))delete r.ivaAmt;
     Object.assign(r,v);fixRow(m,r);flashId=r.id;save();closeModal();renderMain();toast('수정했습니다');
   }
 });
