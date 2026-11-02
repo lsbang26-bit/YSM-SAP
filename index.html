@@ -2109,32 +2109,38 @@ function cfdiFinish(x,file){
   return x;
 }
 async function parseCfdiFiles(files){
-  const box=$('#cfdiPreview');if(box)box.innerHTML='<p class="note">파일을 읽는 중…</p>';
+  // files add to the list already read, so several picks or drops build one batch
+  const have=cfdi?cfdi.rows:[], keyOf=f=>f.name+'|'+f.size;
+  files=files.filter(f=>!have.some(x=>x.key===keyOf(f)));
+  const box=$('#cfdiPreview');if(box&&files.length)box.insertAdjacentHTML('afterbegin','<p class="note" id="cfdiReading">파일을 읽는 중…</p>');
   const rows=[];
   for(const f of files){
+    const n0=rows.length;
     try{
       const buf=new Uint8Array(await f.arrayBuffer()), isXml=/\.xml$/i.test(f.name)||/xml/.test(f.type);
       const x=isXml?cfdiFromXml(new TextDecoder().decode(buf)):cfdiFromPdf(await pdfLines(buf));
       rows.push(x?cfdiFinish(x,f.name):{file:f.name,err:'CFDI 형식이 아닙니다'});
     }catch(e){rows.push({file:f.name,err:/\.pdf$/i.test(f.name)?'PDF를 읽지 못했습니다 (인터넷 연결 또는 스캔 이미지 여부 확인)':'파일을 읽지 못했습니다'})}
+    if(rows[n0])rows[n0].key=keyOf(f);
   }
-  const u=new Set();rows.forEach(x=>{if(x.err||x.dup||!x.uuid)return;if(u.has(x.uuid))x.dup='같은 파일 중복';u.add(x.uuid)});
-  cfdi={rows};renderCfdi();
+  const all=have.concat(rows), u=new Set();
+  all.forEach(x=>{if(x.dup==='같은 Factura 중복')x.dup='';if(x.err||x.dup||!x.uuid)return;if(u.has(x.uuid))x.dup='같은 Factura 중복';u.add(x.uuid)});
+  cfdi={rows:all};renderCfdi();
 }
 function cfdiAcct(x){const cat=($('#cf-cat')||{}).value||'판관비용';return x.fuel?['판관비용','차량유지비']:[cat,($('#cf-acc')||{}).value||'기타']}
 function renderCfdi(){
   const box=$('#cfdiPreview'), btn=$('[data-docfdi]');if(!box||!btn)return;
   if(!cfdi){box.innerHTML='';btn.disabled=true;return}
   const ok=cfdi.rows.filter(x=>!x.err&&!x.dup), pue=($('#cf-pue')||{}).checked;
-  box.innerHTML=`<div class="tw" style="border:1px solid var(--line);border-radius:10px"><table><thead><tr><th>발행일</th><th>공급사</th><th>Folio</th><th>품목</th><th>계정과목</th><th class="n">금액</th><th class="n">IVA</th><th class="n">합계</th><th>결제</th><th>상태</th></tr></thead><tbody>
-    ${cfdi.rows.map(x=>x.err?`<tr><td colspan="9">${esc(x.file)}</td><td><span class="neg">${esc(x.err)}</span></td></tr>`:`<tr><td>${esc(x.date)}</td><td>${esc(x.vendor)}</td><td>${esc(x.folio)}</td><td>${esc(x.item)}</td><td>${esc(cfdiAcct(x)[1])}</td>
-      <td class="n">${fmtCur(x.sub,x.cur,1)}</td><td class="n">${fmtCur(x.iva,x.cur,1)}</td><td class="n">${fmtCur(x.total,x.cur,1)}</td><td>${esc(x.metodo||'–')}${x.metodo==='PUE'&&pue?' · 지급':''}</td><td>${x.dup?`<span class="neg">${esc(x.dup)}</span>`:'<span class="ok">신규</span>'}</td></tr>`).join('')}</tbody>
-    ${ok.length?`<tfoot><tr><td colspan="5">신규 ${ok.length}건</td><td class="n">${money(sumBy(ok,x=>x.sub*rate(x.cur)))}</td><td class="n">${money(sumBy(ok,x=>x.iva*rate(x.cur)))}</td><td class="n">${money(sumBy(ok,x=>x.total*rate(x.cur)))}</td><td colspan="2"></td></tr></tfoot>`:''}</table></div>`;
+  box.innerHTML=`<div class="tw" style="border:1px solid var(--line);border-radius:10px"><table class="tight"><thead><tr><th>발행일</th><th>공급사</th><th>Folio</th><th>품목</th><th>계정과목</th><th class="n">금액</th><th class="n">IVA</th><th class="n">합계</th><th>결제</th><th>상태</th><th class="c">빼기</th></tr></thead><tbody>
+    ${cfdi.rows.map((x,i)=>(x.err?`<tr><td colspan="9">${esc(x.file)}</td><td><span class="neg">${esc(x.err)}</span></td>`:`<tr><td>${esc(x.date)}</td><td>${esc(x.vendor)}</td><td>${esc(x.folio)}</td><td>${esc(x.item)}</td><td>${esc(cfdiAcct(x)[1])}</td>
+      <td class="n">${fmtCur(x.sub,x.cur,1)}</td><td class="n">${fmtCur(x.iva,x.cur,1)}</td><td class="n">${fmtCur(x.total,x.cur,1)}</td><td>${esc(x.metodo||'–')}${x.metodo==='PUE'&&pue?' · 지급':''}</td><td>${x.dup?`<span class="neg">${esc(x.dup)}</span>`:'<span class="ok">신규</span>'}</td>`)+`<td class="c"><button type="button" class="del" data-cfdirm="${i}" aria-label="목록에서 빼기">×</button></td></tr>`).join('')}</tbody>
+    ${ok.length?`<tfoot><tr><td colspan="5">신규 ${ok.length}건</td><td class="n">${money(sumBy(ok,x=>x.sub*rate(x.cur)))}</td><td class="n">${money(sumBy(ok,x=>x.iva*rate(x.cur)))}</td><td class="n">${money(sumBy(ok,x=>x.total*rate(x.cur)))}</td><td colspan="3"></td></tr></tfoot>`:''}</table></div>`;
   btn.disabled=!ok.length;btn.textContent=ok.length?`${ok.length}건 등록`:'등록';
 }
 function cfdiModal(){
   const cats=['판관비용','제조비용','자산매입'], accs=c=>(ACCOUNTS[c]||[]).filter(x=>!/지급$|입금$|상환$/.test(x)), bn=bankNames('MXN').length?bankNames('MXN'):bankNames();
-  return `<div class="modal-bg"><div class="modal lg" role="dialog" aria-modal="true" aria-labelledby="mt">
+  return `<div class="modal-bg"><div class="modal lg" style="width:min(1240px,100%)" role="dialog" aria-modal="true" aria-labelledby="mt">
     <header><h3 id="mt">Factura 등록 (PDF · XML)</h3><button type="button" class="x" data-close="1" aria-label="닫기">×</button></header>
     <div class="mbody" style="display:grid;gap:14px;grid-template-columns:minmax(0,1fr)">
       <div class="form"><label>기본 분류<select id="cf-cat">${cats.map(c=>`<option>${c}</option>`).join('')}</select></label>
@@ -3161,6 +3167,7 @@ document.addEventListener('click',e=>{
   if(d.rayatpl){rayaTemplate();return}
   if(d.dorays){if(raya&&raya.rows&&raya.rows.length)doRaya();return}
   if(d.cfdi){modal={type:'cfdi'};renderModal();return}
+  if(d.cfdirm){if(cfdi){cfdi.rows.splice(+d.cfdirm,1);if(!cfdi.rows.length)cfdi=null}renderCfdi();return}
   if(d.docfdi){if(cfdi&&cfdi.rows.some(x=>!x.err&&!x.dup))doCfdi();return}
   if(d.settle){modal={type:'settle',mod:d.m,id:d.settle};renderModal();return}
   if(d.bankopenm){modal={type:'bankopen'};renderModal();return}
@@ -3216,7 +3223,7 @@ document.addEventListener('drop',e=>{
   const ok=files.filter(f=>!inp.accept||inp.accept.split(',').some(a=>{a=a.trim().toLowerCase();return a.startsWith('.')?f.name.toLowerCase().endsWith(a):f.type===a})).slice(0,inp.multiple?1e9:1);
   if(!ok.length){toast('이 칸에 넣을 수 없는 파일 형식입니다');return}
   try{const dt=new DataTransfer();ok.forEach(f=>dt.items.add(f));inp.files=dt.files}catch(err){}
-  if(inp.id==='cfdiFile')parseCfdiFiles(ok);else if(inp.id==='rayaFile')parseRaya(ok[0]);else if(inp.id==='impFile')parseImport(ok[0],modal.mod);else inp.dispatchEvent(new Event('change',{bubbles:true}));
+  if(inp.id==='cfdiFile'){parseCfdiFiles(ok);inp.value=''}else if(inp.id==='rayaFile')parseRaya(ok[0]);else if(inp.id==='impFile')parseImport(ok[0],modal.mod);else inp.dispatchEvent(new Event('change',{bubbles:true}));
 });
 document.addEventListener('change',e=>{
   const t=e.target;
@@ -3248,7 +3255,7 @@ document.addEventListener('change',e=>{
     if(em){set('dept',em.dept);set('daily',em.daily);set('cur',em.cur||'MXN');const dy=parseFloat(F.querySelector('[name="days"]').value)||0;if(dy&&!parseFloat(F.querySelector('[name="sueldo"]').value))set('sueldo',Math.round(dy*em.daily*100)/100)}return;
   }
   if(t.id==='rayaFile'){if(t.files&&t.files[0])parseRaya(t.files[0]);return}
-  if(t.id==='cfdiFile'){if(t.files&&t.files.length)parseCfdiFiles([...t.files]);return}
+  if(t.id==='cfdiFile'){if(t.files&&t.files.length){parseCfdiFiles([...t.files]);t.value=''}return}
   if(t.id==='cf-cat'){const a=$('#cf-acc');if(a){a.innerHTML=(ACCOUNTS[t.value]||[]).filter(x=>!/지급$|입금$|상환$/.test(x)).map(x=>`<option>${esc(x)}</option>`).join('')}renderCfdi();return}
   if(t.id==='cf-acc'||t.id==='cf-pue'){renderCfdi();return}
   if(t.id==='impFile'){if(t.files&&t.files[0])parseImport(t.files[0],modal.mod);return}
