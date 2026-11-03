@@ -339,6 +339,15 @@ body.cover-on{overflow:hidden}
 .eng-cmd .mm-sbox input{font-size:13px}
 .eng-cmd .mm-res{position:absolute;left:0;right:0;bottom:48px}
 .mm-kb{display:grid;place-items:center;border:0;background:none;color:#7FA3D6;line-height:1;padding:2px 7px;border-radius:999px;cursor:pointer;font-family:inherit}
+.mm-kb.ok{color:#3EE6A4}
+.mm-ans .ai-say{margin:0;font-size:14px;line-height:1.65;color:#EAF3FF;word-break:keep-all}
+.mm-ans p.ai-say{padding:10px 12px;border-radius:10px;background:rgba(63,200,255,.08);border:1px solid rgba(63,200,255,.2)}
+.mm-ans .ai-key{display:flex;gap:6px;align-items:center}
+.mm-ans .ai-key input{flex:1;min-width:0;height:34px;border-radius:9px;border:1px solid rgba(120,190,255,.4);background:rgba(0,0,0,.25);color:#fff;padding:0 10px;font-family:inherit;font-size:12.5px;outline:0}
+.mm-ans .ai-key input:focus{border-color:#FFD23F}
+.mm-ans .mic-help a{color:#9EDCFF}
+.mm-full.ghost{background:none;border-color:rgba(120,190,255,.4);color:#BFD9FF}
+.mm-ans .ai-st{margin:0;font-size:12px;color:#9BF0CF}
 .mm-kb.on,.mm-kb:hover{background:rgba(255,210,63,.2);color:#FFE07A}
 .mm-svg{transition:transform .45s ease}
 .mm-svg{transform-origin:0 55%}
@@ -2916,7 +2925,7 @@ function coverHTML(){
     <g class="mm-streams">${streams}</g>${lines}
     <g class="eng" data-eng="1" tabindex="0" role="button" aria-label="AI 실행엔진"><foreignObject x="${cx-240}" y="${cy-240}" width="480" height="480"><canvas class="eng-cv"></canvas></foreignObject></g>
     ${nodes}</svg>
-  <div class="mm-voice"><button id="mmMic" class="mm-wave${voice.on?' on':''}" aria-label="음성인식 켜기·끄기"><span class="wv">${Array.from({length:9},(_,i)=>`<i style="--i:${i}"></i>`).join('')}<b></b>${Array.from({length:9},(_,i)=>`<i style="--i:${8-i}"></i>`).join('')}</span><span id="mmVs" class="mm-vs"></span></button><div class="mm-lang">${Object.entries(LANGS).map(([k,v])=>`<button data-vlang="${k}" class="${voice.lang===k?'on':''}">${v.tag}</button>`).join('')}<button class="mm-kb" data-kb="1" aria-label="명령 입력" title="명령 입력"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M9.5 10h.01M13 10h.01M16.5 10h.01M7 14h10"/></svg></button></div></div>
+  <div class="mm-voice"><button id="mmMic" class="mm-wave${voice.on?' on':''}" aria-label="음성인식 켜기·끄기"><span class="wv">${Array.from({length:9},(_,i)=>`<i style="--i:${i}"></i>`).join('')}<b></b>${Array.from({length:9},(_,i)=>`<i style="--i:${8-i}"></i>`).join('')}</span><span id="mmVs" class="mm-vs"></span></button><div class="mm-lang">${Object.entries(LANGS).map(([k,v])=>`<button data-vlang="${k}" class="${voice.lang===k?'on':''}">${v.tag}</button>`).join('')}<button class="mm-kb${aiOn()?' ok':''}" data-aikey="1" aria-label="AI 키 연결" title="${aiOn()?'AI 연결됨 · 키 설정':'AI 키 연결'}"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3M15 8l2 2"/></svg></button><button class="mm-kb" data-kb="1" aria-label="명령 입력" title="명령 입력"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M9.5 10h.01M13 10h.01M16.5 10h.01M7 14h10"/></svg></button></div></div>
   <div id="engCmd" class="eng-cmd" hidden><div id="mmRes" class="mm-res" hidden></div><div class="mm-sbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m5 7 5 5-5 5M13 17h6"/></svg><input id="mmQ" type="text" placeholder="AI 엔진에게 명령 · 예) 자료 띄어줘" autocomplete="off" aria-label="AI 엔진 명령"></div></div>
   <div class="mm-list"><button class="mm-core-m eng-m" data-eng="1" aria-label="AI 실행엔진"><canvas class="eng-cv"></canvas></button>
     ${G.map(g=>`<section class="mm-card" data-g="${g.id}"><button class="mm-gh" data-cgo="dash-${g.id}"><b>${esc(g.name)}</b>${g.kpi?`<span>${esc(g.kpi)}</span>`:''}</button>
@@ -2935,7 +2944,7 @@ function engPts(){if(ENG.pts)return ENG.pts;const R=rng(2026),P=[],N=900,ga=Math
     else{const u=R()*2-1,th=R()*Math.PI*2,r=Math.cbrt(R())*.88,q=Math.sqrt(1-u*u);x=r*q*Math.cos(th);y=r*u;z=r*q*Math.sin(th)}
     P.push([x,y,z,R(),R()])}
   return ENG.pts=P}
-function engState(){return voice.speaking?'speak':voice.awake?'listen':voice.on?'on':'idle'}
+function engState(){return ENG.busy?'think':voice.speaking?'speak':voice.awake?'listen':voice.on?'on':'idle'}
 function engPing(){ENG.think=1}
 function engStop(){cancelAnimationFrame(ENG.raf);ENG.raf=0}
 function engStart(){engStop();engPts();ENG.last=performance.now();
@@ -2943,7 +2952,7 @@ function engStart(){engStop();engPts();ENG.last=performance.now();
   const loop=now=>{const cvs=[...document.querySelectorAll('#cover .eng-cv')].filter(c=>c.offsetParent!==null||c.getClientRects().length);
     if(!coverOn()){ENG.raf=0;return}
     const dt=Math.min(.05,(now-ENG.last)/1000);ENG.last=now;const st=engState();
-    ENG.think=Math.max(0,ENG.think-dt*.9);
+    ENG.think=ENG.busy?1:Math.max(0,ENG.think-dt*.9);
     ENG.rot+=dt*(reduce?.05:(.22+(st==='listen'?.18:0)+(st==='speak'?.25:0)+ENG.think*2.2));
     if((st==='listen'||st==='speak')&&now-ENG.lastRip>(st==='speak'?520:1100)){ENG.rip.push(now);ENG.lastRip=now}
     ENG.rip=ENG.rip.filter(t=>now-t<1600);
@@ -3057,9 +3066,13 @@ function cmdPeriod(t){
 }
 const topBy=(rows,k,f,n=6)=>{const m={};rows.forEach(r=>{const key=r[k]||'–';m[key]=(m[key]||0)+f(r)});return Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0,n)};
 const PESO=()=>S('페소','pesos','pesos');
-function runCmd(text,lang){
+const runCmdLocal=(t,l)=>runCmd(t,l,true);
+// with an API key: open questions (why/how/analyse/advise…) and anything the built-in commands don't understand go to Claude
+const AIQ=/왜|어떻게|분석|비교|추천|조언|의견|설명|요약|전망|예측|원인|이유|괜찮|해야|할까|어때|생각|도와|써\s*줘|작성|번역|알려\s*줄래|\bwhy\b|\bhow\b|explain|analy|compare|recommend|advice|advise|summar|should|\bwrite\b|translate|por\s*qu[eé]|c[oó]mo|expl[ií]ca|anali|compara|recomi[ée]nda|deber[ií]a|escribe|traduce/i;
+function runCmd(text,lang,noAI){
   const t=String(text||'').trim();if(!t)return;
   CL=lang||detectLang(t);engPing();CMD_PIN=false;
+  if(!noAI&&aiOn()&&AIQ.test(t)){askAI(t);return}
   if(/(자료|데이터|패널|창|data|panel|datos|informaci[oó]n).*(닫|숨|치워|내려|꺼|없애|close|hide|cierra|quita|oculta)|^(닫아|닫아줘|close|cierra)/i.test(t)){ansClose();speak(S('자료를 닫았습니다','Data panel closed','Cerré los datos'));return}
   const nt0=normK(t), ent=vals=>uniq(vals.filter(Boolean)).filter(v=>normK(v).length>1&&nt0.includes(normK(v))).sort((a,b)=>b.length-a.length)[0];
   const BYQ=/별|\bby\b|\bper\b|\bpor\b|\beach\b|\bcada\b/i.test(t), BYP=/제품|품목|품번|아이템|product|item|producto|art[ií]culo|material/i.test(t);
@@ -3130,17 +3143,121 @@ function runCmd(text,lang){
     A={title:L('환율'),period:asOfL(TODAY),big:[['1 US$',FX()+' MXN']],go:'fs',say:S(`현재 환율은 1달러에 ${FX()} 페소입니다`,`One dollar is ${FX()} pesos`,`Un dólar equivale a ${FX()} pesos`)};
   }else if(menu&&!PIN){openIt(menu);return}
   else if(PIN)A=dataOverview();
+  else if(!noAI&&aiOn()){askAI(t);return}
   else{
     const r=searchFind(t.replace(/(보여줘|알려줘|찾아줘|열어|좀|줘|show me|show|find|search|open|muestra|muéstrame|busca|abre)/gi,'').trim());
     if(r.length){SRES=r;A={title:L('검색 결과'),period:`"${t}"`,list:r,say:S(`${r.length}건을 찾았습니다`,`I found ${r.length} results`,`Encontré ${r.length} resultados`)}}
     else A={title:L('잘 모르겠어요'),period:`"${t}"`,examples:1,say:S('잘 모르겠어요. 예시처럼 말씀해 주세요',"Sorry, I didn't catch that. Try one of the examples",'Perdón, no entendí. Prueba con uno de los ejemplos')};
   }
+  if(A&&/월별|추이|흐름|monthly|trend|por mes|mensual/i.test(t)&&['outbound','inbound','cash'].includes(A.go)){
+    const T=TODAY_D,src=A.go==='outbound'?DB.outbound:A.go==='inbound'?DB.inbound:DB.cash.filter(r=>r.type==='출금'),f=A.go==='cash'?M('amount'):lineAmt;
+    A.bars=Array.from({length:12},(_,i)=>{const d=new Date(T.getFullYear(),T.getMonth()-11+i,1),p={start:ds(d),end:ds(new Date(d.getFullYear(),d.getMonth()+1,0))};return [`${String(d.getFullYear()).slice(2)}.${pad(d.getMonth()+1)}`,sumBy(src.filter(r=>inP(r,p)),f)]});
+    A.by=null;A.period=S('최근 12개월','Last 12 months','Últimos 12 meses');A.title=CL==='ko'?'월별 '+A.title:`${A.title} · ${S('','Monthly','Mensual')}`;
+    const lastB=A.bars[A.bars.length-2];A.say=S(`월별 추이를 띄웠습니다. 지난 달은 ${plain(lastB[1])} 페소입니다`,`Here is the monthly trend. Last month was ${plain(lastB[1])} pesos`,`Aquí está la tendencia mensual. El mes pasado fue de ${plain(lastB[1])} pesos`)}
   if(BYQ&&A&&A.by&&A.bars&&A.bars.length){const top=A.bars.slice(0,5), n=A.bars.length, list=top.map(b=>`${b[0]} ${plain(b[1])}`).join(', '), by=A.by[CL==='en'?1:CL==='es'?2:0], base=A.title;
     A.title=CL==='ko'?`${by} ${A.title}`:`${A.title} ${by}`;
     A.say=S(`${A.period?(/기준$/.test(A.period)?'현재':A.period)+' ':''}${by} ${base}${n>5?' 상위 5곳은':'은'} ${list} 페소입니다`,`${base} ${by}${n>5?', top 5':''}: ${list} pesos`,`${base} ${by}${n>5?', los 5 principales':''}: ${list} pesos`).replace('  ',' ')}
   answer(A);
 }
 let CMD_PIN=false;
+/* ---------- AI 실행엔진 ↔ Claude API: free conversation over the company data ----------
+   The user's own API key is kept only in this browser (localStorage), never in the page source.
+   Each conversation sends a compact data snapshot as context; Claude can call show_data / open_screen. */
+const AI={key:'',hist:[],snap:'',busy:false,model:'claude-opus-5-5'};
+try{AI.key=localStorage.getItem('ysm-ai-key')||''}catch(e){}
+const aiOn=()=>!!AI.key;
+function aiSaveKey(k){AI.key=(k||'').trim();AI.hist=[];AI.snap='';try{if(AI.key)localStorage.setItem('ysm-ai-key',AI.key);else localStorage.removeItem('ysm-ai-key')}catch(e){}aiChip()}
+function aiChip(){const b=document.querySelector('#cover [data-aikey]');if(b){b.classList.toggle('ok',aiOn());b.title=aiOn()?'AI 연결됨 · 키 설정':'AI 키 연결'}}
+function aiSnapshot(){
+  const T=TODAY_D,y=T.getFullYear(),m=T.getMonth(),mp=(yy,mm)=>({start:ds(new Date(yy,mm,1)),end:ds(new Date(yy,mm+1,0))}),r0=v=>Math.round(+v||0);
+  const inc=p=>{try{const I=income(p);return {매출:r0(I.sales),매출원가:r0(I.cogs),매출총이익:r0(I.gross),판관비:r0(I.sga),영업이익:r0(I.op)}}catch(e){return null}};
+  const thisM={start:ds(new Date(y,m,1)),end:TODAY}, lastM=mp(m?y:y-1,(m+11)%12);
+  const months=Array.from({length:12},(_,i)=>{const d=new Date(y,m-11+i,1),p=mp(d.getFullYear(),d.getMonth());return {월:p.start.slice(0,7),매출:r0(sumBy(DB.outbound.filter(r=>inP(r,p)),lineAmt)),입고:r0(sumBy(DB.inbound.filter(r=>inP(r,p)),lineAmt)),지출:r0(sumBy(DB.cash.filter(r=>inP(r,p)&&r.type==='출금'),M('amount')))}});
+  const E=DB.employees.filter(e=>empActive(e,TODAY));
+  const S_={기준일:TODAY,통화:'MXN(페소). 달러 계좌는 USD 금액도 표시',환율_USD_MXN:FX(),
+    은행잔고:bankStat(TODAY).map(x=>({계좌:x.b.name,통화:x.b.cur||'MXN',잔고_MXN:r0(x.cur),잔고_원통화:r0(x.cur/rate(x.b.cur||'MXN')),오늘입금:r0(x.i),오늘출금:r0(x.o)})),
+    손익_이번달:inc(thisM),손익_지난달:inc(lastM),손익_올해누계:inc({start:`${y}-01-01`,end:TODAY}),월별_12개월:months,
+    미수금:DB.ar.filter(r=>arBal(r)>0.5).sort((a,b)=>arBal(b)-arBal(a)).slice(0,40).map(r=>({고객:r.customer,잔액:r0(arBal(r)),발생일:r.date,만기:r.due||''})),
+    미지급금:DB.ap.filter(r=>apBal(r)>0.5).sort((a,b)=>apBal(b)-apBal(a)).slice(0,40).map(r=>({거래처:r.vendor,계정:r.account||r.cat||'',품목:r.item||'',잔액:r0(apBal(r)),만기:r.due||''})),
+    지출_이번달_계정별:topBy(DB.cash.filter(r=>inP(r,thisM)&&r.type==='출금'),'cat',M('amount'),12).map(([k,v])=>({계정:k,금액:r0(v)})),
+    매출_이번달_고객별:topBy(DB.outbound.filter(r=>inP(r,thisM)),'customer',lineAmt,10).map(([k,v])=>({고객:k,금액:r0(v)})),
+    매출_올해_제품별:topBy(DB.outbound.filter(r=>r.date>=`${y}-01-01`),'product',lineAmt,10).map(([k,v])=>({제품:k,금액:r0(v)})),
+    생산_이번달:(()=>{const R=DB.production.filter(r=>inP(r,thisM)),pl=sumBy(R,'plan'),ac=sumBy(R,'actual');return {계획:pl,실적:ac,달성률:pl?Math.round(ac/pl*1000)/10+'%':'-'}})(),
+    인원:{재직:E.length,부서별:Object.fromEntries(DEPTS.map(d=>[d,E.filter(e=>e.dept===d).length]).filter(x=>x[1]))},
+    급여_지난달총지급:r0(sumBy(DB.payroll.filter(r=>inP(r,lastM)),payGross))};
+  return JSON.stringify(S_);
+}
+const AI_SCREENS=()=>Object.keys(MODS).filter(i=>!MODS[i].hidden).map(i=>`${i}=${MODS[i].name}`).join(', ');
+function aiSystem(){return `너는 YSM SAP(멕시코에 있는 한국계 제조회사의 사내 ERP)의 AI 실행엔진 "제니"다. 사용자는 회사 대표/관리자이고 너를 "제니"라고 부른다.
+- 사용자가 쓴 언어(한국어, 영어, 스페인어)로 답한다. 한국어는 존댓말로.
+- 답은 음성으로도 읽힌다. 2~5문장으로 짧고 자연스럽게, 표·마크다운 기호 없이. 금액은 "1,234,567 페소"처럼 쓰고, 필요하면 핵심 숫자만 말한다.
+- 회사 숫자는 아래 데이터 스냅샷에서만 근거를 찾는다. 스냅샷에 없는 숫자는 지어내지 말고 없다고 말한다. 계산(합계, 증감률, 비교)은 해도 된다.
+- 회계 판단은 한국 회계기준(K-GAAP)과 멕시코 세법(IVA, ISR, LFT) 상식으로 설명한다.
+- 차트나 표로 보여주면 좋은 질문이면 show_data 도구로 화면 오른쪽 자료 패널을 띄운다. 사용자가 어떤 화면을 열어 달라고 하면 open_screen 도구를 쓴다.
+- 일반 상식·업무 질문(이메일 문장, 번역, 아이디어 등)도 자유롭게 도와준다.
+화면 목록(id=이름): ${AI_SCREENS()}`}
+const AI_TOOLS=[
+  {name:'show_data',description:'화면 오른쪽 자료 패널에 차트로 자료를 띄운다. query는 앱의 명령어 문장 (예: "자료 띄어줘"(전체 요약), "이번 달 매출 자료", "고객사별 미수 자료", "지난 달 지출 자료", "부서별 인원 자료", "10월 영업이익 자료", "BBVA 잔고 자료").',
+    input_schema:{type:'object',properties:{query:{type:'string',description:'한국어 명령 문장'}},required:['query'],additionalProperties:false},strict:true},
+  {name:'open_screen',description:'앱의 업무 화면을 연다. 마인드맵 표지를 닫고 그 화면으로 이동한다.',
+    input_schema:{type:'object',properties:{screen:{type:'string',description:'화면 id (시스템 프롬프트의 화면 목록)'}},required:['screen'],additionalProperties:false},strict:true}];
+async function aiCall(){
+  const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':AI.key,'anthropic-version':'2026-10-21',
+      'anthropic-beta':'server-side-fallback-2026-07-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:AI.model,max_tokens:4000,output_config:{effort:'low'},fallbacks:'default',tools:AI_TOOLS,
+      system:[{type:'text',text:aiSystem()},{type:'text',text:'회사 데이터 스냅샷(JSON):\n'+AI.snap,cache_control:{type:'ephemeral'}}],messages:AI.hist})});
+  let j=null;try{j=await res.json()}catch(e){}
+  if(!res.ok){const e=new Error((j&&j.error&&j.error.message)||('HTTP '+res.status));e.status=res.status;throw e}
+  return j;
+}
+async function askAI(text){
+  if(AI.busy)return;AI.busy=true;ENG.busy=true;voiceUI(S('생각하는 중…','Thinking…','Pensando…'));
+  const heard=voice.heard;voice.heard='';
+  try{
+    if(!AI.snap||AI.hist.length>40){AI.hist=[];AI.snap=aiSnapshot()}
+    AI.hist.push({role:'user',content:[{type:'text',text}]});
+    let pinned=false,opened=null,msg=null;
+    for(let i=0;i<5;i++){
+      msg=await aiCall();
+      AI.hist.push({role:'assistant',content:msg.content});
+      if(msg.stop_reason==='refusal'){AI.hist=[];break}
+      if(msg.stop_reason!=='tool_use')break;
+      const results=msg.content.filter(b=>b.type==='tool_use').map(b=>{let out='done';
+        try{if(b.name==='show_data'){const q=String(b.input&&b.input.query||'자료 띄어줘');pinned=q;out='자료 패널을 띄웠습니다: '+q}
+          else if(b.name==='open_screen'){const s=String(b.input&&b.input.screen||'');if(MODS[s]&&!MODS[s].hidden){opened=s;out=MODS[s].name+' 화면을 엽니다'}else out='알 수 없는 화면 id: '+s}}catch(e){out='오류: '+e.message}
+        return {type:'tool_result',tool_use_id:b.id,content:out}});
+      AI.hist.push({role:'user',content:results});
+    }
+    const say=msg&&msg.stop_reason==='refusal'?S('죄송해요, 그 요청에는 답할 수 없어요','Sorry, I can’t help with that','Lo siento, no puedo ayudar con eso')
+      :((msg&&msg.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n').trim()||S('알겠습니다','Done','Listo'));
+    AI.busy=false;ENG.busy=false;voiceUI();
+    if(pinned){const keep=CL;voice.heard='';runCmdLocal(/자료|데이터/.test(pinned)?pinned:pinned+' 자료',CL,true);CL=keep;const el=$('#mmAns');
+      if(el){const p=document.createElement('p');p.className='ai-say';p.textContent=say;el.querySelector('header').after(p)}speak(clean(say),()=>afterAnswer());voice.fromVoice=!!heard;return}
+    answer({title:S('제니','Jenny','Jenny'),period:'AI',ai:say,heard,say:clean(say)});
+    if(opened)setTimeout(()=>{hideCover();go(opened)},1800);
+  }catch(e){AI.busy=false;ENG.busy=false;voiceUI();
+    if(AI.hist.length&&AI.hist[AI.hist.length-1].role==='user')AI.hist.pop();
+    const st=e.status, why=st===401||st===403?S('API 키가 맞지 않아요. 🔑 버튼에서 다시 넣어 주세요','The API key was rejected. Re-enter it with the 🔑 button','La clave API no es válida. Vuelve a ingresarla con el botón 🔑')
+      :st===429||st===529?S('지금 AI가 바빠요. 잠시 뒤 다시 물어봐 주세요','The AI is busy right now. Try again in a moment','La IA está ocupada. Inténtalo en un momento')
+      :st===400&&/credit|balance|billing/i.test(e.message)?S('API 크레딧이 부족해요. Claude Console에서 결제 상태를 확인해 주세요','Your API credit is low. Check billing in the Claude Console','No hay crédito en la API. Revisa la facturación en Claude Console')
+      :!st?S('AI 서버에 연결하지 못했어요. 인터넷을 확인해 주세요','Could not reach the AI server. Check the internet connection','No pude conectar con el servidor de IA. Revisa la conexión')
+      :S('AI 오류: ','AI error: ','Error de IA: ')+e.message;
+    answer({title:S('AI 연결 오류','AI error','Error de IA'),heard,say:why,ai:why});
+  }
+}
+const clean=t=>String(t).replace(/[*_#`>|]/g,'').replace(/\n+/g,' ');
+function aiKeyPanel(){const el=$('#mmAns');if(!el)return;clearTimeout(voice.closeT);el.classList.remove('dock');$('#cover').classList.remove('dock-on');
+  el.innerHTML=`<header><div><h3>AI 엔진 연결 (Claude API)</h3></div><div class="hb"><button class="x" data-ansx="1" aria-label="닫기">×</button></div></header>
+    <ol class="mic-help"><li><a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Claude Console → API Keys</a>에서 키를 만들어 붙여 넣으세요 (sk-ant-…)</li>
+    <li>키는 <b>이 브라우저에만</b> 저장되고, 질문할 때 회사 데이터 요약과 함께 Anthropic API로만 보내집니다</li>
+    <li>Console에서 월 사용 한도를 정해 두는 걸 권해요</li></ol>
+    <div class="ai-key"><input id="aiKeyIn" type="password" placeholder="sk-ant-..." autocomplete="off" value="${esc(AI.key)}"><button class="mm-full" data-aisave="1">저장</button>${AI.key?'<button class="mm-full ghost" data-aidel="1">삭제</button>':''}</div>
+    <p class="ai-st" id="aiSt">${AI.key?'연결됨 · 모델 Claude Opus 5.5':'아직 연결 안 됨'}</p>`;
+  el.hidden=false;setTimeout(()=>{const i=$('#aiKeyIn');if(i)i.focus()},50)}
+async function aiTest(){const st=$('#aiSt');if(st)st.textContent='확인 중…';
+  try{const keep=AI.hist;AI.hist=[{role:'user',content:[{type:'text',text:'연결 확인: "연결됐습니다"라고만 답해.'}]}];AI.snap=AI.snap||'{}';const j=await aiCall();AI.hist=[];AI.snap='';
+    if(st)st.textContent='✓ 연결됐습니다 · 이제 무엇이든 물어보세요';CL='ko';speak('연결됐습니다. 무엇이든 물어보세요')}
+  catch(e){AI.hist=[];AI.snap='';if(st)st.textContent='✕ '+(e.status===401?'키가 맞지 않아요':e.message)}}
 function dataOverview(){
   const T=TODAY_D,y=T.getFullYear(),m=T.getMonth(),P={start:ds(new Date(y,m,1)),end:TODAY},I=(()=>{try{return income(P)}catch(e){return {sales:0,op:0}}})();
   const st=bankStat(TODAY),cash=sumBy(st,x=>x.cur),ar=DB.ar.filter(r=>arBal(r)>0.5),ap=DB.ap.filter(r=>apBal(r)>0.5),E=DB.employees.filter(e=>empActive(e,TODAY));
@@ -3167,6 +3284,7 @@ function answer(A){
   clearTimeout(voice.closeT);
   el.innerHTML=`<header><div><h3>${esc(A.title)}</h3>${A.period?`<span>${esc(A.period)}</span>`:''}</div><div class="hb">${A.say?`<button class="snd" id="mmSnd" data-snd="1" aria-label="${esc(L('다시 듣기'))}" title="${esc(L('다시 듣기'))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg></button>`:''}<button class="x" data-ansx="1" aria-label="닫기">×</button></div></header>
     ${A.heard?`<p class="heard">“${esc(A.heard)}”</p>`:''}
+    ${A.ai?`<div class="ai-say">${esc(A.ai).replace(/\n/g,'<br>')}</div>`:''}
     ${A.big?`<div class="big">${A.big.map(([l,v])=>`<div><span>${esc(l)}</span><b>${v}</b></div>`).join('')}</div>`:''}
     ${A.bars&&A.bars.length?barsH(A.bars):''}
     ${A.secs?A.secs.filter(x=>x.bars&&x.bars.length).map(x=>`<div class="sec"><h4>${esc(x.h)}${x.go?`<button data-cgo="${x.go}">${esc(S('열기 →','Open →','Abrir →'))}</button>`:''}</h4>${barsH(x.bars)}</div>`).join(''):''}
@@ -3342,6 +3460,10 @@ document.addEventListener('click',e=>{
   if(e.target.closest('#cover [data-snd]')){CL=voice.lastL||CL;speak(voice.last);return}
   if(e.target.closest('#cover [data-ansx]')){ansClose();return}
   if(e.target.closest('#cover [data-kb]')){engCmd();return}
+  if(e.target.closest('#cover [data-aikey]')){aiKeyPanel();return}
+  if(e.target.closest('#cover [data-aisave]')){const v=($('#aiKeyIn')||{}).value||'';aiSaveKey(v);if(AI.key)aiTest();else aiKeyPanel();return}
+  if(e.target.closest('#cover [data-aidel]')){aiSaveKey('');aiKeyPanel();return}
+  if(e.target.closest('#cover .mm-ans')&&!e.target.closest('button,[data-cgo]'))return;
   if(e.target.closest('#cover [data-eng]')){engTap();return}
   if(e.target.closest('#cover [data-micretry]')){voice.denied=false;voice.micOk=false;voice.err='';$('#mmAns').hidden=true;voiceToggle();return}
   if(e.target.closest('#cover [data-copy]')){const b=e.target.closest('[data-copy]');try{navigator.clipboard.writeText(b.dataset.copy).then(()=>{b.textContent='복사됨'})}catch(x){}return}
@@ -3746,6 +3868,7 @@ render();
 showCover();
 const cv=$('#cover');
 cv.addEventListener('mouseover',e=>{const n=e.target.closest('[data-g]'),sv=cv.querySelector('.mm-svg');if(sv){if(n&&n.closest('.mm-svg'))sv.dataset.hl=n.dataset.g;else delete sv.dataset.hl}});
+cv.addEventListener('keydown',e=>{if(e.target.id==='aiKeyIn'&&e.key==='Enter'){e.preventDefault();aiSaveKey(e.target.value);if(AI.key)aiTest()}});
 cv.addEventListener('input',e=>{if(e.target.id==='mmQ')searchShow(e.target.value)});
 cv.addEventListener('keydown',e=>{if(e.target.id==='mmQ'){if(e.key==='Enter'){e.preventDefault();const v=e.target.value.trim();$('#mmRes').hidden=true;if(v){runCmd(v);e.target.value='';if(isPhone())engCmd(false)}}if(e.key==='Escape'){engCmd(false)}return}});
 // typing anywhere on the cover opens the engine's command line; clicking elsewhere with it empty closes it
