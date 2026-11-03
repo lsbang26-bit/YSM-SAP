@@ -312,7 +312,7 @@ body.cover-on{overflow:hidden}
 .mm-ans .big div{display:grid;gap:2px}
 .mm-ans .big span{font-size:11px;color:#8FC4FF}
 .mm-ans .big b{font-size:17px;color:#fff;font-variant-numeric:tabular-nums}
-.mm-ans .bars{display:grid;gap:7px}
+.mm-ans .bars{display:grid;gap:7px;height:auto}
 .mm-ans .br{display:grid;grid-template-columns:96px 1fr auto;align-items:center;gap:8px;font-size:11.5px}
 .mm-ans .br span{color:#DCE8FF;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mm-ans .br i{height:8px;border-radius:99px;background:rgba(120,190,255,.15);overflow:hidden}
@@ -330,11 +330,36 @@ body.cover-on{overflow:hidden}
 .mm-ans .ex button:hover{border-color:#FFD23F;color:#FFE07A}
 .mm-full{justify-self:start;border:1px solid rgba(255,214,90,.55);background:rgba(255,194,26,.12);color:#FFE07A;border-radius:999px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}
 .mm-list{display:none}
+/* AI 실행엔진: particle orb with HUD rings, typed command line, docked data panel */
+.eng{cursor:pointer;outline:none}
+.eng-cv{display:block;width:100%;height:100%}
+.eng-cmd{position:fixed;z-index:6;left:50%;bottom:74px;transform:translateX(-50%);width:min(460px,calc(100vw - 32px));animation:mmAns .25s ease-out}
+.eng-cmd[hidden]{display:none}
+.eng-cmd .mm-sbox{height:40px;border-color:rgba(255,210,63,.5);box-shadow:0 0 22px rgba(63,168,255,.25);background:rgba(6,26,72,.88)}
+.eng-cmd .mm-sbox input{font-size:13px}
+.eng-cmd .mm-res{position:absolute;left:0;right:0;bottom:48px}
+.mm-kb{display:grid;place-items:center;border:0;background:none;color:#7FA3D6;line-height:1;padding:2px 7px;border-radius:999px;cursor:pointer;font-family:inherit}
+.mm-kb.on,.mm-kb:hover{background:rgba(255,210,63,.2);color:#FFE07A}
+.mm-svg{transition:transform .45s ease}
+.mm-svg{transform-origin:0 55%}
+.cover.dock-on .mm-svg{transform:translateX(12px) scale(.7)}
+.mm-ans.dock{display:flex;flex-direction:column;position:fixed;top:66px;bottom:84px;right:clamp(12px,1.6vw,24px);width:min(440px,32vw);min-width:340px;max-height:none;align-content:start;border-color:rgba(63,200,255,.55);box-shadow:0 0 36px rgba(63,168,255,.22),inset 0 0 0 1px rgba(255,210,63,.12);animation:engDock .45s cubic-bezier(.2,.8,.2,1)}
+@keyframes engDock{from{opacity:0;transform:translateX(60px)}to{opacity:1;transform:none}}
+.mm-ans .sec{display:grid;gap:8px;padding-top:12px;border-top:1px solid rgba(120,190,255,.18)}
+.mm-ans .sec h4{margin:0;font-size:12.5px;font-weight:600;color:#9EDCFF;letter-spacing:.02em;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.mm-ans .sec h4 button{border:0;background:none;color:#FFE07A;font-size:11px;cursor:pointer;font-family:inherit;padding:0}
+.mm-ans.dock>*{flex:none}
+.mm-ans.dock .mm-full{align-self:flex-start}
+.mm-ans.dock .big{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.mm-ans.dock .big div{padding:8px 10px;border-radius:10px;background:rgba(120,190,255,.08);border:1px solid rgba(120,190,255,.16)}
+.mm-ans.dock .big b{font-size:15.5px}
 @media (max-width:760px){
   .mm-svg,.mm-pill{display:none}
-  .mm-hr{grid-column:1/-1;width:100%;margin-top:10px}
+  .mm-hr{grid-column:auto;width:auto;margin-top:0}
   .mm-search{flex:1;width:auto;min-width:0}
-  .mm-ans{position:relative;top:0;right:0;width:auto;margin:0 16px 12px}
+  .mm-ans,.mm-ans.dock{position:relative;top:0;right:0;bottom:auto;width:auto;min-width:0;margin:0 16px 12px}
+  .eng-m{display:block!important;width:250px!important;height:250px!important;border:0!important;background:none!important;box-shadow:none!important;padding:0;margin:0 auto 4px!important}
+  .eng-cmd{bottom:78px}
   .mm-voice{background:rgba(6,26,72,.85);border-radius:14px;padding:4px 8px}
   .mm-hud{grid-template-columns:1fr auto;padding-bottom:12px}
   .mm-panel{position:relative;top:0;left:0;width:auto;margin:0 16px 12px;grid-template-columns:1fr 1fr}
@@ -2863,7 +2888,7 @@ function coverHTML(){
   const f1=v=>v.toFixed(1);
   let lines='',nodes='';
   G.forEach((g,gi)=>{const ga=Math.atan2(g.y-cy,g.x-cx);
-    lines+=`<path class="mm-ln g" data-g="${g.id}" pathLength="1" style="--d:${(gi*0.06).toFixed(2)}s" d="M${f1(cx+150*Math.cos(ga))} ${f1(cy+150*Math.sin(ga))} L${f1(g.x)} ${f1(g.y)}"/>`;
+    lines+=`<path class="mm-ln g" data-g="${g.id}" pathLength="1" style="--d:${(gi*0.06).toFixed(2)}s" d="M${f1(cx+172*Math.cos(ga))} ${f1(cy+172*Math.sin(ga))} L${f1(g.x)} ${f1(g.y)}"/>`;
     nodes+=`<g class="mm-grp" data-g="${g.id}" data-cgo="dash-${g.id}" tabindex="0" role="link" style="--d:${(0.15+gi*0.06).toFixed(2)}s" transform="translate(${f1(g.x)} ${f1(g.y)})">
       <circle class="mm-gh2" r="26"/><circle class="mm-gring" r="15"/><circle class="mm-gdot" r="5"/>
       <text class="t" x="${Math.cos(ga)>=0?24:-24}" y="${g.kpi?-2:6}" text-anchor="${Math.cos(ga)>=0?'start':'end'}">${esc(g.name)}</text>${g.kpi?`<text class="k" x="${Math.cos(ga)>=0?24:-24}" y="15" text-anchor="${Math.cos(ga)>=0?'start':'end'}">${esc(g.kpi)}</text>`:''}</g>`});
@@ -2874,17 +2899,13 @@ function coverHTML(){
   const hl=G.map(g=>`.mm-svg[data-hl="${g.id}"] [data-g="${g.id}"]{opacity:1}`).join('');
   const R=rng(77), streams=Array.from({length:22},(_,i)=>{const y=60+i*42+R()*20, amp=6+R()*14, ph=R()*600;let d=`M-20 ${f1(y)}`;for(let x=0;x<=W+40;x+=80)d+=` L${x} ${f1(y+amp*Math.sin((x+ph)/170))}`;
     return `<path class="mm-stream${i%4===0?' hi':''}" d="${d}" style="--d:${(-R()*12).toFixed(1)}s;--t:${(8+R()*10).toFixed(1)}s"/>`}).join('');
-  const orb=Array.from({length:140},(_,i)=>{const r=Math.sqrt(R())*80,t=R()*Math.PI*2;return `<circle cx="${f1(r*Math.cos(t))}" cy="${f1(r*Math.sin(t))}" r="${(0.6+R()*1.3).toFixed(1)}"/>`}).join('');
   const d=TODAY_D, wd='일월화수목금토'[d.getDay()], arAll=sumBy(DB.ar,arBal), apAll=sumBy(DB.ap,apBal);
   const info=[['현금 잔액',plain(cashBefore(addDs(TODAY,1))),'bank'],['미수 잔액',plain(arAll),'ar'],['미지급 잔액',plain(apAll),'ap'],['이번 달 매출',(()=>{try{return plain(income({start:ds(new Date(d.getFullYear(),d.getMonth(),1)),end:TODAY}).sales)}catch(e){return '–'}})(),'outbound']];
   return `<style>${hl}</style>
   <div class="mm-hud">
     <div class="mm-clock"><b id="mmTime">${pad(new Date().getHours())}:${pad(new Date().getMinutes())}</b><span>${d.getFullYear()}.${pad(d.getMonth()+1)}.${pad(d.getDate())} (${wd})</span></div>
     <div class="mm-pill"><i></i>YSM SAP</div>
-    <div class="mm-hr"><div class="mm-search"><div class="mm-sbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <input id="mmQ" type="search" placeholder="검색 · 명령" autocomplete="off" aria-label="검색"></div>
-      <div id="mmRes" class="mm-res" hidden></div></div>
-    <button class="mm-enter" data-cgo="${MODS[UI.mod]&&!MODS[UI.mod].hidden?UI.mod:'dash-all'}">업무 화면 →</button></div>
+    <div class="mm-hr"><button class="mm-enter" data-cgo="${MODS[UI.mod]&&!MODS[UI.mod].hidden?UI.mod:'dash-all'}">업무 화면 →</button></div>
   </div>
   <div id="mmAns" class="mm-ans" hidden></div>
   <div class="mm-panel">${info.map(([l,v,go])=>`<button data-cgo="${go}"><span>${l}</span><b>${v}</b></button>`).join('')}</div>
@@ -2893,20 +2914,95 @@ function coverHTML(){
       <radialGradient id="mmOrb"><stop offset="0" stop-color="#2E6BD8"/><stop offset=".7" stop-color="#123A8F"/><stop offset="1" stop-color="#0A2466"/></radialGradient>
       <filter id="mmGlow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="7" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
     <g class="mm-streams">${streams}</g>${lines}
-    <g class="mm-core" data-cgo="dash-all" tabindex="0" role="link" transform="translate(${cx} ${cy})">
-      <circle r="230" fill="url(#mmCore)"/><circle class="mm-ring3" r="165"/><circle class="mm-ring2" r="140"/>
-      <circle r="112" fill="url(#mmOrb)"/><g class="mm-orbdots">${orb}</g><circle class="mm-ring" r="115" filter="url(#mmGlow)"/>
-      <text class="c1" y="6">YSM</text><text class="c2" y="34">대쉬보드</text></g>
+    <g class="eng" data-eng="1" tabindex="0" role="button" aria-label="AI 실행엔진"><foreignObject x="${cx-240}" y="${cy-240}" width="480" height="480"><canvas class="eng-cv"></canvas></foreignObject></g>
     ${nodes}</svg>
-  <div class="mm-voice"><button id="mmMic" class="mm-wave${voice.on?' on':''}" aria-label="음성인식 켜기·끄기"><span class="wv">${Array.from({length:9},(_,i)=>`<i style="--i:${i}"></i>`).join('')}<b></b>${Array.from({length:9},(_,i)=>`<i style="--i:${8-i}"></i>`).join('')}</span><span id="mmVs" class="mm-vs"></span></button><div class="mm-lang">${Object.entries(LANGS).map(([k,v])=>`<button data-vlang="${k}" class="${voice.lang===k?'on':''}">${v.tag}</button>`).join('')}</div></div>
-  <div class="mm-list"><button class="mm-core-m" data-cgo="dash-all"><b>YSM</b><span>대쉬보드</span></button>
+  <div class="mm-voice"><button id="mmMic" class="mm-wave${voice.on?' on':''}" aria-label="음성인식 켜기·끄기"><span class="wv">${Array.from({length:9},(_,i)=>`<i style="--i:${i}"></i>`).join('')}<b></b>${Array.from({length:9},(_,i)=>`<i style="--i:${8-i}"></i>`).join('')}</span><span id="mmVs" class="mm-vs"></span></button><div class="mm-lang">${Object.entries(LANGS).map(([k,v])=>`<button data-vlang="${k}" class="${voice.lang===k?'on':''}">${v.tag}</button>`).join('')}<button class="mm-kb" data-kb="1" aria-label="명령 입력" title="명령 입력"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M9.5 10h.01M13 10h.01M16.5 10h.01M7 14h10"/></svg></button></div></div>
+  <div id="engCmd" class="eng-cmd" hidden><div id="mmRes" class="mm-res" hidden></div><div class="mm-sbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m5 7 5 5-5 5M13 17h6"/></svg><input id="mmQ" type="text" placeholder="AI 엔진에게 명령 · 예) 자료 띄어줘" autocomplete="off" aria-label="AI 엔진 명령"></div></div>
+  <div class="mm-list"><button class="mm-core-m eng-m" data-eng="1" aria-label="AI 실행엔진"><canvas class="eng-cv"></canvas></button>
     ${G.map(g=>`<section class="mm-card" data-g="${g.id}"><button class="mm-gh" data-cgo="dash-${g.id}"><b>${esc(g.name)}</b>${g.kpi?`<span>${esc(g.kpi)}</span>`:''}</button>
       <div class="mm-chips">${g.items.map(i=>`<button data-cgo="${i}">${esc(MODS[i].name)}</button>`).join('')}</div></section>`).join('')}</div>`;
 }
-function showCover(){const c=$('#cover');c.innerHTML=coverHTML();c.hidden=false;document.body.classList.add('cover-on');closeSide();c.scrollTop=0;
+function showCover(){const c=$('#cover');c.innerHTML=coverHTML();c.hidden=false;document.body.classList.add('cover-on');closeSide();c.scrollTop=0;engStart();
   voiceUI();if(SR&&!voice.on&&!voice.denied)micPerm().then(st=>{if(!coverOn()||voice.on)return;if(isPhone()){if(st==='denied'){voice.denied=true;voice.err='Chrome에서 마이크가 차단돼 있어요 · 눌러서 다시 시도';voiceUI(voice.err)}else voiceUI();return}if(st==='granted'||voice.micOk)voiceToggle();else if(st==='denied'){voice.denied=true;voice.err='Chrome에서 마이크가 차단돼 있어요 · 눌러서 다시 시도';voiceUI(voice.err);micHelp('browser')}else voiceUI('화면을 한 번 누르면 마이크를 켭니다')});
   clearInterval(showCover.t);showCover.t=setInterval(()=>{const el=$('#mmTime');if(!el){clearInterval(showCover.t);return}const n=new Date();el.textContent=pad(n.getHours())+':'+pad(n.getMinutes())},15000)}
-function hideCover(){if(voice.on){voice.on=false;voice.awake=false;try{voice.rec.stop()}catch(e){}}try{speechSynthesis.cancel()}catch(e){}const c=$('#cover');c.hidden=true;c.innerHTML='';document.body.classList.remove('cover-on')}
+function hideCover(){engStop();if(voice.on){voice.on=false;voice.awake=false;try{voice.rec.stop()}catch(e){}}try{speechSynthesis.cancel()}catch(e){}const c=$('#cover');c.hidden=true;c.innerHTML='';document.body.classList.remove('cover-on')}
+
+/* ---------- AI 실행엔진: a rotating 3D particle sphere inside HUD rings, drawn on canvas. It mirrors the assistant's state:
+   idle → slow spin, listening → brighter with ripples, thinking (a command just ran) → fast swirl, speaking → the sphere pulses ---------- */
+const ENG={raf:0,pts:null,last:0,rot:0,think:0,rip:[],lastRip:0};
+function engPts(){if(ENG.pts)return ENG.pts;const R=rng(2026),P=[],N=900,ga=Math.PI*(3-Math.sqrt(5));
+  for(let i=0;i<N;i++){let x,y,z;if(i<640){const yy=1-(i+.5)/640*2,r=Math.sqrt(1-yy*yy),th=ga*i;x=Math.cos(th)*r;y=yy;z=Math.sin(th)*r;const k=.9+R()*.12;x*=k;y*=k;z*=k}
+    else{const u=R()*2-1,th=R()*Math.PI*2,r=Math.cbrt(R())*.88,q=Math.sqrt(1-u*u);x=r*q*Math.cos(th);y=r*u;z=r*q*Math.sin(th)}
+    P.push([x,y,z,R(),R()])}
+  return ENG.pts=P}
+function engState(){return voice.speaking?'speak':voice.awake?'listen':voice.on?'on':'idle'}
+function engPing(){ENG.think=1}
+function engStop(){cancelAnimationFrame(ENG.raf);ENG.raf=0}
+function engStart(){engStop();engPts();ENG.last=performance.now();
+  const reduce=(()=>{try{return matchMedia('(prefers-reduced-motion: reduce)').matches}catch(e){return false}})();
+  const loop=now=>{const cvs=[...document.querySelectorAll('#cover .eng-cv')].filter(c=>c.offsetParent!==null||c.getClientRects().length);
+    if(!coverOn()){ENG.raf=0;return}
+    const dt=Math.min(.05,(now-ENG.last)/1000);ENG.last=now;const st=engState();
+    ENG.think=Math.max(0,ENG.think-dt*.9);
+    ENG.rot+=dt*(reduce?.05:(.22+(st==='listen'?.18:0)+(st==='speak'?.25:0)+ENG.think*2.2));
+    if((st==='listen'||st==='speak')&&now-ENG.lastRip>(st==='speak'?520:1100)){ENG.rip.push(now);ENG.lastRip=now}
+    ENG.rip=ENG.rip.filter(t=>now-t<1600);
+    cvs.forEach(c=>engDraw(c,now/1000,st));
+    ENG.raf=requestAnimationFrame(loop)};
+  ENG.raf=requestAnimationFrame(loop)}
+function engDraw(c,t,st){
+  const b=c.getBoundingClientRect();if(!b.width)return;const dpr=Math.min(2,window.devicePixelRatio||1),W=Math.round(b.width*dpr),H=Math.round(b.height*dpr);
+  if(c.width!==W||c.height!==H){c.width=W;c.height=H}
+  const x=c.getContext('2d'),cx=W/2,cy=H/2,S=Math.min(W,H)/2,R0=S*.44,TAU=Math.PI*2;
+  const talk=st==='speak'?.045*(Math.sin(t*17)*.6+Math.sin(t*29+1)*.4):0, R=R0*(1+talk+ENG.think*.03), lit=st==='idle'?.8:st==='on'?.9:1;
+  x.clearRect(0,0,W,H);x.save();
+  // halo + sphere body
+  let g=x.createRadialGradient(cx,cy,R*.2,cx,cy,S);g.addColorStop(0,'rgba(70,160,255,.42)');g.addColorStop(.45,'rgba(40,120,240,.18)');g.addColorStop(1,'rgba(20,80,200,0)');
+  x.fillStyle=g;x.beginPath();x.arc(cx,cy,S,0,TAU);x.fill();
+  g=x.createRadialGradient(cx-R*.25,cy-R*.3,R*.05,cx,cy,R*1.02);g.addColorStop(0,'rgba(120,200,255,.42)');g.addColorStop(.6,'rgba(40,110,230,.28)');g.addColorStop(1,'rgba(30,90,210,.12)');
+  x.fillStyle=g;x.beginPath();x.arc(cx,cy,R*1.02,0,TAU);x.fill();
+  // particles
+  const ay=ENG.rot,ax=.38+Math.sin(t*.3)*.08,ca=Math.cos(ay),sa=Math.sin(ay),cb=Math.cos(ax),sb=Math.sin(ax),dot=S/240;
+  x.globalCompositeOperation='lighter';
+  for(const p of ENG.pts){const tw=.85+.15*Math.sin(t*3+p[3]*20);
+    let X=p[0]*ca+p[2]*sa,Z=-p[0]*sa+p[2]*ca,Y=p[1]*cb-Z*sb;Z=p[1]*sb+Z*cb;
+    const d=(Z+1)/2,a=(.12+.88*d*d)*lit*tw,r=(.55+1.5*d)*dot*(p[4]>.93?1.8:1);
+    x.fillStyle=p[4]>.82?`rgba(150,225,255,${a.toFixed(3)})`:`rgba(235,248,255,${a.toFixed(3)})`;
+    x.beginPath();x.arc(cx+X*R,cy+Y*R,r,0,TAU);x.fill()}
+  g=x.createRadialGradient(cx,cy,0,cx,cy,R*.55);g.addColorStop(0,`rgba(220,245,255,${(.18+ENG.think*.25+(st==='speak'?.12:0)).toFixed(3)})`);g.addColorStop(1,'rgba(220,245,255,0)');
+  x.fillStyle=g;x.beginPath();x.arc(cx,cy,R*.55,0,TAU);x.fill();
+  x.globalCompositeOperation='source-over';
+  // ripples while listening / speaking
+  const now=performance.now();ENG.rip.forEach(t0=>{const k=(now-t0)/1600;x.strokeStyle=`rgba(${st==='speak'?'255,215,90':'120,230,255'},${(.55*(1-k)).toFixed(3)})`;x.lineWidth=1.5*dot;x.beginPath();x.arc(cx,cy,R*(1.08+k*.55),0,TAU);x.stroke()});
+  // thin bright ring
+  x.shadowColor='rgba(140,220,255,.9)';x.shadowBlur=10*dot;x.strokeStyle=`rgba(215,240,255,${(.75*lit).toFixed(3)})`;x.lineWidth=1.6*dot;x.beginPath();x.arc(cx,cy,R*1.08,0,TAU);x.stroke();
+  // gold arcs
+  const gr=ENG.rot*.6;x.shadowColor='rgba(255,200,40,.95)';x.shadowBlur=(14+ENG.think*14)*dot;x.strokeStyle=st==='listen'?'#FFE58A':'#FFD23F';x.lineWidth=(st==='listen'?3.4:2.6)*dot;x.lineCap='round';
+  x.beginPath();x.arc(cx,cy,R*1.18,gr+.35,gr+.35+TAU*.62);x.stroke();
+  x.lineWidth=1.6*dot;x.beginPath();x.arc(cx,cy,R*1.18,gr+.35+TAU*.68,gr+.35+TAU*.93);x.stroke();
+  x.shadowBlur=0;
+  // tick ring
+  const tr=-ENG.rot*.35;x.strokeStyle='rgba(160,215,255,.6)';x.lineWidth=1*dot;x.beginPath();
+  for(let i=0;i<120;i++){const a=tr+i*TAU/120,l=i%10===0?R*.09:i%5===0?R*.055:R*.03,r1=R*1.31;x.moveTo(cx+Math.cos(a)*r1,cy+Math.sin(a)*r1);x.lineTo(cx+Math.cos(a)*(r1+l),cy+Math.sin(a)*(r1+l))}
+  x.stroke();
+  x.strokeStyle='rgba(160,215,255,.28)';x.beginPath();x.arc(cx,cy,R*1.29,0,TAU);x.stroke();
+  // markers pointing inward
+  x.fillStyle='rgba(220,240,255,.85)';
+  for(let i=0;i<8;i++){const a=tr*1.2+i*TAU/8+TAU/16,r1=R*1.47,ux=Math.cos(a),uy=Math.sin(a),px=-uy,py=ux,s=R*.035;
+    x.beginPath();x.moveTo(cx+ux*(r1-s*1.4),cy+uy*(r1-s*1.4));x.lineTo(cx+ux*r1+px*s,cy+uy*r1+py*s);x.lineTo(cx+ux*r1-px*s,cy+uy*r1-py*s);x.closePath();x.fill()}
+  // outer dashed ring + small gold segment
+  x.setLineDash([2*dot,7*dot]);x.strokeStyle='rgba(140,200,255,.38)';x.lineWidth=1*dot;x.beginPath();x.arc(cx,cy,R*1.58,ENG.rot*.15,ENG.rot*.15+TAU);x.stroke();x.setLineDash([]);
+  x.strokeStyle='rgba(255,210,63,.75)';x.lineWidth=2*dot;x.beginPath();x.arc(cx,cy,R*1.58,-ENG.rot*.25+2.2,-ENG.rot*.25+2.75);x.stroke();
+  x.restore()}
+// tapping the engine talks to it: on phones one tap = one question; on desktop it starts listening, or greets and listens if already on
+function engTap(){
+  if(!SR){engCmd(true);return}
+  if(isPhone()||!voice.on){if(voice.denied&&!voice.on){voice.denied=false;voice.micOk=false;voice.err=''}voice.userOff=false;voice.tapT=Date.now();voiceToggle();return}
+  wake()}
+function engCmd(show){const w=$('#engCmd'),q=$('#mmQ'),k=document.querySelector('#cover [data-kb]');if(!w)return;
+  if(show===undefined)show=w.hidden;w.hidden=!show;if(k)k.classList.toggle('on',show);
+  if(show){q.focus()}else{q.value='';const r=$('#mmRes');if(r)r.hidden=true}}
+function ansClose(){const a=$('#mmAns');if(a){a.hidden=true;a.classList.remove('dock')}const c=$('#cover');if(c)c.classList.remove('dock-on')}
 
 /* ---------- mind-map search, "하이 제니" voice assistant and answer panel ---------- */
 let SRES=[];
@@ -2963,14 +3059,17 @@ const topBy=(rows,k,f,n=6)=>{const m={};rows.forEach(r=>{const key=r[k]||'–';m
 const PESO=()=>S('페소','pesos','pesos');
 function runCmd(text,lang){
   const t=String(text||'').trim();if(!t)return;
-  CL=lang||detectLang(t);
+  CL=lang||detectLang(t);engPing();CMD_PIN=false;
+  if(/(자료|데이터|패널|창|data|panel|datos|informaci[oó]n).*(닫|숨|치워|내려|꺼|없애|close|hide|cierra|quita|oculta)|^(닫아|닫아줘|close|cierra)/i.test(t)){ansClose();speak(S('자료를 닫았습니다','Data panel closed','Cerré los datos'));return}
   const nt0=normK(t), ent=vals=>uniq(vals.filter(Boolean)).filter(v=>normK(v).length>1&&nt0.includes(normK(v))).sort((a,b)=>b.length-a.length)[0];
   const BYQ=/별|\bby\b|\bper\b|\bpor\b|\beach\b|\bcada\b/i.test(t), BYP=/제품|품목|품번|아이템|product|item|producto|art[ií]culo|material/i.test(t);
   const BYC=[['고객사별','by customer','por cliente'],['제품별','by product','por producto'],['거래처별','by supplier','por proveedor'],['품목별','by item','por artículo'],['계정별','by category','por concepto']];
   const P=cmdPeriod(t), has=re=>re.test(t), menu=searchIndex().filter(x=>!x.f&&!x.q&&normK(t).includes(normK(x.l))).sort((a,b)=>b.l.length-a.l.length)[0];
   const openIt=x=>{answer({title:x.l,say:S(`${x.l} 화면을 엽니다`,`Opening ${x.l}`,`Abriendo ${x.l}`)});setTimeout(()=>{hideCover();go(x.go)},900)};
+  // "자료 띄어줘" (show data): the answer docks as a data panel on the right and stays until closed; with a topic ("매출 자료 띄워줘") it shows that topic
+  const PIN=/자료|데이터|\bdata\b|\bdatos\b|informaci[oó]n|\breport|\breporte/i.test(menu?t.replace(menu.l,''):t);CMD_PIN=PIN;
   let A=null;
-  if(menu&&has(/열어|열기|이동|들어가|띄워|켜|\bopen\b|\bgo to\b|\babr(e|ir)\b|\bir a\b/i)){openIt(menu);return}
+  if(menu&&!PIN&&has(/열어|열기|이동|들어가|띄워|켜|\bopen\b|\bgo to\b|\babr(e|ir)\b|\bir a\b/i)){openIt(menu);return}
   let dept=DEPTS.find(d=>new RegExp(d+'\\s*(팀|부서|부|파트|쪽)').test(t))||DEPTS.find((d,i)=>[/\bproduction\b|\bproducci[oó]n\b/i,/\bquality\b|\bcalidad\b/i,/\blogistics?\b|\blog[ií]stica\b/i,/\bsales\b|\bventas\b/i,/\badmin(istration)?\b|\badministraci[oó]n\b/i][i].test(t)&&has(/how many|people|employees|workers|staff|headcount|cu[aá]nt[oa]s|empleados|personas|trabajadores|personal/i));
   const HC=has(/인원|직원|사람|재직|몇\s*명|명\s*이|명인지|팀원|부서별|employee|headcount|staff|people|workers|how many (people|employees|workers|are)|empleados|personal|plantilla|trabajadores|personas|cu[aá]nt[oa]s (hay|son|trabajan)/i)||(dept&&has(/몇|how many|cu[aá]nt/i));
   if(!dept&&HC)dept=DEPTS.find(d=>new RegExp('(^|[^가-힣])'+d+'(?!별)').test(t));
@@ -3029,7 +3128,8 @@ function runCmd(text,lang){
       say:S(`${P.label} 지출은 ${plain(tot)} 페소입니다`,`Expenses for ${P.label} are ${plain(tot)} pesos`,`Los gastos de ${P.label} son de ${plain(tot)} pesos`)};
   }else if(has(/환율|exchange|fx|tipo de cambio/i)){
     A={title:L('환율'),period:asOfL(TODAY),big:[['1 US$',FX()+' MXN']],go:'fs',say:S(`현재 환율은 1달러에 ${FX()} 페소입니다`,`One dollar is ${FX()} pesos`,`Un dólar equivale a ${FX()} pesos`)};
-  }else if(menu){openIt(menu);return}
+  }else if(menu&&!PIN){openIt(menu);return}
+  else if(PIN)A=dataOverview();
   else{
     const r=searchFind(t.replace(/(보여줘|알려줘|찾아줘|열어|좀|줘|show me|show|find|search|open|muestra|muéstrame|busca|abre)/gi,'').trim());
     if(r.length){SRES=r;A={title:L('검색 결과'),period:`"${t}"`,list:r,say:S(`${r.length}건을 찾았습니다`,`I found ${r.length} results`,`Encontré ${r.length} resultados`)}}
@@ -3040,27 +3140,47 @@ function runCmd(text,lang){
     A.say=S(`${A.period?(/기준$/.test(A.period)?'현재':A.period)+' ':''}${by} ${base}${n>5?' 상위 5곳은':'은'} ${list} 페소입니다`,`${base} ${by}${n>5?', top 5':''}: ${list} pesos`,`${base} ${by}${n>5?', los 5 principales':''}: ${list} pesos`).replace('  ',' ')}
   answer(A);
 }
+let CMD_PIN=false;
+function dataOverview(){
+  const T=TODAY_D,y=T.getFullYear(),m=T.getMonth(),P={start:ds(new Date(y,m,1)),end:TODAY},I=(()=>{try{return income(P)}catch(e){return {sales:0,op:0}}})();
+  const st=bankStat(TODAY),cash=sumBy(st,x=>x.cur),ar=DB.ar.filter(r=>arBal(r)>0.5),ap=DB.ap.filter(r=>apBal(r)>0.5),E=DB.employees.filter(e=>empActive(e,TODAY));
+  const months=Array.from({length:6},(_,i)=>{const d=new Date(y,m-5+i,1),p={start:ds(d),end:ds(new Date(d.getFullYear(),d.getMonth()+1,0))};
+    return [`${String(d.getFullYear()).slice(2)}.${pad(d.getMonth()+1)}`,sumBy(DB.outbound.filter(r=>inP(r,p)),lineAmt)]});
+  return {title:S('YSM 자료','YSM data','Datos YSM'),period:asOfL(TODAY),pin:1,go:'dash-all',
+    big:[[S('현금 잔액','Cash','Efectivo'),money(cash)],[S('이번 달 매출','Sales this month','Ventas del mes'),money(I.sales)],[S('이번 달 영업이익','Operating profit','Utilidad de operación'),money(I.op)],
+      [L('재직 인원'),String(E.length)],[L('미수 잔액'),money(sumBy(ar,arBal))],[L('미지급 잔액'),money(sumBy(ap,apBal))]],
+    secs:[{h:L('은행 잔고'),go:'bank',bars:st.map(x=>[x.b.name,x.cur,bankNat(x.b,x.cur)])},
+      {h:S('월별 매출','Monthly sales','Ventas por mes'),go:'outbound',bars:months},
+      {h:S('미수 상위 5','Top 5 receivables','5 mayores por cobrar'),go:'ar',bars:topBy(ar,'customer',arBal,5)},
+      {h:S('미지급 상위 5','Top 5 payables','5 mayores por pagar'),go:'ap',bars:topBy(ap,'vendor',apBal,5)},
+      {h:S('이번 달 지출','Expenses this month','Gastos del mes'),go:'cash',bars:topBy(DB.cash.filter(r=>inP(r,P)&&r.type==='출금'),'cat',M('amount'),5)}],
+    say:S(`자료를 띄웠습니다. 현금 잔액은 ${plain(cash)} 페소, 이번 달 매출은 ${plain(I.sales)} 페소입니다`,`Here is your data. Cash is ${plain(cash)} pesos and sales this month are ${plain(I.sales)} pesos`,`Aquí están los datos. El efectivo es de ${plain(cash)} pesos y las ventas del mes son de ${plain(I.sales)} pesos`)};
+}
 const CMD_EX={ko:['이번 달 매출 보여줘','10월 영업이익','BBVA 잔고','달러 통장 잔고','미수 잔액','미지급 잔액','지난 달 입고','생산 달성률','부서별 인원','생산팀 몇 명이야','고객사별 매출','거래처별 미지급','이번 달 급여','인원관리 열어'],
   en:['Show sales this month','October operating profit','BBVA balance','Dollar account balance','Accounts receivable','Accounts payable','Purchases last month','Production achievement','Headcount by department','Sales by customer','Payables by supplier','How many people in production','Payroll this month','Open 인원관리'],
   es:['Ventas de este mes','Utilidad de octubre','Saldo BBVA','Saldo en dólares','Cuentas por cobrar','Cuentas por pagar','Compras del mes pasado','Producción','Empleados por departamento','Ventas por cliente','Cuentas por pagar por proveedor','Cuántos empleados hay en calidad','Nómina del mes','Abre 인원관리']};
 const GREET={ko:'안녕하세요. 주인님',en:'Hello, boss.',es:'Hola, jefe.'};
 function answer(A){
-  const el=$('#mmAns');if(!el)return;if(voice.heard){A.heard=voice.heard;voice.heard=''}const mx_=A.bars&&Math.max(1,...A.bars.map(b=>Math.abs(b[1])));
+  const el=$('#mmAns');if(!el)return;if(voice.heard){A.heard=voice.heard;voice.heard=''}
+  const pin=!!(A.pin||(CMD_PIN&&!A.greet));CMD_PIN=false;
+  const barsH=B=>{const mx_=Math.max(1,...B.map(b=>Math.abs(b[1])));return `<div class="bars">${B.map(([l,v,f])=>`<div class="br"><span title="${esc(l)}">${esc(l)}</span><i><em style="width:${Math.max(2,Math.abs(v)/mx_*100).toFixed(1)}%"${v<0?' class="neg"':''}></em></i><b>${f||plain(v)}</b></div>`).join('')}</div>`};
   clearTimeout(voice.closeT);
   el.innerHTML=`<header><div><h3>${esc(A.title)}</h3>${A.period?`<span>${esc(A.period)}</span>`:''}</div><div class="hb">${A.say?`<button class="snd" id="mmSnd" data-snd="1" aria-label="${esc(L('다시 듣기'))}" title="${esc(L('다시 듣기'))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg></button>`:''}<button class="x" data-ansx="1" aria-label="닫기">×</button></div></header>
     ${A.heard?`<p class="heard">“${esc(A.heard)}”</p>`:''}
     ${A.big?`<div class="big">${A.big.map(([l,v])=>`<div><span>${esc(l)}</span><b>${v}</b></div>`).join('')}</div>`:''}
-    ${A.bars&&A.bars.length?`<div class="bars">${A.bars.map(([l,v,f])=>`<div class="br"><span title="${esc(l)}">${esc(l)}</span><i><em style="width:${Math.max(2,Math.abs(v)/mx_*100).toFixed(1)}%"${v<0?' class="neg"':''}></em></i><b>${f||plain(v)}</b></div>`).join('')}</div>`:''}
+    ${A.bars&&A.bars.length?barsH(A.bars):''}
+    ${A.secs?A.secs.filter(x=>x.bars&&x.bars.length).map(x=>`<div class="sec"><h4>${esc(x.h)}${x.go?`<button data-cgo="${x.go}">${esc(S('열기 →','Open →','Abrir →'))}</button>`:''}</h4>${barsH(x.bars)}</div>`).join(''):''}
     ${A.list?`<div class="lst">${A.list.map((x,i)=>`<button data-sr="${i}"><b>${esc(x.l)}</b><span>${esc(x.s)}</span></button>`).join('')}</div>`:''}
     ${A.examples?`<div class="ex">${CMD_EX[CL].map(c=>`<button data-cmd="${esc(c)}" data-cl="${CL}">“${CL==='es'?'Hola Jenny':CL==='en'?'Hi Jenny':'하이 제니'}, ${esc(c)}”</button>`).join('')}</div>`:''}
     ${A.go?`<button class="mm-full" data-cgo="${A.go}">${esc(L('전체 화면 보기 →'))}</button>`:''}`;
-  el.hidden=false;voice.fromVoice=!!A.heard||!!A.greet;if(A.say)speak(A.say,A.greet?null:()=>afterAnswer());
+  el.classList.toggle('dock',pin);const cv_=$('#cover');if(cv_)cv_.classList.toggle('dock-on',pin);
+  el.hidden=false;if(pin)el.scrollTop=0;voice.fromVoice=!!A.heard||!!A.greet;if(A.say)speak(A.say,A.greet?null:()=>afterAnswer());
 }
 // after a voice answer has been read out: keep listening for the next question without the wake word, and clear the panel and search box shortly after
 function afterAnswer(){
   if(!voice.fromVoice)return;
   if(voice.on){voice.awake=true;voice.t=Date.now();voiceUI()}
-  clearTimeout(voice.closeT);voice.closeT=setTimeout(()=>{const a=$('#mmAns');if(a&&!a.matches(':hover')){a.hidden=true}const q=$('#mmQ');if(q&&document.activeElement!==q)q.value='';const rb=$('#mmRes');if(rb)rb.hidden=true},3500);
+  clearTimeout(voice.closeT);voice.closeT=setTimeout(()=>{const a=$('#mmAns');if(a&&!a.matches(':hover')&&!a.classList.contains('dock')){a.hidden=true}const q=$('#mmQ');if(q&&document.activeElement!==q)q.value='';const rb=$('#mmRes');if(rb)rb.hidden=true},3500);
 }
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 const voice={on:false,awake:false,t:0,rec:null,speaking:false,lang:(UI.vlang&&LANGS[UI.vlang])?UI.vlang:'ko',v:{}};
@@ -3220,14 +3340,16 @@ document.addEventListener('click',e=>{
   const cm=e.target.closest('#cover [data-cmd]');if(cm){runCmd(cm.dataset.cmd,cm.dataset.cl);return}
   const vl=e.target.closest('#cover [data-vlang]');if(vl){setVoiceLang(vl.dataset.vlang);return}
   if(e.target.closest('#cover [data-snd]')){CL=voice.lastL||CL;speak(voice.last);return}
-  if(e.target.closest('#cover [data-ansx]')){$('#mmAns').hidden=true;return}
+  if(e.target.closest('#cover [data-ansx]')){ansClose();return}
+  if(e.target.closest('#cover [data-kb]')){engCmd();return}
+  if(e.target.closest('#cover [data-eng]')){engTap();return}
   if(e.target.closest('#cover [data-micretry]')){voice.denied=false;voice.micOk=false;voice.err='';$('#mmAns').hidden=true;voiceToggle();return}
   if(e.target.closest('#cover [data-copy]')){const b=e.target.closest('[data-copy]');try{navigator.clipboard.writeText(b.dataset.copy).then(()=>{b.textContent='복사됨'})}catch(x){}return}
   if(e.target.closest('#mmMic'))voice.tapT=Date.now();
   if(e.target.closest('#mmMic')){if(voice.denied&&!voice.on){voice.denied=false;voice.micOk=false;voice.err=''}voiceToggle();return}
   if(coverOn()&&SR&&!voice.on&&!voice.denied&&!voice.userOff&&!isPhone()){voice.tapT=Date.now();voiceToggle()}
   const cg=e.target.closest('#cover [data-cgo]');if(cg){hideCover();go(cg.dataset.cgo);return}
-  if(coverOn()&&!e.target.closest('.mm-search')){const rb=$('#mmRes');if(rb)rb.hidden=true}
+  if(coverOn()&&!e.target.closest('.eng-cmd')){const rb=$('#mmRes');if(rb)rb.hidden=true}
   if(e.target.closest('[data-cover]')){showCover();return}
   const t=e.target.closest('button');
   if(!t){const kg=e.target.closest('#main .kpi');if(kg){const to=kg.dataset.kgo||(kg.closest('[data-sec]')||{dataset:{}}).dataset.sec;if(to&&MODS[to]){go(to);return}}
@@ -3625,8 +3747,13 @@ showCover();
 const cv=$('#cover');
 cv.addEventListener('mouseover',e=>{const n=e.target.closest('[data-g]'),sv=cv.querySelector('.mm-svg');if(sv){if(n&&n.closest('.mm-svg'))sv.dataset.hl=n.dataset.g;else delete sv.dataset.hl}});
 cv.addEventListener('input',e=>{if(e.target.id==='mmQ')searchShow(e.target.value)});
-cv.addEventListener('keydown',e=>{if(e.target.id==='mmQ'){if(e.key==='Enter'){e.preventDefault();const v=e.target.value.trim();$('#mmRes').hidden=true;if(v){runCmd(v);e.target.value=''}}if(e.key==='Escape'){$('#mmRes').hidden=true}return}});
-cv.addEventListener('keydown',e=>{const n=e.target.closest('[data-cgo]');if(n&&(e.key==='Enter'||e.key===' ')&&n.tagName!=='BUTTON'){e.preventDefault();hideCover();go(n.dataset.cgo)}});
+cv.addEventListener('keydown',e=>{if(e.target.id==='mmQ'){if(e.key==='Enter'){e.preventDefault();const v=e.target.value.trim();$('#mmRes').hidden=true;if(v){runCmd(v);e.target.value='';if(isPhone())engCmd(false)}}if(e.key==='Escape'){engCmd(false)}return}});
+// typing anywhere on the cover opens the engine's command line; clicking elsewhere with it empty closes it
+document.addEventListener('keydown',e=>{if(!coverOn()||e.ctrlKey||e.metaKey||e.altKey)return;const tg=e.target;if(tg&&(tg.closest('input,textarea,select,[contenteditable]')))return;
+  if(e.key==='Escape'){ansClose();engCmd(false);return}
+  if((e.key.length===1&&e.key!==' ')||e.key==='Process'){const w=$('#engCmd');if(w&&w.hidden)engCmd(true);else if(w)$('#mmQ').focus()}});
+cv.addEventListener('focusout',e=>{if(e.target.id==='mmQ')setTimeout(()=>{const q=$('#mmQ');if(q&&!q.value&&document.activeElement!==q&&!(document.activeElement||{closest(){}}).closest('.eng-cmd'))engCmd(false)},200)});
+cv.addEventListener('keydown',e=>{if(e.target.closest('[data-eng]')&&(e.key==='Enter'||e.key===' ')){e.preventDefault();engTap();return}const n=e.target.closest('[data-cgo]');if(n&&(e.key==='Enter'||e.key===' ')&&n.tagName!=='BUTTON'){e.preventDefault();hideCover();go(n.dataset.cgo)}});
 document.querySelector('.brand').addEventListener('keydown',e=>{if(e.key==='Enter')showCover()});
 })();
 </script>
