@@ -1661,7 +1661,7 @@ function syncSel(){
 }
 function tableCard(m,p,modId,title){
   const note=hasCur(m)?`<span class="meta">· US$ 금액은 환율로 환산해 합계</span>`:'';
-  if(m.filters)return `<div class="card"><header class="fhead"><h2>${esc(title||'상세 내역')}</h2>${filterBar(m,p,modId)}${selBtn(modId)}</header>
+  if(m.filters)return `<div class="card"><header class="fhead"><h2>${esc(title||'상세 내역')}</h2>${filterBar(m,p,modId)}${(()=>{const all=rowsFor(m,p).length,vis=viewRows(m,p,modId).length;return all>vis?`<span class="meta" style="color:var(--warn)">필터로 숨긴 ${all-vis}건</span>`:''})()}${selBtn(modId)}</header>
     <div id="tbl-${modId}">${tableHTML(m,p,modId)}</div></div>`;
   return `<div class="card"><header><h2>${esc(title||'상세 내역')}</h2>${m.monthNav?`<span class="monthbadge">${esc(p.label)}</span>`:`<span class="meta">${m.dated?esc(p.label):'전체 등록 자료'}</span>`}${note}
     <input class="search" id="q-${modId}" data-q="${modId}" type="search" placeholder="검색 (거래처, 품목, 이름 …)" value="${esc(UI.q)}">
@@ -1780,7 +1780,7 @@ function bankPage(){
       <select class="fsel${BF?' on':''}" data-bf="1" aria-label="은행"><option value="">은행 전체</option>${B.map(b=>`<option${b.name===BF?' selected':''}>${esc(b.name)}</option>`).join('')}</select></div></header>
       ${rows.length?`<div class="tw"><table class="tight"><thead><tr><th>은행</th><th class="c">구분</th><th class="c">분류</th><th>계정과목</th><th>거래처</th><th>적요</th><th class="n">입금</th><th class="n">지출</th><th class="c">관리</th></tr></thead><tbody>
       ${rows.map(r=>`<tr data-row="${r.id}"><td>${dot(bankNames().indexOf(bankOf(r)))}${esc(bankOf(r))}</td><td class="c">${pill(r.type)}</td><td class="c">${pill(r.cat)}</td><td>${esc(r.account)}</td><td>${esc(r.party)}</td><td class="w" title="${esc(r.memo)}">${esc(r.memo)}</td>
-        <td class="n">${r.type==='입금'?amt(r):''}</td><td class="n">${r.type==='출금'?amt(r):''}</td><td class="c"><button class="act" data-editrow="${r.id}" data-m="cash">수정</button></td></tr>`).join('')}</tbody>
+        <td class="n">${r.type==='입금'?amt(r):''}</td><td class="n">${r.type==='출금'?amt(r):''}</td><td class="c"><div class="acts" style="justify-content:center"><button class="act" data-cashgo="${r.id}" title="경리자료에서 이 전표 보기">경리자료</button><button class="act" data-editrow="${r.id}" data-m="cash">수정</button><button class="act danger" data-delrow="${r.id}" data-m="cash">삭제</button></div></td></tr>`).join('')}</tbody>
       <tfoot><tr><td colspan="6">합계 · ${rows.length}건</td><td class="n">${money(sumBy(rows.filter(r=>r.type==='입금'),M('amount')))}</td><td class="n">${money(sumBy(rows.filter(r=>r.type==='출금'),M('amount')))}</td><td></td></tr></tfoot></table></div>`
       :`<div class="empty">${esc(d)}에 ${BF?esc(BF)+' ':''}거래가 없습니다.</div>`}</div>
     <div class="card"><header><h2>최근 7일 잔고</h2></header><div class="tw"><table class="tight"><thead><tr><th>일자</th>${B.map((b,i)=>`<th class="n">${dot(i)}${esc(b.name)}</th>`).join('')}<th class="n">입금</th><th class="n">지출</th><th class="n">합계 잔고 (MXN)</th></tr></thead><tbody>
@@ -3667,6 +3667,7 @@ document.addEventListener('click',e=>{
     const pr=e.target.closest('tr[data-pdetail]');if(pr){modal={type:'emp',id:pr.dataset.pdetail};renderModal()}return}
   const d=t.dataset;
   if(d.arwkgo){closeModal();go('ar');return}
+  if(d.cashgo){const r=DB.cash.find(x=>x.id===d.cashgo);if(r){UI.flt=UI.flt||{};UI.flt.cash={};if(r.date<UI.rs)UI.rs=r.date;if(r.date>UI.re)UI.re=r.date;saveUI();flashId=r.id;go('cash');setTimeout(()=>{const tr=document.querySelector(`tr[data-row="${r.id}"]`);if(tr)tr.scrollIntoView({block:'center'})},50)}return}
   if(d.close){closeModal();return}
   if(d.confirmdel){delRow(modal.mod,modal.id);save();closeModal();renderMain();toast('삭제했습니다');return}
   if(d.delsel){const rs=selVisible(d.delsel);if(!rs.length)return;modal={type:'delsel',mod:d.delsel,ids:rs.map(r=>r.id)};renderModal();return}
@@ -3848,7 +3849,10 @@ document.addEventListener('submit',e=>{
     if(m===MODS.entities&&v.name!==r.name){DB.entfs.forEach(x=>{if(x.entity===r.name)x.entity=v.name});DB.ic.forEach(x=>{if(x.seller===r.name)x.seller=v.name;if(x.buyer===r.name)x.buyer=v.name})}
     if(m===MODS.customers&&v.name!==r.name)[DB.outbound,DB.ar].forEach(a=>a.forEach(x=>{if(x.customer===r.name)x.customer=v.name}));
     if(hasIvaAmt(r)&&((v.sub!=null&&+v.sub!==+r.sub)||(v.iva!=null&&v.iva!==r.iva)||(v.cur!=null&&v.cur!==r.cur)))delete r.ivaAmt;
-    Object.assign(r,v);fixRow(m,r);flashId=r.id;save();closeModal();renderMain();toast('수정했습니다');
+    const oldAmt=+r.amount||0;
+    Object.assign(r,v);fixRow(m,r);
+    // 입금·지급 완료로 만든 경리자료 전표를 고치면 연결된 외상매출 수금액·외상매입 지급액도 같은 차이만큼 바뀜 (대쉬보드·잔액 자동 반영)
+    if(m.data==='cash'&&r.link&&(r.linkMod==='ar'||r.linkMod==='ap')){const L=DB[r.linkMod].find(x=>x.id===r.link),k=r.linkMod==='ar'?'received':'paid';if(L)L[k]=Math.max(0,r2((+L[k]||0)+(+r.amount||0)-oldAmt))}flashId=r.id;save();closeModal();renderMain();toast('수정했습니다');
   }
 });
 
