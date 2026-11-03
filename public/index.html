@@ -570,6 +570,8 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--surface-2)}
 .btrack i{display:block;width:100%;background:var(--bar);border-radius:4px 4px 0 0;transition:height .3s}
 .bcol:hover .btrack i{background:var(--bar-2)}
 .bcol.cur .btrack i{background:var(--accent)}
+.bcol.od .btrack i{background:var(--bad)}
+[data-arwk]{cursor:pointer;user-select:none}
 .bv{font-size:10px;color:var(--faint);white-space:nowrap;height:14px;line-height:14px}
 .bcol.cur .bv{color:var(--fg);font-weight:700;font-size:11px}
 .bl{font-size:10px;color:var(--muted);white-space:nowrap}
@@ -1354,7 +1356,7 @@ const MODS={
     trend:{l:'기간별 매입액',fn:rows=>sumBy(rows,M('amount')),money:1},
     extra:rows=>groupSummary('분류별 매입',rows,'cat',[['매입액',M('amount'),money],['잔액',apBal,money]],r=>r.account),
     blank:p=>({date:p.d,vendor:'',cat:'제조비용',account:'원재료비',item:'',cur:'MXN',sub:0,amount:0,iva:'16%',factura:'발행',uuid:'',paid:0,due:addDs(p.d,30)})},
-  ar:{name:'외상매출',desc:'고객사 매출 채권과 수금 현황',data:'ar',dated:true,tight:1,after:(p,id)=>arFacturaCard(p,id),
+  ar:{name:'외상매출',desc:'고객사 매출 채권과 수금 현황',data:'ar',dated:true,tight:1,after:(p,id)=>arFacturaCard(p,id),side:()=>arWeekCard(),
     cols:[C('date','발생일','date'),C('customer','고객사','text',{sug:'customers'}),C('folio','Factura','text',{opt:1,view:r=>String(r.folio||'').trim()?`<span class="pill good">${esc(r.folio)}</span>`:pill(r.factura||'미발행')}),C('pn','품번','text',{opt:1}),C('item','품명','text',{wide:1}),C('qty','수량','num',{opt:1,noTable:1}),C('price','단가','num',{opt:1,noTable:1}),C('disc','할인','num',{opt:1,noTable:1}),CUR,C('fx','환율 (US$ 건)','num',{noTable:1,opt:1}),SUB({sum:1}),IVAF,VATR({sum:1}),TOT({sum:1}),Object.assign({},FACTC_AR,{noTable:1}),UUIDC,C('received','수금액','money',{sum:1}),C('due','수금기일','date'),
       C('bal','잔액','money',{sum:1,calc:arBal}),C('st','상태','calc',{calc:r=>dueStatus(arBal(r),r.due),pill:1,act:{mod:'ar',label:'입금 완료',show:r=>arBal(r)>0.5}})],
     kpis:(rows,p)=>{const all=DB.ar.filter(r=>r.date<=p.end),od=all.filter(r=>dueStatus(arBal(r),r.due)==='연체');return[kv('기간 청구액',money(sumBy(rows,M('amount'))),rows.length+'건'),kv('기간분 미수',money(sumBy(rows,arBal))),
@@ -1699,6 +1701,36 @@ function genericPage(id,m,p){
   return `<div class="content">${m.noReg?'':registerCard(id,p)}${tableCard(m,p,id)}${m.after?m.after(p,id):''}${m.charts?`<div class="chartzone" id="chr-${id}">${chartsHTML(m,p,id)}</div>`:''}</div>`;
 }
 
+// 주별 입금 예정: 미수 잔액을 수금기일 주(월~일)로 묶음. 지난 기일은 "연체", 이번 주부터 8주, 그 뒤는 "이후"
+function arWeeks(){
+  const mon=d=>{const x=pd(d);return ds(addD(x,-((x.getDay()+6)%7)))}, w0=mon(TODAY), B=[{k:'od',l:'연체',s:'',e:addDs(w0,-1)}];
+  for(let i=0;i<8;i++){const s=addDs(w0,7*i),e=addDs(s,6),d=pd(s);B.push({k:'w'+i,l:i===0?'이번 주':`${d.getMonth()+1}/${d.getDate()}`,s,e})}
+  B.push({k:'later',l:'이후',s:addDs(w0,56),e:''});
+  const open=(DB.ar||[]).filter(r=>arBal(r)>0.5);
+  B.forEach(b=>{b.rows=open.filter(r=>{const d=validD(r.due)?r.due:r.date;return b.k==='od'?d<w0:b.k==='later'?d>=b.s:d>=b.s&&d<=b.e});b.v=sumBy(b.rows,arBal)});
+  return B;
+}
+function arWeekCard(){
+  const B=arWeeks(), mxv=Math.max(1,...B.map(b=>b.v)), tot=sumBy(B,b=>b.v);
+  return `<div class="card chart"><header><h2>주별 입금 예정</h2><span class="meta">수금기일 기준 · 미수 잔액 ${money(tot)}</span><span class="meta" style="margin-left:auto">막대나 줄을 두 번 누르면 상세</span></header>
+    <div class="body"><div class="bars">${B.map((b,i)=>`<div class="bcol${i===1?' cur':''}${b.k==='od'&&b.v?' od':''}" data-arwk="${b.k}" tabindex="0" title="${esc(b.l)}: ${plain(b.v)} · ${b.rows.length}건"><span class="bv">${compact(b.v)}</span><div class="btrack"><i style="height:${Math.max(1.5,b.v/mxv*100)}%"></i></div><span class="bl">${esc(b.l)}</span></div>`).join('')}</div>
+    <div class="tw" style="margin-top:12px"><table class="tight"><thead><tr><th>주</th><th>기간</th><th class="n">건수</th><th class="n">입금 예정 (MXN)</th></tr></thead><tbody>
+    ${B.filter(b=>b.rows.length).map(b=>`<tr class="click" data-arwk="${b.k}"><td><b>${esc(b.l)}</b></td><td class="dim">${b.k==='od'?`~ ${esc(b.e)}`:b.k==='later'?`${esc(b.s)} ~`:`${esc(b.s)} ~ ${esc(b.e)}`}</td><td class="n">${b.rows.length}</td><td class="n${b.k==='od'?' neg':''}">${money(b.v)}</td></tr>`).join('')||'<tr><td colspan="4" class="empty">미수 잔액이 없습니다.</td></tr>'}
+    </tbody></table></div></div></div>`;
+}
+function arWeekModal(k){
+  const b=arWeeks().find(x=>x.k===k);if(!b)return '';
+  const rs=b.rows.slice().sort((x,y)=>(x.due||'')<(y.due||'')?-1:(x.due||'')>(y.due||'')?1:String(x.customer).localeCompare(y.customer));
+  const byC={};rs.forEach(r=>byC[r.customer]=(byC[r.customer]||0)+arBal(r));
+  return `<div class="modal-bg"><div class="modal lg" role="dialog" aria-modal="true" aria-labelledby="mt">
+    <header><h3 id="mt">입금 예정 · ${esc(b.l)} <span class="meta" style="font-weight:400;font-size:12px;color:var(--muted)">${b.k==='od'?`${esc(b.e)} 이전 기일`:b.k==='later'?`${esc(b.s)} 이후`:`${esc(b.s)} ~ ${esc(b.e)}`} · ${rs.length}건 · ${money(b.v)}</span></h3><button type="button" class="x" data-close="1" aria-label="닫기">×</button></header>
+    <div class="mbody" style="display:grid;gap:14px;grid-template-columns:minmax(0,1fr)">
+      <div class="colchips">${Object.entries(byC).sort((a,c)=>c[1]-a[1]).map(([c,v])=>`<span>${esc(c)}<small>${money(v)}</small></span>`).join('')}</div>
+      <div class="tw" style="border:1px solid var(--line);border-radius:10px;max-height:56vh;overflow:auto"><table class="tight"><thead><tr><th class="c">수금기일</th><th>고객사</th><th>Factura</th><th>품번</th><th>품명</th><th class="n">잔액</th><th class="n">MXN 환산</th><th class="c">상태</th></tr></thead><tbody>
+      ${rs.map(r=>`<tr><td class="c">${esc(r.due||'')}</td><td>${esc(r.customer)}</td><td>${esc(r.folio||'')}</td><td>${esc(r.pn||'')}</td><td>${esc(r.item||'')}</td><td class="n">${fmtCur(arBal(r)/rate(r.cur||'MXN'),r.cur||'MXN',1)}</td><td class="n">${money(arBal(r))}</td><td class="c">${pill(dueStatus(arBal(r),r.due))}</td></tr>`).join('')}
+      </tbody><tfoot><tr><td colspan="6">합계 · ${rs.length}건</td><td class="n">${money(b.v)}</td><td></td></tr></tfoot></table></div></div>
+    <footer><button type="button" class="btn" data-close="1">닫기</button><button type="button" class="btn primary" data-arwkgo="1">외상매출 화면으로</button></footer></div></div>`;
+}
 // 외상매출 Factura별 합계: 같은 고객사·Factura 번호의 품번 줄을 묶어 금액·부가세·합계·수금·잔액 (통화는 그 Factura 통화)
 function arFacturaCard(p,id){
   const rows=viewRows(MODS.ar,p,id), G=new Map();
@@ -2476,7 +2508,7 @@ function modDash(id,p){
   if(m.dash)return section(id,m.name,m.dash(p));
   if(!m.kpis)return '';
   const rows=rowsFor(m,p);
-  return section(id,m.name,kpiHTML(m.kpis(rows,p))+(m.trend||m.extra?`<div class="duo${m.trend&&m.extra?'':' single'}">${m.trend?trendHTML(m.trend.l,pp=>m.trend.fn(rowsFor(m,pp),pp),m.trend.money):''}${m.extra?m.extra(rows,p):''}</div>`:''));
+  return section(id,m.name,kpiHTML(m.kpis(rows,p))+(m.trend||m.extra?`<div class="duo${m.trend&&m.extra?'':' single'}">${m.trend?(m.side?`<div style="display:grid;gap:18px;align-content:start;min-width:0">${trendHTML(m.trend.l,pp=>m.trend.fn(rowsFor(m,pp),pp),m.trend.money)}${m.side(p)}</div>`:trendHTML(m.trend.l,pp=>m.trend.fn(rowsFor(m,pp),pp),m.trend.money)):''}${m.extra?m.extra(rows,p):''}</div>`:''));
 }
 const dashGroup=gid=>p=>`<div class="content">${GROUPS.find(g=>g.id===gid).items.map(i=>modDash(i,p)).join('')}</div>`;
 const DASH_TABS=[['fin','재무회계'],['tax','세금'],['in','입고관리'],['prod','생산관리'],['out','출고관리'],['sales','영업관리'],['gen','일반관리']];
@@ -2817,8 +2849,9 @@ function arFromSheet(aoa){
   // 제목 줄은 맨 위 10줄 중 품번·품명이 있는 줄 (위에 제목·빈 줄이 있어도 됨)
   const hr=Math.max(0,aoa.slice(0,10).findIndex(l=>(l||[]).map(nk).filter(x=>['품번','품명','고객사','총합'].includes(x)).length>=2));if(hr)aoa=aoa.slice(hr);
   const head=(aoa[0]||[]).map(nk), at=h=>{const k=nk(h),al=AL[k]||[k];let i=head.findIndex(x=>al.includes(x));
-    if(i<0&&k==='factura')i=head.findIndex(x=>/factura|folio|invoice|인보이스/.test(x)&&!/uuid|fecha|date|날짜/.test(x));return i}, I={};AR_XL.forEach(h=>I[h]=at(h));
-  const missing=AR_XL.filter(h=>I[h]<0), num=v=>typeof v==='number'?v:parseFloat(String(v??'').replace(/[^0-9.\-]/g,'')), rows=[], errs=[], seen=new Set(), fills=[];
+    if(i<0&&k==='factura')i=head.findIndex(x=>/factura|folio|invoice|인보이스/.test(x)&&!/uuid|fecha|date|날짜/.test(x));
+    if(i<0&&k==='결제텀')i=head.findIndex(x=>/텀|결제조건|결제기간|term|plazo|credit|credito|dias|días/.test(x));return i}, I={};AR_XL.forEach(h=>I[h]=at(h));
+  const missing=AR_XL.filter(h=>I[h]<0), num=v=>typeof v==='number'?v:parseFloat(String(v??'').replace(/[^0-9.\-]/g,'')), rows=[], errs=[], seen=new Set(), fills=[], skip=[];
   aoa.slice(1).forEach((line,n)=>{
     if(!line.some(v=>v!==''&&v!=null))return;
     const g=h=>I[h]>=0?line[I[h]]:'', bad=[], r=Object.assign({id:uid()},MODS.ar.blank(curPeriod()));
@@ -2840,10 +2873,10 @@ function arFromSheet(aoa){
     // 이미 Factura 번호 없이 등록된 같은 건(고객사·날짜·품번·금액)은 새로 넣지 않고 번호만 채움
     const old=!bad.length&&r.folio&&DB.ar.find(x=>!x.folio&&x.customer===r.customer&&x.date===r.date&&String(x.pn||'')===r.pn&&Math.abs((+x.sub||0)-r.sub)<0.01);
     if(old&&!fills.some(f=>f.id===old.id)){fills.push({id:old.id,folio:r.folio});seen.add(key);return}
-    if(r.folio&&!bad.length){if(DB.ar.some(x=>kOf(x)===key))bad.push('앱에 이미 있음');else if(seen.has(key))bad.push('파일 안에서 같은 줄 반복')}seen.add(key);
+    if(r.folio&&!bad.length){if(DB.ar.some(x=>kOf(x)===key)){skip.push({line:n+2+hr,why:'앱에 이미 있음'});return}if(seen.has(key))bad.push('파일 안에서 같은 줄 반복')}seen.add(key);
     if(bad.length)errs.push({line:n+2+hr,cols:bad});else{fixRow(MODS.ar,r);if(isFinite(tot)&&Math.abs(tot-r.amount)>0.05)r.totNote=tot;rows.push(r)}
   });
-  return {rows,errs,missing,fills};
+  return {rows,errs,missing,fills,skip,heads:(aoa[0]||[]).map(v=>String(v??'').trim()).filter(Boolean)};
 }
 function renderImp(){
   const box=$('#impPreview'), btn=$('[data-doimport]');if(!box)return;
@@ -2851,12 +2884,13 @@ function renderImp(){
   if(imp.fatal){box.innerHTML=`<p class="err">${esc(imp.fatal)}</p>`;btn.disabled=true;return}
   const m=MODS[imp.mod], p=curPeriod(), cols=imp.mod==='ar'?m.cols.filter(c=>['date','customer','folio','pn','item','sub','amount','due'].includes(c.k)):m.cols.filter(c=>!c.calc&&!c.rowCur&&!c.noTable).slice(0,7);
   box.innerHTML=`<p style="margin:0"><b>${esc(imp.file)}</b> · <span class="ok">등록 가능 ${imp.rows.length}건</span>${imp.errs.length?` · <span class="err">오류 ${imp.errs.length}건 (등록하지 않음)</span>`:''}</p>
-    ${imp.missing.length?`<p class="note">파일에 없는 제목: ${esc(imp.missing.join(', '))}. 이 항목은 기본값으로 채웁니다.</p>`:''}
+    ${imp.missing.length?`<p class="note">파일에 없는 제목: ${esc(imp.missing.join(', '))}. 이 항목은 기본값으로 채웁니다.${imp.heads?` (파일의 제목: ${esc(imp.heads.join(' · '))})`:''}</p>`:''}
     ${(()=>{const a=imp.rows.filter(r=>r.autoAcc).length,k=imp.rows.filter(r=>r.itemEs).length;return a||k?`<p class="note">${[k?`스페인어 품목 ${k}건은 한국어로 바꿨습니다 (원문 보관)`:'',a?`계정과목이 빈 ${a}건은 품목으로 자동 분류했습니다`:''].filter(Boolean).join(' · ')}.</p>`:''})()}
     ${imp.errs.length?`<p class="note"><b>오류 사유:</b> ${Object.entries(imp.errs.reduce((a,e)=>{e.cols.forEach(c=>a[c]=(a[c]||0)+1);return a},{})).map(([k,v])=>`${esc(k)} ${v}건`).join(' · ')}</p>`:''}
     ${imp.errs.length?`<p class="note">${imp.errs.slice(0,8).map(e=>`${e.line}행: ${esc(e.cols.join(', '))}`).join(' · ')}${imp.errs.length>8?' …':''}</p>`:''}
     ${imp.rows.length?`<div class="tw" style="border:1px solid var(--line);border-radius:10px;margin-top:6px"><table><thead><tr>${cols.map(c=>`<th class="${isNum(c)?'n':''}">${esc(c.l)}</th>`).join('')}</tr></thead><tbody>
       ${imp.rows.slice(0,5).map(r=>`<tr>${cols.map(c=>`<td class="${isNum(c)?'n':''}">${cellView(c,r,p,m)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${imp.rows.length>5?`<p class="note">외 ${imp.rows.length-5}건</p>`:''}`:''}`;
+  const ns=(imp.skip||[]).length;if(ns)box.insertAdjacentHTML('beforeend',`<p class="note">이미 앱에 있는 ${ns}건은 건너뜁니다 (같은 고객사·Factura·품번·금액, 오류 아님).</p>`);
   const nf=(imp.fills||[]).length;if(nf)box.insertAdjacentHTML('beforeend',`<p class="note">이미 등록된 ${nf}건은 새로 넣지 않고 Factura 번호만 채웁니다.</p>`);
   btn.disabled=!imp.rows.length&&!nf;btn.textContent=imp.rows.length?`${imp.rows.length}건 등록${nf?` · ${nf}건 번호 보완`:''}`:nf?`${nf}건 Factura 번호 보완`:'등록';
 }
@@ -2951,6 +2985,7 @@ function renderModal(){
         <div class="form"><label>지급일<input type="date" name="sdate" value="${TODAY}" required></label></div>
         <p class="note" style="margin:0">확인하면 경리자료에 출금 전표 2건(퇴직급여, 미지급금 지급)이 생기고 상태가 "지급 완료"로 바뀝니다.</p></div>
       <footer><button type="button" class="btn" data-close="1">취소</button><button type="submit" class="btn primary">지급 확인</button></footer></form></div></div>`;return}
+  if(modal&&modal.type==='arwk'){host.innerHTML=arWeekModal(modal.k);return}
   if(modal&&modal.type==='delsel'){
     const id=modal.mod,m=MODS[id],em=MODS[m.editAs||id]||m,p=curPeriod(),rs=modal.ids.map(x=>DB[em.data].find(r=>r.id===x)).filter(Boolean);
     const show=m.cols.filter(c=>!c.calc&&!c.rowCur&&!c.noTable&&!isNum(c)).slice(0,3), amt=m.cols.find(c=>isMoney(c)&&c.sum&&!c.calc)||m.cols.find(c=>isMoney(c)&&!c.calc);if(amt)show.push(amt);
@@ -3631,6 +3666,7 @@ document.addEventListener('click',e=>{
   if(!t){const kg=e.target.closest('#main .kpi');if(kg){const to=kg.dataset.kgo||(kg.closest('[data-sec]')||{dataset:{}}).dataset.sec;if(to&&MODS[to]){go(to);return}}
     const pr=e.target.closest('tr[data-pdetail]');if(pr){modal={type:'emp',id:pr.dataset.pdetail};renderModal()}return}
   const d=t.dataset;
+  if(d.arwkgo){closeModal();go('ar');return}
   if(d.close){closeModal();return}
   if(d.confirmdel){delRow(modal.mod,modal.id);save();closeModal();renderMain();toast('삭제했습니다');return}
   if(d.delsel){const rs=selVisible(d.delsel);if(!rs.length)return;modal={type:'delsel',mod:d.delsel,ids:rs.map(r=>r.id)};renderModal();return}
@@ -3685,6 +3721,8 @@ document.addEventListener('click',e=>{
   if(t.id==='burger'){$('#side').classList.add('open');$('#scrim').classList.add('open');return}
 });
 $('#scrim').addEventListener('click',closeSide);
+document.addEventListener('dblclick',e=>{const w=e.target.closest&&e.target.closest('[data-arwk]');if(w){e.preventDefault();modal={type:'arwk',k:w.dataset.arwk};renderModal()}});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'){const w=e.target.closest&&e.target.closest('[data-arwk]');if(w){modal={type:'arwk',k:w.dataset.arwk};renderModal()}}});
 document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches&&e.target.matches('.kpi[data-kgo]')){e.preventDefault();go(e.target.dataset.kgo);return}if(e.key==='Escape'){if(modal)closeModal();else closeSide()}});
 
 let pending=null;
