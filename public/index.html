@@ -407,7 +407,7 @@ table.tight .cell{height:30px}
 .bkv span{font-size:11px;color:var(--muted)}
 .bkv b{font-size:15px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bkv .in b{color:var(--good)} .bkv .out b{color:var(--bad)} .bkv .now b{font-size:17px}
-[data-bktx]{cursor:pointer} .bkv [data-bktx]{border-radius:8px;margin:-4px;padding:4px;transition:background .15s} .bkv [data-bktx]:hover,td[data-bktx]:hover{background:var(--surface-2)} td[data-bktx]{text-decoration:underline dotted;text-underline-offset:3px}
+[data-bktx]{cursor:pointer} .stklink{cursor:pointer;color:var(--accent);text-decoration:underline dotted;text-underline-offset:3px} .bkv [data-bktx]{border-radius:8px;margin:-4px;padding:4px;transition:background .15s} .bkv [data-bktx]:hover,td[data-bktx]:hover{background:var(--surface-2)} td[data-bktx]{text-decoration:underline dotted;text-underline-offset:3px}
 .kpi.ccy .v{font-size:17px} .kpi.ccy .cx{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:14px;color:var(--fg-2);margin-top:2px} .kpi.ccy .cx i{font-style:normal;color:var(--muted);font-size:11px} .kpi.ccy .cx b{font-weight:600;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .kpi[data-bktx]:hover{border-color:var(--accent)} .bkcnt{border:0;background:none;color:var(--accent);font:inherit;cursor:pointer;text-decoration:underline;padding:0}
 .bkshare{height:6px;margin:8px 16px 0;border-radius:999px;background:var(--surface-2);overflow:hidden}
@@ -2739,8 +2739,8 @@ function stockTable(title,rows,labels,p,tip,refL){
   // each group: [header, header class, sub-columns [label, cell(r), foot]]; the first cell of a group draws the divider
   const G=[
     [labels[0],'',[['수량',r=>`<span class="${r.openEst?'dim':''}" title="${r.openEst?'전월 재고조사가 없어 전월 예상재고를 사용':'전월 재고조사 수량'}">${num(r.open)}${r.openEst?'<sup>예상</sup>':''}</span>`,''],['금액',r=>money(r.openAmt),money(sum(r=>r.openAmt)),'am']]],
-    [labels[1],'',[['수량',r=>num(r.inq),''],['금액',r=>money(r.inAmt),money(sum(r=>r.inAmt)),'am']]],
-    [labels[2],'',[['수량',r=>num(r.out),''],['금액',r=>money(r.out*r.u),money(sum(r=>r.out*r.u)),'am']]],
+    [labels[1],'',[['수량',r=>isP&&r.inq?`<span class="stklink" data-stkprod="${esc(r.kind)}|${esc(r.item)}|${p.start}|${p.end}" tabindex="0" role="button" title="생산 기록 보기">${num(r.inq)}</span>`:num(r.inq),''],['금액',r=>money(r.inAmt),money(sum(r=>r.inAmt)),'am']]],
+    [labels[2],'',[['수량',r=>!isP&&r.out?`<span class="stklink" data-stkprod="${esc(r.kind)}|${esc(r.item)}|${p.start}|${p.end}" tabindex="0" role="button" title="사용량을 만든 생산 기록 보기">${num(r.out)}</span>`:num(r.out),''],['금액',r=>money(r.out*r.u),money(sum(r=>r.out*r.u)),'am']]],
     [labels[3],'expc',[['수량',r=>num(r.exp),''],['금액',r=>money(r.exp*r.u),money(sum(r=>r.exp*r.u)),'am']]],
     [labels[4],'cnt',[['수량',r=>`<input class="cell n" type="number" step="any" inputmode="decimal" data-cnt="${esc(r.kind)}|${esc(r.item)}|${esc(r.unit)}" value="${r.cnt==null?'':r.cnt}" placeholder="입력" aria-label="${esc(r.item)} 재고조사 수량">`,''],['금액',r=>r.cnt==null?dash:money(r.cnt*r.u),money(sum(r=>r.cnt!=null?r.cnt*r.u:0)),'am']]],
     [labels[5],'',[['수량',r=>r.diff==null?dash:`<span class="${tone(r.diff)}">${r.diff>0?'+':''}${num(r.diff)}</span>`,''],['금액',r=>r.diff==null?dash:`<span class="${tone(r.diff)}">${money(r.diff*r.u)}</span>`,`<span class="${tone(totD)}">${money(totD)}</span>`,'am']]],
@@ -2753,6 +2753,22 @@ function stockTable(title,rows,labels,p,tip,refL){
       <tr>${G.map(g=>g[2].map((c,k)=>`<th class="${cls(g,k)} sub">${c[0]}</th>`).join('')).join('')}</tr></thead><tbody>
     ${rows.map(r=>`<tr><td class="stick"><div class="mq1">${esc(r.item)}</div><div class="mq2">${esc(r.unit)}</div></td>${G.map(g=>g[2].map((c,k)=>`<td class="${cls(g,k,c[3])}">${c[1](r)}</td>`).join('')).join('')}</tr>`).join('')}
     </tbody><tfoot><tr><td class="stick">합계</td>${G.map(g=>g[2].map((c,k)=>`<td class="${cls(g,k)}">${c[2]}</td>`).join('')).join('')}</tr></tfoot></table></div></div>`;
+}
+// 당월사용(자재) / 당월생산(제품)을 만든 생산현황 기록: 자재는 그 자재를 BOM에 쓰는 제품의 생산 실적 × BOM 소요량
+function stkProdModal(x){
+  const inR=r=>r.date>=x.s&&r.date<=x.e, isP=x.kind==='제품';
+  const bq=isP?null:Object.fromEntries(DB.bom.filter(b=>b.material===x.item).map(b=>[b.product,+b.qty||0]));
+  const rs=DB.production.filter(r=>inR(r)&&(isP?r.product===x.item:bq[r.product]!=null)).sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
+  const use=r=>isP?+r.actual||0:(+r.actual||0)*bq[r.product], tot=sumBy(rs,use);
+  return `<div class="modal-bg"><div class="modal lg" role="dialog" aria-modal="true" aria-labelledby="mt">
+    <header><h3 id="mt">${isP?'당월생산':'당월사용'} · ${esc(x.item)} <span class="meta" style="font-weight:400;font-size:12px;color:var(--muted)">${esc(x.s)} ~ ${esc(x.e)} · 생산 기록 ${rs.length}건 · ${num(tot)}</span></h3><button type="button" class="x" data-close="1" aria-label="닫기">×</button></header>
+    <div class="mbody" style="display:grid;gap:12px;grid-template-columns:minmax(0,1fr)">
+    ${rs.length?`<div class="tw" style="border:1px solid var(--line);border-radius:10px;max-height:56vh;overflow:auto"><table class="tight"><thead><tr><th class="c">생산일</th><th>제품</th><th class="c">라인</th><th class="n">생산 실적</th>${isP?'':'<th class="n">BOM 소요량</th><th class="n">자재 사용량</th>'}</tr></thead><tbody>
+      ${rs.map(r=>`<tr><td class="c">${esc(r.date)}</td><td>${esc(r.product)}</td><td class="c">${esc(r.line||'')}</td><td class="n">${num(+r.actual||0)}</td>${isP?'':`<td class="n">${num(bq[r.product])}</td><td class="n">${num(use(r))}</td>`}</tr>`).join('')}
+      </tbody><tfoot><tr><td colspan="${isP?3:5}">합계 · ${rs.length}건</td><td class="n">${num(tot)}</td></tr></tfoot></table></div>
+      ${x.ask?`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:10px 12px"><b style="color:var(--bad)">생산 기록 ${rs.length}건을 생산현황에서 지웁니다. 되돌릴 수 없습니다.</b><button type="button" class="btn danger" data-stkdel="yes">삭제</button><button type="button" class="btn" data-stkdel="no">취소</button></div>`:''}`
+      :`<div class="empty">이 기간에 해당 생산 기록이 없습니다.</div>`}</div>
+    <footer><button type="button" class="btn" data-close="1">닫기</button>${rs.length?`<button type="button" class="btn danger" data-stkdel="ask">이 생산 기록 ${rs.length}건 삭제</button>`:''}<button type="button" class="btn primary" data-stkgo="1">생산현황에서 보기</button></footer></div></div>`;
 }
 function stockPage(p){
   const R=stockRoll(p), ML=['전월재고','당월입고','당월사용','예상재고','재고조사','차이'], PL=['전월재고','당월생산','당월출고','예상재고','재고조사','차이'];
@@ -3021,6 +3037,7 @@ function renderModal(){
       <footer><button type="button" class="btn" data-close="1">취소</button><button type="submit" class="btn primary">지급 확인</button></footer></form></div></div>`;return}
   if(modal&&modal.type==='arwk'){host.innerHTML=arWeekModal(modal.k);return}
   if(modal&&modal.type==='banktx'){host.innerHTML=bankTxModal(modal);return}
+  if(modal&&modal.type==='stkprod'){host.innerHTML=stkProdModal(modal);return}
   if(modal&&modal.type==='delsel'){
     const id=modal.mod,m=MODS[id],em=MODS[m.editAs||id]||m,p=curPeriod(),rs=modal.ids.map(x=>DB[em.data].find(r=>r.id===x)).filter(Boolean);
     const show=m.cols.filter(c=>!c.calc&&!c.rowCur&&!c.noTable&&!isNum(c)).slice(0,3), amt=m.cols.find(c=>isMoney(c)&&c.sum&&!c.calc)||m.cols.find(c=>isMoney(c)&&!c.calc);if(amt)show.push(amt);
@@ -3699,11 +3716,19 @@ document.addEventListener('click',e=>{
   if(coverOn()&&!e.target.closest('.eng-cmd')){const rb=$('#mmRes');if(rb)rb.hidden=true}
   if(e.target.closest('[data-cover]')){showCover();return}
   const t=e.target.closest('button');
-  if(!t){const bx=e.target.closest('[data-bktx]');if(bx){modal={type:'banktx',ty:bx.dataset.bktx,d:bx.dataset.bkd,bank:bx.dataset.bkb||''};renderModal();return}
+  if(!t){const sk=e.target.closest('[data-stkprod]');if(sk){const [kind,item,s_,e_]=sk.dataset.stkprod.split('|');modal={type:'stkprod',kind,item,s:s_,e:e_};renderModal();return}
+    const bx=e.target.closest('[data-bktx]');if(bx){modal={type:'banktx',ty:bx.dataset.bktx,d:bx.dataset.bkd,bank:bx.dataset.bkb||''};renderModal();return}
     const kg=e.target.closest('#main .kpi');if(kg){const to=kg.dataset.kgo||(kg.closest('[data-sec]')||{dataset:{}}).dataset.sec;if(to&&MODS[to]){go(to);return}}
     const pr=e.target.closest('tr[data-pdetail]');if(pr){modal={type:'emp',id:pr.dataset.pdetail};renderModal()}return}
   const d=t.dataset;
   if(d.arwkgo){closeModal();go('ar');return}
+  if(d.stkdel&&modal&&modal.type==='stkprod'){const x=modal;
+    if(d.stkdel==='ask'){x.ask=1;renderModal();return}
+    if(d.stkdel==='no'){x.ask=0;renderModal();return}
+    const isP=x.kind==='제품', prods=isP?[x.item]:DB.bom.filter(b=>b.material===x.item).map(b=>b.product), n0=DB.production.length;
+    DB.production=DB.production.filter(r=>!(r.date>=x.s&&r.date<=x.e&&prods.includes(r.product)));
+    const n=n0-DB.production.length;save();closeModal();renderMain();toast(`생산 기록 ${n}건을 지웠습니다`);return}
+  if(d.stkgo&&modal&&modal.type==='stkprod'){const x=modal;UI.rs=x.s;UI.re=x.e;UI.flt=UI.flt||{};UI.flt.production={};saveUI();closeModal();go('production');return}
   if(d.bankgo){const rs=DB.cash.filter(r=>bankOf(r)===d.bankgo);UI.flt=UI.flt||{};UI.flt.cash={bank:d.bankgo};rs.forEach(r=>{if(r.date<UI.rs)UI.rs=r.date;if(r.date>UI.re)UI.re=r.date});saveUI();go('cash');return}
   if(d.cashgo){const r=DB.cash.find(x=>x.id===d.cashgo);if(r){UI.flt=UI.flt||{};UI.flt.cash={};if(r.date<UI.rs)UI.rs=r.date;if(r.date>UI.re)UI.re=r.date;saveUI();flashId=r.id;go('cash');setTimeout(()=>{const tr=document.querySelector(`tr[data-row="${r.id}"]`);if(tr)tr.scrollIntoView({block:'center'})},50)}return}
   if(d.close){closeModal();return}
@@ -3762,7 +3787,7 @@ document.addEventListener('click',e=>{
 $('#scrim').addEventListener('click',closeSide);
 document.addEventListener('dblclick',e=>{const w=e.target.closest&&e.target.closest('[data-arwk]');if(w){e.preventDefault();modal={type:'arwk',k:w.dataset.arwk};renderModal()}});
 document.addEventListener('keydown',e=>{if(e.key==='Enter'){const w=e.target.closest&&e.target.closest('[data-arwk]');if(w){modal={type:'arwk',k:w.dataset.arwk};renderModal()}}});
-document.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){const w=e.target.closest&&e.target.closest('[data-bktx]');if(w&&!modal){e.preventDefault();modal={type:'banktx',ty:w.dataset.bktx,d:w.dataset.bkd,bank:w.dataset.bkb||''};renderModal()}}});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){const sk=e.target.closest&&e.target.closest('[data-stkprod]');if(sk&&!modal){e.preventDefault();sk.click();return}const w=e.target.closest&&e.target.closest('[data-bktx]');if(w&&!modal){e.preventDefault();modal={type:'banktx',ty:w.dataset.bktx,d:w.dataset.bkd,bank:w.dataset.bkb||''};renderModal()}}});
 document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches&&e.target.matches('.kpi[data-kgo]')){e.preventDefault();go(e.target.dataset.kgo);return}if(e.key==='Escape'){if(modal)closeModal();else closeSide()}});
 
 let pending=null;
