@@ -383,13 +383,13 @@ body.cover-on{overflow:hidden}
 }
 @media (prefers-reduced-motion:reduce){.mm-ln,.mm-leaf,.mm-grp,.mm-card{animation:none;opacity:1;stroke-dashoffset:0}.mm-ring,.mm-ring2,.mm-ring3,.mm-orbdots,.mm-stream,.mm-pill i{animation:none}}
 table.tight{font-size:11.5px}
-table.tight th,table.tight td{padding:10px 8px}
+table.tight th,table.tight td{padding:10px 7px}
 table.tight th:first-child,table.tight td:first-child{padding-left:16px}
 table.tight th:last-child,table.tight td:last-child{padding-right:16px}
-table.tight td.clip{max-width:170px;overflow:hidden;text-overflow:ellipsis}
+table.tight td.clip{white-space:nowrap}
 table.tight .acts .act{padding:4px 8px}
 table.tight th.c,table.tight td.c{text-align:center}
-table.tight td.w{white-space:nowrap;min-width:120px;max-width:190px;overflow:hidden;text-overflow:ellipsis}
+table.tight td.w{white-space:normal;min-width:130px;max-width:240px;line-height:1.35;word-break:keep-all;overflow-wrap:anywhere}
 table.tight tfoot td:first-child{white-space:nowrap}
 table.tight tr.hl td{background:var(--accent-soft)}
 th.ck,td.ck{width:34px;text-align:center;padding-right:0!important}
@@ -1354,8 +1354,8 @@ const MODS={
     trend:{l:'기간별 매입액',fn:rows=>sumBy(rows,M('amount')),money:1},
     extra:rows=>groupSummary('분류별 매입',rows,'cat',[['매입액',M('amount'),money],['잔액',apBal,money]],r=>r.account),
     blank:p=>({date:p.d,vendor:'',cat:'제조비용',account:'원재료비',item:'',cur:'MXN',sub:0,amount:0,iva:'16%',factura:'발행',uuid:'',paid:0,due:addDs(p.d,30)})},
-  ar:{name:'외상매출',desc:'고객사 매출 채권과 수금 현황',data:'ar',dated:true,tight:1,
-    cols:[C('date','발생일','date'),C('customer','고객사','text',{sug:'customers'}),C('folio','Factura No.','text',{opt:1}),C('pn','품번','text',{opt:1}),C('item','품명','text',{wide:1}),C('qty','수량','num',{opt:1,noTable:1}),C('price','단가','num',{opt:1,noTable:1}),C('disc','할인','num',{opt:1,noTable:1}),CUR,C('fx','환율 (US$ 건)','num',{noTable:1,opt:1}),SUB({sum:1}),IVAF,VATR({sum:1}),TOT({sum:1}),FACTC_AR,UUIDC,C('received','수금액','money',{sum:1}),C('due','수금기일','date'),
+  ar:{name:'외상매출',desc:'고객사 매출 채권과 수금 현황',data:'ar',dated:true,tight:1,after:(p,id)=>arFacturaCard(p,id),
+    cols:[C('date','발생일','date'),C('customer','고객사','text',{sug:'customers'}),C('folio','Factura','text',{opt:1,view:r=>String(r.folio||'').trim()?`<span class="pill good">${esc(r.folio)}</span>`:pill(r.factura||'미발행')}),C('pn','품번','text',{opt:1}),C('item','품명','text',{wide:1}),C('qty','수량','num',{opt:1,noTable:1}),C('price','단가','num',{opt:1,noTable:1}),C('disc','할인','num',{opt:1,noTable:1}),CUR,C('fx','환율 (US$ 건)','num',{noTable:1,opt:1}),SUB({sum:1}),IVAF,VATR({sum:1}),TOT({sum:1}),Object.assign({},FACTC_AR,{noTable:1}),UUIDC,C('received','수금액','money',{sum:1}),C('due','수금기일','date'),
       C('bal','잔액','money',{sum:1,calc:arBal}),C('st','상태','calc',{calc:r=>dueStatus(arBal(r),r.due),pill:1,act:{mod:'ar',label:'입금 완료',show:r=>arBal(r)>0.5}})],
     kpis:(rows,p)=>{const all=DB.ar.filter(r=>r.date<=p.end),od=all.filter(r=>dueStatus(arBal(r),r.due)==='연체');return[kv('기간 청구액',money(sumBy(rows,M('amount'))),rows.length+'건'),kv('기간분 미수',money(sumBy(rows,arBal))),
       kv('전체 미수 잔액',money(sumBy(all,arBal)),p.end+' 기준','warn'),kv('연체',od.length+'건',plain(sumBy(od,arBal)),od.length?'bad':'')]},
@@ -1561,6 +1561,7 @@ const isNum=c=>['money','money2','num'].includes(c.t)||c.n;
 const isMoney=c=>c.t==='money'||c.t==='money2';
 
 function cellView(c,r,p,m){
+  if(c.view)return c.view(r);
   let v=c.calc?c.calc(r,p):r[c.k];
   if(c.pill){const h=pill(v);return c.act&&c.act.show(r)?`<span class="stcell">${h}<button class="act settle" data-settle="${r.id}" data-m="${c.act.mod}">${c.act.label}</button></span>`:h}
   if(c.calc&&v==='')return '<span class="dim">–</span>';
@@ -1695,9 +1696,24 @@ function headerHTML(id,m,p){
 }
 
 function genericPage(id,m,p){
-  return `<div class="content">${m.noReg?'':registerCard(id,p)}${tableCard(m,p,id)}${m.charts?`<div class="chartzone" id="chr-${id}">${chartsHTML(m,p,id)}</div>`:''}</div>`;
+  return `<div class="content">${m.noReg?'':registerCard(id,p)}${tableCard(m,p,id)}${m.after?m.after(p,id):''}${m.charts?`<div class="chartzone" id="chr-${id}">${chartsHTML(m,p,id)}</div>`:''}</div>`;
 }
 
+// 외상매출 Factura별 합계: 같은 고객사·Factura 번호의 품번 줄을 묶어 금액·부가세·합계·수금·잔액 (통화는 그 Factura 통화)
+function arFacturaCard(p,id){
+  const rows=viewRows(MODS.ar,p,id), G=new Map();
+  rows.forEach(r=>{const f=String(r.folio||'').trim(),k=f?r.customer+'|'+f+'|'+(r.cur||'MXN'):'#'+r.id;if(!G.has(k))G.set(k,{f,rs:[]});G.get(k).rs.push(r)});
+  const gs=[...G.values()].map(g=>{const rs=g.rs,cur=rs[0].cur||'MXN',S=k=>r2(rs.reduce((a,r)=>a+(+r[k]||0),0)),sub=S('sub'),amt=S('amount'),rec=S('received'),due=rs.map(r=>r.due).filter(validD).sort()[0]||'';
+    return {f:g.f,date:rs.map(r=>r.date).sort()[0],cust:rs[0].customer,n:rs.length,cur,sub,iva:r2(amt-sub),amt,rec,bal:r2(amt-rec),due,mx:rs.reduce((a,r)=>a+arBal(r),0),mxAmt:rs.reduce((a,r)=>a+mx(r,'amount'),0)}})
+    .sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:String(b.f).localeCompare(String(a.f),undefined,{numeric:true}));
+  if(!gs.length)return '';
+  const st=g=>pill(dueStatus(g.bal*(g.cur==='USD'?FX():1),g.due));
+  return `<div class="card"><header><h2>Factura별 합계</h2><span class="meta">${esc(p.label)} · ${gs.length}건</span></header>
+    <div class="tw"><table class="tight"><thead><tr><th>Factura No.</th><th class="c">발행일</th><th>고객사</th><th class="n">품번 수</th><th class="n">금액</th><th class="n">부가세</th><th class="n">합계</th><th class="n">수금액</th><th class="n">잔액</th><th class="c">수금기일</th><th class="c">상태</th></tr></thead><tbody>
+    ${gs.map(g=>`<tr><td>${g.f?`<b>${esc(g.f)}</b>`:'<span class="dim">번호 없음</span>'}</td><td class="c">${esc(g.date)}</td><td>${esc(g.cust)}</td><td class="n">${g.n}</td>
+      <td class="n">${fmtCur(g.sub,g.cur,1)}</td><td class="n">${fmtCur(g.iva,g.cur,1)}</td><td class="n"><b>${fmtCur(g.amt,g.cur,1)}</b></td><td class="n">${fmtCur(g.rec,g.cur,1)}</td><td class="n">${fmtCur(g.bal,g.cur,1)}</td><td class="c">${esc(g.due)}</td><td class="c">${st(g)}</td></tr>`).join('')}
+    </tbody><tfoot><tr><td colspan="6">합계 (MXN 환산) · ${gs.length}건</td><td class="n">${money(gs.reduce((a,g)=>a+g.mxAmt,0))}</td><td></td><td class="n">${money(gs.reduce((a,g)=>a+g.mx,0))}</td><td></td><td></td></tr></tfoot></table></div></div>`;
+}
 /* ---------- Bank Statement: one day per bank — 전일잔고 + 입금 − 지출 = 현잔고 ---------- */
 let BDAY=TODAY, BF='';
 const BANK_HUE=['#2F6FED','#0E9F6E','#C2410C','#7C3AED'];
@@ -2762,7 +2778,7 @@ function parseImport(file,id){
     const wb=XLSX.read(new Uint8Array(rd.result),{type:'array'}), ws=wb.Sheets[wb.SheetNames.includes('등록')?'등록':wb.SheetNames[0]];
     const aoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true});
     const head=(aoa[0]||[]).map(normH), idx={}, totI=head.indexOf(normH('합계')), seen=new Set();
-    if(id==='ar'&&['품번','품명','총합','결제텀','할인','수량','단가'].filter(h=>head.includes(normH(h))).length>=4){imp=Object.assign({mod:id,file:file.name},arFromSheet(aoa));renderImp();return}
+    if(id==='ar'&&aoa.slice(0,10).some(l=>['품번','품명','총합','결제텀','할인','수량','단가'].filter(h=>(l||[]).map(normH).includes(normH(h))).length>=4)){imp=Object.assign({mod:id,file:file.name},arFromSheet(aoa));renderImp();return}
     cols.forEach(c=>{const i=head.findIndex(h=>h&&(h===normH(c.l)||h===c.k.toLowerCase()));if(i>=0)idx[c.k]=i});
     const missing=cols.filter(c=>idx[c.k]==null&&!(c.k==='sub'&&totI>=0)&&!(id==='ap'&&c.k==='account')&&c.k!=='due'&&!c.opt).map(c=>c.l), base=m.blank(curPeriod()), rows=[], errs=[];
     aoa.slice(1).forEach((line,n)=>{
@@ -2798,7 +2814,10 @@ function arFromSheet(aoa){
   // 제목은 기호·공백·대소문자를 무시하고 비교 (Factura # · Factura No. · Folio 모두 Factura)
   const nk=v=>String(v??'').toLowerCase().replace(/[^a-z0-9가-힣]/g,''), AL={factura:['factura','facturano','facturanum','facturanumero','folio','invoice','invoiceno','인보이스','인보이스번호','factura번호'],
     iva:['iva','부가세'],결제텀:['결제텀','결제조건','결제기간','terms','plazo','dias'],날짜:['날짜','발행일','fecha','date'],고객사:['고객사','고객','cliente','customer']};
-  const head=(aoa[0]||[]).map(nk), at=h=>{const al=AL[nk(h)]||[nk(h)];return head.findIndex(x=>al.includes(x))}, I={};AR_XL.forEach(h=>I[h]=at(h));
+  // 제목 줄은 맨 위 10줄 중 품번·품명이 있는 줄 (위에 제목·빈 줄이 있어도 됨)
+  const hr=Math.max(0,aoa.slice(0,10).findIndex(l=>(l||[]).map(nk).filter(x=>['품번','품명','고객사','총합'].includes(x)).length>=2));if(hr)aoa=aoa.slice(hr);
+  const head=(aoa[0]||[]).map(nk), at=h=>{const k=nk(h),al=AL[k]||[k];let i=head.findIndex(x=>al.includes(x));
+    if(i<0&&k==='factura')i=head.findIndex(x=>/factura|folio|invoice|인보이스/.test(x)&&!/uuid|fecha|date|날짜/.test(x));return i}, I={};AR_XL.forEach(h=>I[h]=at(h));
   const missing=AR_XL.filter(h=>I[h]<0), num=v=>typeof v==='number'?v:parseFloat(String(v??'').replace(/[^0-9.\-]/g,'')), rows=[], errs=[], seen=new Set(), fills=[];
   aoa.slice(1).forEach((line,n)=>{
     if(!line.some(v=>v!==''&&v!=null))return;
