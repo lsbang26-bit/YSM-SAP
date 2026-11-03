@@ -921,6 +921,14 @@ function upgradeV12(D){
   (D.cash||[]).forEach(r=>{r.bank=r.cur==='USD'?'Base US$':second&&r.bank===second?'BBVA Peso':'Base Peso'});
   S.openCash=Math.round(usd*fx+base+S.banks[2].open);
 }
+// v13 (2026-11-03): 실제 계좌 8개, 전월(10월) 말 잔고를 11/1 기초시재로. 예전 이름의 전표는 새 계좌로 옮김
+function upgradeV13(D){
+  const S=D.settings, MAP={'Base US$':'Banco Base US$ - 2015','Base Peso':'Banco Base Peso','BBVA Peso':'Santander Peso'}, since='2026-11-01';
+  S.banks=[['Banco Base US$ - 2015','USD',284838.71],['Banco Base US$ - 2028','USD',0],['Banco Base Peso','MXN',538701.21],['Santander Peso','MXN',230954.33],
+    ['Shinhan US$','USD',0],['Shinhan Peso','MXN',0],['Monex US$','USD',0.20],['Monex Peso','MXN',0]].map(([name,cur,open])=>({name,cur,open,since}));
+  (D.cash||[]).forEach(r=>{if(MAP[r.bank])r.bank=MAP[r.bank]});
+  const fx=+S.fx||18.5;S.openCash=Math.round(S.banks.reduce((a,b)=>a+b.open*(b.cur==='USD'?fx:1),0));
+}
 // v9: sample HQ management charges
 function upgradeV9(D){
   if(D.hq)return;D.hq=[];const T=TODAY_D;
@@ -1046,7 +1054,7 @@ function seedGroup(D,r,withParentAP){
     D.ic.push({id:uid(),date:s25,seller:QRO,buyer:USA,item:'AB-100 반제품 수출',cur:'USD',amount:a2,settled:old?a2:0});
   }
 }
-function migrate(D){if((D.ver||1)<3)D=migrate3(D);if(D.ver<4){upgradeV4(D,rng(11));D.ver=4}if(D.ver<5){upgradeV5(D,rng(13),false);D.ver=5}if(D.ver<6){upgradeV6(D);D.ver=6}if(D.ver<7){upgradeV7(D,rng(17));D.ver=7}if(D.ver<8){upgradeV8(D,rng(19));D.ver=8}if(D.ver<9){upgradeV9(D);D.ver=9}if(D.ver<10){upgradeV10(D);D.ver=10}if(D.ver<11){upgradeV11(D);D.ver=11}if(D.ver<12){upgradeV12(D);D.ver=12}return D}
+function migrate(D){if((D.ver||1)<3)D=migrate3(D);if(D.ver<4){upgradeV4(D,rng(11));D.ver=4}if(D.ver<5){upgradeV5(D,rng(13),false);D.ver=5}if(D.ver<6){upgradeV6(D);D.ver=6}if(D.ver<7){upgradeV7(D,rng(17));D.ver=7}if(D.ver<8){upgradeV8(D,rng(19));D.ver=8}if(D.ver<9){upgradeV9(D);D.ver=9}if(D.ver<10){upgradeV10(D);D.ver=10}if(D.ver<11){upgradeV11(D);D.ver=11}if(D.ver<12){upgradeV12(D);D.ver=12}if(D.ver<13){upgradeV13(D);D.ver=13}return D}
 function migrate3(D){
   if(D.ver>=3)return D;
   if(D.ver===2){D.settings.openRM=D.settings.openRM||2500000;seedGroup(D,rng(7),false);D.ver=3;return D}
@@ -1062,7 +1070,7 @@ function migrate3(D){
 const KEY='ysm-sap-data-v1', UKEY='ysm-sap-ui-v1';
 let DB=null;
 DB=LS.get(KEY);
-if(!DB||!DB.cash){DB=seed();LS.set(KEY,DB)}else{DB=migrate(DB);LS.set(KEY,DB)}
+if(!DB||!DB.cash){DB=migrate(seed());LS.set(KEY,DB)}else{DB=migrate(DB);LS.set(KEY,DB)}
 let UI=Object.assign({cons:null,mod:'dash-all',mode:'week',cur:'MXN',open:{fin:true,tax:true,in:true,prod:true,out:true,sales:true,gen:true},fs:{unit:'month',year:THIS_YEAR,sel:[TODAY_D.getMonth()+1]}},LS.get(UKEY)||{});
 if(!UI.fs||!Array.isArray(UI.fs.sel)||!UI.fs.sel.length)UI.fs={unit:'month',year:THIS_YEAR,sel:[TODAY_D.getMonth()+1]};
 UI.q='';UI.cur='MXN';UI.fm=Object.assign({year:THIS_YEAR,sel:[TODAY_D.getMonth()+1]},UI.fm||{});if(!Array.isArray(UI.fm.sel)||!UI.fm.sel.length)UI.fm.sel=[TODAY_D.getMonth()+1];
@@ -1748,7 +1756,7 @@ function arFacturaCard(p,id){
 }
 /* ---------- Bank Statement: one day per bank — 전일잔고 + 입금 − 지출 = 현잔고 ---------- */
 let BDAY=TODAY, BF='';
-const BANK_HUE=['#2F6FED','#0E9F6E','#C2410C','#7C3AED'];
+const BANK_HUE=['#2F6FED','#0E9F6E','#C2410C','#7C3AED','#0891B2','#DB2777','#CA8A04','#4B5563'];
 function bankStat(d){
   const rows=DB.cash.filter(r=>r.date===d);
   return BANKS().map(b=>{const rs=rows.filter(r=>bankOf(r)===b.name), prev=bankBefore(b,d), i=sumBy(rs.filter(r=>r.type==='입금'),M('amount')), o=sumBy(rs.filter(r=>r.type==='출금'),M('amount'));
@@ -3718,7 +3726,7 @@ document.addEventListener('click',e=>{
   if(d.fssel){const v=+d.fssel,s=UI.fs.sel,i=s.indexOf(v);if(i>=0){if(s.length>1)s.splice(i,1)}else s.push(v);saveUI();renderMain();return}
   if(d.reset==='ask'){resetAsk=true;renderNav();return}
   if(d.reset==='no'){resetAsk=false;renderNav();return}
-  if(d.reset==='yes'){resetAsk=false;DB=seed();seedTaxPays();save();render();toast('샘플 데이터로 초기화했습니다');return}
+  if(d.reset==='yes'){resetAsk=false;DB=migrate(seed());seedTaxPays();save();render();toast('샘플 데이터로 초기화했습니다');return}
   if(t.id==='burger'){$('#side').classList.add('open');$('#scrim').classList.add('open');return}
 });
 $('#scrim').addEventListener('click',closeSide);
