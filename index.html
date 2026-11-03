@@ -2678,10 +2678,12 @@ function consPage(){
 // 원/부자재: 전월재고 + 당월입고 (원/부자재 입고현황) − 당월사용 (생산 실적 × BOM) = 예상재고; 완제품: 전월재고 + 당월생산 − 당월출고
 // 전월재고 = the count entered for the previous month (if none, the previous month's expected stock, marked 예상)
 function stockItems(){
-  const mats={};MATERIALS.forEach(m=>mats[m.n]={kind:m.kind,unit:m.unit});
-  DB.bom.forEach(b=>{if(!mats[b.material])mats[b.material]={kind:b.kind||'원자재',unit:b.unit||'EA'}});
-  DB.inbound.forEach(x=>{if(!mats[x.item])mats[x.item]={kind:x.kind||'원자재',unit:x.unit||'EA'}});
-  const prods=uniq([...PRODUCTS.map(p=>p.n),...DB.bom.map(b=>b.product),...DB.production.map(x=>x.product)]);
+  // 앱에 등록된 자료(BOM·입고·생산·출고·재고조사)에 있는 품목만 — 내장 샘플 품목 목록은 쓰지 않음
+  const mats={}, st=DB.stock||[], add=(n,kind,unit)=>{n=String(n||'').trim();if(n&&!mats[n])mats[n]={kind:kind||'원자재',unit:unit||'EA'}};
+  DB.bom.forEach(b=>add(b.material,b.kind,b.unit));
+  DB.inbound.forEach(x=>{if(x.kind!=='제품')add(x.item,x.kind,x.unit)});
+  st.forEach(x=>{if(x.kind&&x.kind!=='제품')add(x.item,x.kind,x.unit)});
+  const prods=uniq([...DB.bom.map(b=>b.product),...DB.production.map(x=>x.product),...DB.outbound.map(x=>x.product),...st.filter(x=>x.kind==='제품').map(x=>x.item)].map(x=>String(x||'').trim()).filter(Boolean));
   return {mats:Object.keys(mats).sort().map(n=>Object.assign({item:n},mats[n])),prods:prods.map(n=>({item:n,kind:'제품',unit:'EA'}))};
 }
 function qtyAt(item,kind,d){
