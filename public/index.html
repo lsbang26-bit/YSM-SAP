@@ -697,8 +697,8 @@ function compact(v){const x=Math.round(+v||0),a=Math.abs(x),s=x<0?'−':'';retur
 /* ---------- accounts ---------- */
 const ACCOUNTS={
   '자산매입':['기계장치','차량운반구','공구기구','비품','건물·시설','외상매입금 지급'],
-  '제조비용':['원재료비','부재료비','노무비','전력비','수선비','외주가공비','소모품비','외상매입금 지급'],
-  '판관비용':['급여','퇴직급여','미지급금 지급','본사관리비 지급','임차료','차량유지비','운반비','통신비','사무용품비','접대비','지급수수료','보험료','세금과공과','기타','외상매입금 지급'],
+  '제조비용':['원재료비','부재료비','노무비','전력비','수선비','외주가공비','소모품비','복리후생비','외상매입금 지급'],
+  '판관비용':['급여','퇴직급여','복리후생비','미지급금 지급','본사관리비 지급','임차료','차량유지비','운반비','통신비','사무용품비','접대비','지급수수료','보험료','세금과공과','기타','외상매입금 지급'],
   '차입금':['차입금 입금','원금 상환','이자비용'],
   '매출수입':['매출대금 수금','이자수익','기타수입'],
   '세금납부':['부가세 납부','법인세 납부','원천세 납부']};
@@ -1123,7 +1123,7 @@ function payableYTD(e,end){
   return {ag:a.ag-paid('Aguinaldo'),vp:a.vp-paid('휴가수당'),sf:a.sf-paid('저축기금')};
 }
 // manufacturing cost statement (same layout as the IS sheet's 제조원가명세서)
-const MFG_DEPTS=['생산','품질','물류'], SGA_DEPTS=['영업','관리'], MFG_EXP=['전력비','수선비','외주가공비','소모품비'];
+const MFG_DEPTS=['생산','품질','물류'], SGA_DEPTS=['영업','관리'], MFG_EXP=['전력비','수선비','외주가공비','소모품비','복리후생비'];
 const isMfgAsset=r=>['기계장치','공구기구','건물'].includes(r.cat);
 const rmPurch=(s,e)=>sumBy(DB.inbound.filter(r=>r.date>=s&&r.date<=e&&r.check!=='반품'),r=>lineAmt(r)+(+r.igi||0)+(+r.dta||0));
 const rmUse=(s,e)=>sumBy(DB.production.filter(r=>r.date>=s&&r.date<=e),r=>(+r.actual||0)*bomUnitCost(r.product));
@@ -2103,6 +2103,7 @@ function cfdiFinish(x,file){
   x.vendor=x.vendor||x.rfc||'(공급사 미확인)';x.iva=r2(x.iva);x.total=r2(x.total);x.sub=r2(x.total-x.iva+(x.ret||0));
   x.rate=x.iva<=0.004?'0%':(x.iva/Math.max(0.01,x.sub))<0.11?'8%':'16%';
   x.fuel=FUELS.some(([,n])=>x.item.startsWith(n));
+  x.med=!x.fuel&&/cirug|hospital|m[eé]dic|consulta|farmacia|medicament|laborator|cl[ií]nica|quir[uú]rg|dental|[oó]ptica/i.test(x.item+' '+x.vendor);
   const u=x.uuid, seen=u&&(DB.ap.concat(DB.cash)).some(r=>String(r.uuid||'').toLowerCase()===u);
   x.dup=seen?'이미 등록':'';
   if(!x.total)x.err='합계 금액을 찾지 못했습니다';else if(!validD(x.date))x.err='발행일을 찾지 못했습니다';else if(x.tipo&&x.tipo!=='I')x.err=`수입(I) Factura가 아닙니다 (${x.tipo})`;
@@ -2127,15 +2128,29 @@ async function parseCfdiFiles(files){
   all.forEach(x=>{if(x.dup==='같은 Factura 중복')x.dup='';if(x.err||x.dup||!x.uuid)return;if(u.has(x.uuid))x.dup='같은 Factura 중복';u.add(x.uuid)});
   cfdi={rows:all};renderCfdi();
 }
-function cfdiAcct(x){const cat=($('#cf-cat')||{}).value||'판관비용';return x.fuel?['판관비용','차량유지비']:[cat,($('#cf-acc')||{}).value||'기타']}
+function cfdiAcct(x){const cat=($('#cf-cat')||{}).value||'판관비용';if(x.cat&&x.acc)return[x.cat,x.acc];return x.fuel?['판관비용','차량유지비']:x.med?[cat==='제조비용'?cat:'판관비용','복리후생비']:[cat,($('#cf-acc')||{}).value||'기타']}
+const cfdiCats=['판관비용','제조비용','자산매입'], cfdiAccs=c=>(ACCOUNTS[c]||[]).filter(x=>!/지급$|입금$|상환$/.test(x));
+function cfdiRow(x,i,pue){
+  const tail=`<td class="c" style="white-space:nowrap">${x.err?'':x.editing?`<button type="button" class="act settle" data-cfdiok="${i}">완료</button>`:`<button type="button" class="act" data-cfdied="${i}">수정</button>`}<button type="button" class="del" data-cfdirm="${i}" aria-label="목록에서 빼기">×</button></td></tr>`;
+  if(x.err)return `<tr><td colspan="8">${esc(x.file)}</td><td><span class="neg">${esc(x.err)}</span></td>${tail}`;
+  const [cat,acc]=cfdiAcct(x), amt=`<td class="n">${fmtCur(x.sub,x.cur,1)}</td><td class="n">${fmtCur(x.iva,x.cur,1)}</td><td class="n">${fmtCur(x.total,x.cur,1)}</td><td>${x.dup?`<span class="neg">${esc(x.dup)}</span>`:'<span class="ok">신규</span>'}<span class="dim"> · ${esc(x.metodo||'–')}${x.metodo==='PUE'&&pue?' 지급':''}</span></td>`;
+  if(x.editing)return `<tr data-cfrow="${i}"><td><input class="cell" type="date" name="date" value="${esc(x.date)}" style="min-width:130px"></td><td><input class="cell" name="vendor" value="${esc(x.vendor)}" style="min-width:180px"></td><td>${esc(x.folio)}</td><td><input class="cell" name="item" value="${esc(x.item)}" style="min-width:200px"></td>
+    <td><div style="display:grid;gap:4px"><select class="cell" name="cat" data-cfcat="1">${cfdiCats.map(c=>`<option${c===cat?' selected':''}>${c}</option>`).join('')}</select><select class="cell" name="acc">${cfdiAccs(cat).map(a=>`<option${a===acc?' selected':''}>${esc(a)}</option>`).join('')}</select></div></td>${amt}${tail}`;
+  return `<tr><td>${esc(x.date)}</td><td>${esc(x.vendor)}</td><td>${esc(x.folio)}</td><td>${esc(x.item)}</td><td>${esc(acc)}</td>${amt}${tail}`;
+}
+function cfdiSaveRow(i){
+  const x=cfdi&&cfdi.rows[i], tr=document.querySelector(`[data-cfrow="${i}"]`);if(!x||!tr)return;
+  const v=k=>(tr.querySelector(`[name="${k}"]`)||{}).value||'';
+  if(!validD(v('date'))){toast('발행일을 확인해 주세요');return}
+  Object.assign(x,{date:v('date'),vendor:v('vendor').trim()||x.vendor,item:v('item').trim(),cat:v('cat'),acc:v('acc'),editing:false});
+}
 function renderCfdi(){
   const box=$('#cfdiPreview'), btn=$('[data-docfdi]');if(!box||!btn)return;
   if(!cfdi){box.innerHTML='';btn.disabled=true;return}
   const ok=cfdi.rows.filter(x=>!x.err&&!x.dup), pue=($('#cf-pue')||{}).checked;
-  box.innerHTML=`<div class="tw" style="border:1px solid var(--line);border-radius:10px"><table class="tight"><thead><tr><th>발행일</th><th>공급사</th><th>Folio</th><th>품목</th><th>계정과목</th><th class="n">금액</th><th class="n">IVA</th><th class="n">합계</th><th>결제</th><th>상태</th><th class="c">빼기</th></tr></thead><tbody>
-    ${cfdi.rows.map((x,i)=>(x.err?`<tr><td colspan="9">${esc(x.file)}</td><td><span class="neg">${esc(x.err)}</span></td>`:`<tr><td>${esc(x.date)}</td><td>${esc(x.vendor)}</td><td>${esc(x.folio)}</td><td>${esc(x.item)}</td><td>${esc(cfdiAcct(x)[1])}</td>
-      <td class="n">${fmtCur(x.sub,x.cur,1)}</td><td class="n">${fmtCur(x.iva,x.cur,1)}</td><td class="n">${fmtCur(x.total,x.cur,1)}</td><td>${esc(x.metodo||'–')}${x.metodo==='PUE'&&pue?' · 지급':''}</td><td>${x.dup?`<span class="neg">${esc(x.dup)}</span>`:'<span class="ok">신규</span>'}</td>`)+`<td class="c"><button type="button" class="del" data-cfdirm="${i}" aria-label="목록에서 빼기">×</button></td></tr>`).join('')}</tbody>
-    ${ok.length?`<tfoot><tr><td colspan="5">신규 ${ok.length}건</td><td class="n">${money(sumBy(ok,x=>x.sub*rate(x.cur)))}</td><td class="n">${money(sumBy(ok,x=>x.iva*rate(x.cur)))}</td><td class="n">${money(sumBy(ok,x=>x.total*rate(x.cur)))}</td><td colspan="3"></td></tr></tfoot>`:''}</table></div>`;
+  box.innerHTML=`<div class="tw" style="border:1px solid var(--line);border-radius:10px"><table class="tight"><thead><tr><th>발행일</th><th>공급사</th><th>Folio</th><th>품목</th><th>계정과목</th><th class="n">금액</th><th class="n">IVA</th><th class="n">합계</th><th>상태</th><th class="c">관리</th></tr></thead><tbody>
+    ${cfdi.rows.map((x,i)=>cfdiRow(x,i,pue)).join('')}</tbody>
+    ${ok.length?`<tfoot><tr><td colspan="5">신규 ${ok.length}건</td><td class="n">${money(sumBy(ok,x=>x.sub*rate(x.cur)))}</td><td class="n">${money(sumBy(ok,x=>x.iva*rate(x.cur)))}</td><td class="n">${money(sumBy(ok,x=>x.total*rate(x.cur)))}</td><td colspan="2"></td></tr></tfoot>`:''}</table></div>`;
   btn.disabled=!ok.length;btn.textContent=ok.length?`${ok.length}건 등록`:'등록';
 }
 function cfdiModal(){
@@ -2153,6 +2168,7 @@ function cfdiModal(){
     <footer><button type="button" class="btn" data-close="1">취소</button><button type="button" class="btn primary" data-docfdi="1" disabled>등록</button></footer></div></div>`;
 }
 function doCfdi(){
+  cfdi.rows.forEach((x,i)=>{if(x.editing)cfdiSaveRow(i)});
   const pue=$('#cf-pue').checked, bank=$('#cf-bank').value;let n=0,np=0,last=null;
   cfdi.rows.filter(x=>!x.err&&!x.dup).forEach(x=>{
     const [cat,account]=cfdiAcct(x), cur=x.cur, fx=cur==='USD'?(x.fx||FX()):'';
@@ -3168,6 +3184,8 @@ document.addEventListener('click',e=>{
   if(d.dorays){if(raya&&raya.rows&&raya.rows.length)doRaya();return}
   if(d.cfdi){modal={type:'cfdi'};renderModal();return}
   if(d.cfdirm){if(cfdi){cfdi.rows.splice(+d.cfdirm,1);if(!cfdi.rows.length)cfdi=null}renderCfdi();return}
+  if(d.cfdied){if(cfdi){cfdi.rows.forEach((x,j)=>{if(x.editing&&j!==+d.cfdied)cfdiSaveRow(j)});const x=cfdi.rows[+d.cfdied];if(x){const [c,a]=cfdiAcct(x);Object.assign(x,{cat:c,acc:a,editing:true})}}renderCfdi();return}
+  if(d.cfdiok){cfdiSaveRow(+d.cfdiok);renderCfdi();return}
   if(d.docfdi){if(cfdi&&cfdi.rows.some(x=>!x.err&&!x.dup))doCfdi();return}
   if(d.settle){modal={type:'settle',mod:d.m,id:d.settle};renderModal();return}
   if(d.bankopenm){modal={type:'bankopen'};renderModal();return}
@@ -3258,6 +3276,7 @@ document.addEventListener('change',e=>{
   if(t.id==='cfdiFile'){if(t.files&&t.files.length){parseCfdiFiles([...t.files]);t.value=''}return}
   if(t.id==='cf-cat'){const a=$('#cf-acc');if(a){a.innerHTML=(ACCOUNTS[t.value]||[]).filter(x=>!/지급$|입금$|상환$/.test(x)).map(x=>`<option>${esc(x)}</option>`).join('')}renderCfdi();return}
   if(t.id==='cf-acc'||t.id==='cf-pue'){renderCfdi();return}
+  if(t.dataset&&t.dataset.cfcat){const a=t.parentNode.querySelector('[name="acc"]');if(a)a.innerHTML=cfdiAccs(t.value).map(x=>`<option>${esc(x)}</option>`).join('');return}
   if(t.id==='impFile'){if(t.files&&t.files[0])parseImport(t.files[0],modal.mod);return}
   if(t.dataset&&t.dataset.range){if(validD(t.value)){if(t.dataset.range==='s')UI.rs=t.value;else UI.re=t.value;if(UI.rs>UI.re)[UI.rs,UI.re]=[UI.re,UI.rs];saveUI();renderMain()}return}
   if(t.id==='rangeStart'||t.id==='rangeEnd'){if(validD(t.value)){if(t.id==='rangeStart')UI.rs=t.value;else UI.re=t.value;if(UI.rs>UI.re)[UI.rs,UI.re]=[UI.re,UI.rs];saveUI();renderMain()}return}
