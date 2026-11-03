@@ -1322,7 +1322,7 @@ const FACTC=C('factura','Factura','sel',{opts:FACT,pill:1}), FACTC_AR=C('factura
 const SUB=o=>C('sub','금액','money',o||{}), VATR=o=>C('vat','부가세 (세율)','money',Object.assign({calc:r=>ivaPart(r),rateNote:1},o||{})), TOT=o=>C('amount','합계','money',Object.assign({calc:r=>mx(r,'amount')},o||{}));
 const IVAF=C('iva','부가세율','sel',{opts:Object.keys(IVA_RATES),pct:1,noTable:1});
 const r2=v=>Math.round(v*100)/100;
-function fixRow(m,r){if(m.cols.some(c=>c.bank)){const b=BANKS().find(x=>x.name===r.bank);if(!b||(b.cur||'MXN')!==(r.cur||'MXN'))r.bank=bankFor(r.cur)}if(m.cols.some(c=>c.k==='sub'))r.amount=hasIvaAmt(r)?r2((+r.sub||0)+(+r.ivaAmt)):r2((+r.sub||0)*(1+ivaRt(r)));if(m.cols.some(c=>c.k==='fx')){if(r.cur==='USD'){if(!(+r.fx>0))r.fx=FX()}else r.fx=''}return r}
+function fixRow(m,r){if(m.cols.some(c=>c.k==='folio')&&String(r.folio||'').trim())r.factura='발행';if(m.cols.some(c=>c.bank)){const b=BANKS().find(x=>x.name===r.bank);if(!b||(b.cur||'MXN')!==(r.cur||'MXN'))r.bank=bankFor(r.cur)}if(m.cols.some(c=>c.k==='sub'))r.amount=hasIvaAmt(r)?r2((+r.sub||0)+(+r.ivaAmt)):r2((+r.sub||0)*(1+ivaRt(r)));if(m.cols.some(c=>c.k==='fx')){if(r.cur==='USD'){if(!(+r.fx>0))r.fx=FX()}else r.fx=''}return r}
 const MODS={
   cash:{name:'경리자료',desc:'입금·출금 전표와 기간 현금 흐름. 분류를 고르면 그 분류의 계정과목만 선택됩니다.',data:'cash',dated:true,tight:1,
     cols:[C('date','일자','date'),BANKC,C('type','구분','sel',{opts:['입금','출금'],pill:1}),C('cat','분류','sel',{opts:[...CATS4,'매출수입','세금납부'],pill:1}),ACCT,
@@ -2295,6 +2295,7 @@ function cfdiKoMigrate(){
   if(n)LS.set(KEY,DB);
 }
 cfdiKoMigrate();
+(DB.ar||[]).forEach(r=>{if(String(r.folio||'').trim()&&r.factura!=='발행')r.factura='발행'});
 function rayaTemplate(){
   if(!window.XLSX){toast('엑셀 기능을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.');return}
   const H=['Código','Nombre','Días trabajados','Sueldo','Séptimo día','Tiempo extra','Premio asistencia','Total percepciones','I.S.R.','Subsidio al empleo','I.M.S.S.','Infonavit','Fonacot','Total deducciones','Neto','IMSS patronal','RCV','Infonavit 5%','ISN'];
@@ -2761,7 +2762,7 @@ function parseImport(file,id){
     const wb=XLSX.read(new Uint8Array(rd.result),{type:'array'}), ws=wb.Sheets[wb.SheetNames.includes('등록')?'등록':wb.SheetNames[0]];
     const aoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true});
     const head=(aoa[0]||[]).map(normH), idx={}, totI=head.indexOf(normH('합계')), seen=new Set();
-    if(id==='ar'&&AR_XL.filter(h=>head.includes(normH(h))).length>=6){imp=Object.assign({mod:id,file:file.name},arFromSheet(aoa));renderImp();return}
+    if(id==='ar'&&['품번','품명','총합','결제텀','할인','수량','단가'].filter(h=>head.includes(normH(h))).length>=4){imp=Object.assign({mod:id,file:file.name},arFromSheet(aoa));renderImp();return}
     cols.forEach(c=>{const i=head.findIndex(h=>h&&(h===normH(c.l)||h===c.k.toLowerCase()));if(i>=0)idx[c.k]=i});
     const missing=cols.filter(c=>idx[c.k]==null&&!(c.k==='sub'&&totI>=0)&&!(id==='ap'&&c.k==='account')&&c.k!=='due'&&!c.opt).map(c=>c.l), base=m.blank(curPeriod()), rows=[], errs=[];
     aoa.slice(1).forEach((line,n)=>{
@@ -2794,8 +2795,11 @@ function impArap(id,r,got,tot,bad,seen){
 // 외상매출 엑셀 (회사 양식): 고객사 · 날짜 · Factura · 통화 · 품번 · 품명 · 수량 · 단가 · 합계 · 할인 · Iva · 총합 · 결제텀 — 한 줄이 한 건
 const AR_XL=['고객사','날짜','Factura','통화','품번','품명','수량','단가','합계','할인','Iva','총합','결제텀'];
 function arFromSheet(aoa){
-  const head=(aoa[0]||[]).map(normH), at=h=>head.indexOf(normH(h)), I={};AR_XL.forEach(h=>I[h]=at(h));
-  const missing=AR_XL.filter(h=>I[h]<0), num=v=>typeof v==='number'?v:parseFloat(String(v??'').replace(/[^0-9.\-]/g,'')), rows=[], errs=[], seen=new Set();
+  // 제목은 기호·공백·대소문자를 무시하고 비교 (Factura # · Factura No. · Folio 모두 Factura)
+  const nk=v=>String(v??'').toLowerCase().replace(/[^a-z0-9가-힣]/g,''), AL={factura:['factura','facturano','facturanum','facturanumero','folio','invoice','invoiceno','인보이스','인보이스번호','factura번호'],
+    iva:['iva','부가세'],결제텀:['결제텀','결제조건','결제기간','terms','plazo','dias'],날짜:['날짜','발행일','fecha','date'],고객사:['고객사','고객','cliente','customer']};
+  const head=(aoa[0]||[]).map(nk), at=h=>{const al=AL[nk(h)]||[nk(h)];return head.findIndex(x=>al.includes(x))}, I={};AR_XL.forEach(h=>I[h]=at(h));
+  const missing=AR_XL.filter(h=>I[h]<0), num=v=>typeof v==='number'?v:parseFloat(String(v??'').replace(/[^0-9.\-]/g,'')), rows=[], errs=[], seen=new Set(), fills=[];
   aoa.slice(1).forEach((line,n)=>{
     if(!line.some(v=>v!==''&&v!=null))return;
     const g=h=>I[h]>=0?line[I[h]]:'', bad=[], r=Object.assign({id:uid()},MODS.ar.blank(curPeriod()));
@@ -2813,10 +2817,13 @@ function arFromSheet(aoa){
     if(r.item&&!/[가-힣]/.test(r.item)){const ko=esKo(r.item);if(ko!==r.item){r.itemEs=r.item;r.item=ko}}
     if(validD(r.date))r.due=addDs(r.date,isFinite(tm)&&tm>0?tm:partyTerms('ar',r));
     const key=[r.customer,r.folio,r.pn].join('|').toLowerCase();
+    // 이미 Factura 번호 없이 등록된 같은 건(고객사·날짜·품번·금액)은 새로 넣지 않고 번호만 채움
+    const old=!bad.length&&r.folio&&DB.ar.find(x=>!x.folio&&x.customer===r.customer&&x.date===r.date&&String(x.pn||'')===r.pn&&Math.abs((+x.sub||0)-r.sub)<0.01);
+    if(old&&!fills.some(f=>f.id===old.id)){fills.push({id:old.id,folio:r.folio});seen.add(key);return}
     if(r.folio&&(seen.has(key)||DB.ar.some(x=>[x.customer,x.folio,x.pn].join('|').toLowerCase()===key)))bad.push('이미 등록된 Factura·품번');seen.add(key);
     if(bad.length)errs.push({line:n+2,cols:bad});else{fixRow(MODS.ar,r);if(isFinite(tot)&&Math.abs(tot-r.amount)>0.05)r.totNote=tot;rows.push(r)}
   });
-  return {rows,errs,missing};
+  return {rows,errs,missing,fills};
 }
 function renderImp(){
   const box=$('#impPreview'), btn=$('[data-doimport]');if(!box)return;
@@ -2829,7 +2836,8 @@ function renderImp(){
     ${imp.errs.length?`<p class="note">${imp.errs.slice(0,8).map(e=>`${e.line}행: ${esc(e.cols.join(', '))}`).join(' · ')}${imp.errs.length>8?' …':''}</p>`:''}
     ${imp.rows.length?`<div class="tw" style="border:1px solid var(--line);border-radius:10px;margin-top:6px"><table><thead><tr>${cols.map(c=>`<th class="${isNum(c)?'n':''}">${esc(c.l)}</th>`).join('')}</tr></thead><tbody>
       ${imp.rows.slice(0,5).map(r=>`<tr>${cols.map(c=>`<td class="${isNum(c)?'n':''}">${cellView(c,r,p,m)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${imp.rows.length>5?`<p class="note">외 ${imp.rows.length-5}건</p>`:''}`:''}`;
-  btn.disabled=!imp.rows.length;btn.textContent=imp.rows.length?`${imp.rows.length}건 등록`:'등록';
+  const nf=(imp.fills||[]).length;if(nf)box.insertAdjacentHTML('beforeend',`<p class="note">이미 등록된 ${nf}건은 새로 넣지 않고 Factura 번호만 채웁니다.</p>`);
+  btn.disabled=!imp.rows.length&&!nf;btn.textContent=imp.rows.length?`${imp.rows.length}건 등록${nf?` · ${nf}건 번호 보완`:''}`:nf?`${nf}건 Factura 번호 보완`:'등록';
 }
 function importModal(id){
   const m=MODS[id], cols=m.cols.filter(c=>!c.calc);
@@ -3608,10 +3616,11 @@ document.addEventListener('click',e=>{
   if(d.confirmdelsel){const id=modal.mod,em=MODS[id].editAs||id,n=modal.ids.length;modal.ids.forEach(x=>{delRow(em,x);selOf(id).delete(x)});save();closeModal();renderMain();toast(`${n}건을 삭제했습니다`);return}
   if(d.import){modal={type:'import',mod:d.import};renderModal();return}
   if(d.tpl){downloadTpl(d.tpl);return}
-  if(d.doimport){if(!imp||!imp.rows||!imp.rows.length)return;const m=MODS[imp.mod],n=imp.rows.length;imp.rows.forEach(r=>delete r.autoAcc);DB[m.data].unshift(...imp.rows);
+  if(d.doimport){const nf=(imp&&imp.fills||[]).length;if(!imp||!imp.rows||(!imp.rows.length&&!nf))return;const m=MODS[imp.mod],n=imp.rows.length;imp.rows.forEach(r=>delete r.autoAcc);DB[m.data].unshift(...imp.rows);
+    (imp.fills||[]).forEach(f=>{const x=DB[m.data].find(r=>r.id===f.id);if(x){x.folio=f.folio;x.factura='발행'}});
     // rows dated outside the shown period: widen the period so the new rows appear in 상세 내역
     let wid='';const um=MODS[UI.mod];if(um&&!um.monthNav&&!um.toolbar&&m.dated){const ds_=imp.rows.map(r=>r.date).filter(validD).sort();if(ds_.length&&(ds_[0]<UI.rs||ds_[ds_.length-1]>UI.re)){UI.rs=ds_[0]<UI.rs?ds_[0]:UI.rs;UI.re=ds_[ds_.length-1]>UI.re?ds_[ds_.length-1]:UI.re;saveUI();wid=` · 기간을 ${UI.rs} ~ ${UI.re}로 넓혔습니다`}}
-    save();imp=null;closeModal();renderMain();toast(`${n}건을 등록했습니다${wid}`);return}
+    save();imp=null;closeModal();renderMain();toast(`${n?`${n}건을 등록했습니다`:''}${n&&nf?' · ':''}${nf?`${nf}건 Factura 번호를 채웠습니다`:''}${wid}`);return}
   if(d.cons){const s=Array.isArray(UI.cons)?UI.cons:(DB.entities||[]).map(e=>e.id),i=s.indexOf(d.cons);if(i>=0)s.splice(i,1);else s.push(d.cons);UI.cons=s;saveUI();renderMain();return}
   if(d.editrow){modal={type:'edit',mod:d.m,id:d.editrow};renderModal();return}
   if(d.raya){modal={type:'raya'};renderModal();return}
