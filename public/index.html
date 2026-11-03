@@ -697,8 +697,8 @@ function compact(v){const x=Math.round(+v||0),a=Math.abs(x),s=x<0?'−':'';retur
 /* ---------- accounts ---------- */
 const ACCOUNTS={
   '자산매입':['기계장치','차량운반구','공구기구','비품','건물·시설','외상매입금 지급'],
-  '제조비용':['원재료비','부재료비','노무비','전력비','수선비','외주가공비','소모품비','복리후생비','외상매입금 지급'],
-  '판관비용':['급여','퇴직급여','복리후생비','미지급금 지급','본사관리비 지급','임차료','차량유지비','운반비','통신비','사무용품비','접대비','지급수수료','보험료','세금과공과','기타','외상매입금 지급'],
+  '제조비용':['원재료비','부재료비','노무비','전력비','가스수도료','수선비','외주가공비','소모품비','복리후생비','차량유지비','운반비','임차료','보험료','세금과공과','여비교통비','통신비','지급수수료','교육훈련비','도서인쇄비','광고선전비','외상매입금 지급'],
+  '판관비용':['급여','퇴직급여','복리후생비','미지급금 지급','본사관리비 지급','여비교통비','접대비','통신비','수도광열비','세금과공과','임차료','수선비','보험료','차량유지비','운반비','교육훈련비','도서인쇄비','사무용품비','소모품비','지급수수료','광고선전비','기타','외상매입금 지급'],
   '차입금':['차입금 입금','원금 상환','이자비용'],
   '매출수입':['매출대금 수금','이자수익','기타수입'],
   '세금납부':['부가세 납부','법인세 납부','원천세 납부']};
@@ -1123,7 +1123,7 @@ function payableYTD(e,end){
   return {ag:a.ag-paid('Aguinaldo'),vp:a.vp-paid('휴가수당'),sf:a.sf-paid('저축기금')};
 }
 // manufacturing cost statement (same layout as the IS sheet's 제조원가명세서)
-const MFG_DEPTS=['생산','품질','물류'], SGA_DEPTS=['영업','관리'], MFG_EXP=['전력비','수선비','외주가공비','소모품비','복리후생비'];
+const MFG_DEPTS=['생산','품질','물류'], SGA_DEPTS=['영업','관리'], MFG_EXP=['전력비','가스수도료','수선비','외주가공비','소모품비','복리후생비','차량유지비','운반비','임차료','보험료','세금과공과','여비교통비','통신비','지급수수료','교육훈련비','도서인쇄비','광고선전비'];
 const isMfgAsset=r=>['기계장치','공구기구','건물'].includes(r.cat);
 const rmPurch=(s,e)=>sumBy(DB.inbound.filter(r=>r.date>=s&&r.date<=e&&r.check!=='반품'),r=>lineAmt(r)+(+r.igi||0)+(+r.dta||0));
 const rmUse=(s,e)=>sumBy(DB.production.filter(r=>r.date>=s&&r.date<=e),r=>(+r.actual||0)*bomUnitCost(r.product));
@@ -2059,7 +2059,7 @@ function doRaya(){
 let cfdi=null;
 const OWN_RFC=['YAU150512JB4','XAXX010101000','XEXX010101000'];
 const numM=v=>{const n=parseFloat(String(v==null?'':v).replace(/[$,\s]/g,''));return isFinite(n)?n:0};
-const FUELS=[[/\bMAGNA\b|REGULAR/i,'Gasolina Magna'],[/\bPREMIUM\b/i,'Gasolina Premium'],[/\bDI[EÉ]SEL\b/i,'Diésel']];
+const FUELS=[[/\bMAGNA\b|REGULAR/i,'휘발유(마그나)'],[/\bPREMIUM\b/i,'휘발유(프리미엄)'],[/\bDI[EÉ]SEL\b/i,'경유']];
 function cfdiFuel(desc,txt,qty){
   const f=FUELS.find(([re])=>re.test(desc||''))||(/15101514|15101505|petrol[ií]feros|gasolina/i.test(txt||'')&&FUELS.find(([re])=>re.test(txt)));
   return f?`${f[1]}${qty?` ${+(+qty).toFixed(3)} L`:''}`:'';
@@ -2103,7 +2103,8 @@ function cfdiFinish(x,file){
   x.vendor=x.vendor||x.rfc||'(공급사 미확인)';x.iva=r2(x.iva);x.total=r2(x.total);x.sub=r2(x.total-x.iva+(x.ret||0));
   x.rate=x.iva<=0.004?'0%':(x.iva/Math.max(0.01,x.sub))<0.11?'8%':'16%';
   x.fuel=FUELS.some(([,n])=>x.item.startsWith(n));
-  x.med=!x.fuel&&/cirug|hospital|m[eé]dic|consulta|farmacia|medicament|laborator|cl[ií]nica|quir[uú]rg|dental|[oó]ptica/i.test(x.item+' '+x.vendor);
+  x.itemEs=x.item;x.hint=(x.fuel?'gasolina ':'')+x.item+' '+x.vendor;
+  x.item=esKo(x.item);
   const u=x.uuid, seen=u&&(DB.ap.concat(DB.cash)).some(r=>String(r.uuid||'').toLowerCase()===u);
   x.dup=seen?'이미 등록':'';
   if(!x.total)x.err='합계 금액을 찾지 못했습니다';else if(!validD(x.date))x.err='발행일을 찾지 못했습니다';else if(x.tipo&&x.tipo!=='I')x.err=`수입(I) Factura가 아닙니다 (${x.tipo})`;
@@ -2128,7 +2129,7 @@ async function parseCfdiFiles(files){
   all.forEach(x=>{if(x.dup==='같은 Factura 중복')x.dup='';if(x.err||x.dup||!x.uuid)return;if(u.has(x.uuid))x.dup='같은 Factura 중복';u.add(x.uuid)});
   cfdi={rows:all};renderCfdi();
 }
-function cfdiAcct(x){const cat=($('#cf-cat')||{}).value||'판관비용';if(x.cat&&x.acc)return[x.cat,x.acc];return x.fuel?['판관비용','차량유지비']:x.med?[cat==='제조비용'?cat:'판관비용','복리후생비']:[cat,($('#cf-acc')||{}).value||'기타']}
+function cfdiAcct(x){if(x.cat&&x.acc)return[x.cat,x.acc];const cat=($('#cf-cat')||{}).value||'판관비용', k=cat!=='자산매입'&&kgaapAcc(x.hint||x.item,cat);return k?[cat,k]:[cat,($('#cf-acc')||{}).value||'기타']}
 const cfdiCats=['판관비용','제조비용','자산매입'], cfdiAccs=c=>(ACCOUNTS[c]||[]).filter(x=>!/지급$|입금$|상환$/.test(x));
 function cfdiRow(x,i,pue){
   const tail=`<td class="c" style="white-space:nowrap">${x.err?'':x.editing?`<button type="button" class="act settle" data-cfdiok="${i}">완료</button>`:`<button type="button" class="act" data-cfdied="${i}">수정</button>`}<button type="button" class="del" data-cfdirm="${i}" aria-label="목록에서 빼기">×</button></td></tr>`;
@@ -2172,7 +2173,7 @@ function doCfdi(){
   const pue=$('#cf-pue').checked, bank=$('#cf-bank').value;let n=0,np=0,last=null;
   cfdi.rows.filter(x=>!x.err&&!x.dup).forEach(x=>{
     const [cat,account]=cfdiAcct(x), cur=x.cur, fx=cur==='USD'?(x.fx||FX()):'';
-    const r=fixRow(MODS.ap,{id:uid(),date:x.date,vendor:x.vendor,cat,account,item:x.item||'Factura '+x.folio,cur,fx,sub:x.sub,ivaAmt:x.iva,iva:x.rate,factura:'발행',uuid:x.uuid,folio:x.folio,rfc:x.rfc,paid:0,
+    const r=fixRow(MODS.ap,{id:uid(),date:x.date,vendor:x.vendor,cat,account,item:x.item||'Factura '+x.folio,cur,fx,sub:x.sub,ivaAmt:x.iva,iva:x.rate,factura:'발행',uuid:x.uuid,folio:x.folio,rfc:x.rfc,itemEs:x.itemEs,paid:0,
       due:x.metodo==='PUE'?x.date:addDs(x.date,x.terms),src:'CFDI'});
     if(pue&&x.metodo==='PUE'){
       r.paid=r.amount;const b=bankNames(cur).includes(bank)?bank:bankFor(cur);
@@ -2183,6 +2184,69 @@ function doCfdi(){
   if(bank)UI.lastBank=bank;flashId=last;cfdi=null;save();closeModal();renderMain();
   toast(`Factura ${n}건을 외상매입에 등록했습니다${np?` · PUE ${np}건은 지급 완료 처리하고 경리자료에 출금 전표를 만들었습니다`:''}`,np?{label:'경리자료 보기',fn:()=>go('cash')}:null);
 }
+/* ---------- Factura 스페인어 → 한국어, K-GAAP 계정 분류 ---------- */
+const ES_PHRASE=[['S\\.? ?A\\.? DE C\\.? ?V\\.?','#CORP'],['S\\.? DE R\\.? ?L\\.?( DE C\\.? ?V\\.?)?','#CORP'],['S\\.? ?A\\.? P\\.? ?I\\.?( DE C\\.? ?V\\.?)?','#CORP'],['S\\.? ?C\\.?$','#CORP'],
+  ['HONORARIOS MEDICOS','진료비'],['MANO DE OBRA','인건비'],['CONSUMO DE ALIMENTOS','식대'],['SERVICIOS? DE ALIMENTOS','식대'],['ESTACION DE SERVICIO','주유소'],['NUEVO LEON','누에보레온'],
+  ['ENERGIA ELECTRICA','전기'],['SERVICIOS PROFESIONALES','전문 용역'],['GASOLINA MAGNA','휘발유(마그나)'],['GASOLINA PREMIUM','휘발유(프리미엄)'],['GASOLINA REGULAR','휘발유(일반)'],['AGUA POTABLE','수도'],['CAMBIO DE ACEITE','오일 교환']];
+const ES_WORD={SERVICIO:'서비스',SERVICIOS:'서비스',GASOLINERO:'주유',GASOLINEROS:'주유',GASOLINERA:'주유소',GASOLINERAS:'주유소',ESTACION:'스테이션',MEXICO:'멕시코',MEXICANA:'멕시코',MEXICANO:'멕시코',
+  ENERGETICOS:'에너지',ENERGETICO:'에너지',ENERGIA:'에너지',ALTIPLANO:'고원',CIRUGIA:'수술',RODILLA:'무릎',HOSPITAL:'병원',CONSULTA:'진료',MEDICA:'의료',MEDICO:'의료',MEDICOS:'의료',MEDICAMENTO:'의약품',MEDICAMENTOS:'의약품',
+  FARMACIA:'약국',FARMACIAS:'약국',LABORATORIO:'검사',LABORATORIOS:'검사소',ANALISIS:'검사',CLINICA:'클리닉',CLINICO:'임상',DENTAL:'치과',OPTICA:'안경',LENTES:'안경',TERAPIA:'치료',FISIOTERAPIA:'물리치료',URGENCIAS:'응급',
+  HOSPITALIZACION:'입원',RADIOGRAFIA:'엑스레이',ESTUDIO:'검사',ESTUDIOS:'검사',HONORARIOS:'보수',MANTENIMIENTO:'유지보수',REPARACION:'수리',REPARACIONES:'수리',RENTA:'임대료',ARRENDAMIENTO:'임대',TRANSPORTE:'운송',TRANSPORTES:'운송',
+  FLETE:'운송비',FLETES:'운송비',ENVIO:'배송',PAQUETERIA:'택배',COMIDA:'식사',COMIDAS:'식사',ALIMENTOS:'식품',RESTAURANTE:'식당',HOTEL:'호텔',HOSPEDAJE:'숙박',BOLETO:'티켓',BOLETOS:'티켓',VUELO:'항공',AVION:'항공',PEAJE:'통행료',CASETA:'톨게이트',
+  TELEFONO:'전화',TELEFONIA:'통신',TELECOMUNICACIONES:'통신',INTERNET:'인터넷',CELULAR:'휴대폰',LUZ:'전기',ELECTRICA:'전기',ELECTRICO:'전기',AGUA:'물',GAS:'가스',PAPELERIA:'문구',PAPEL:'종이',OFICINA:'사무',ARTICULOS:'용품',ARTICULO:'용품',
+  MATERIAL:'자재',MATERIALES:'자재',HERRAMIENTA:'공구',HERRAMIENTAS:'공구',REFACCION:'부품',REFACCIONES:'부품',EQUIPO:'장비',EQUIPOS:'장비',SEGURO:'보험',SEGUROS:'보험',POLIZA:'보험증권',CAPACITACION:'교육',CURSO:'과정',PUBLICIDAD:'광고',
+  LIMPIEZA:'청소',SEGURIDAD:'보안',VIGILANCIA:'경비',ASESORIA:'자문',CONSULTORIA:'컨설팅',PROFESIONALES:'전문',COMISION:'수수료',COMISIONES:'수수료',PRODUCTOS:'제품',PRODUCTO:'제품',GENERAL:'일반',GENERALES:'일반',INDUSTRIAL:'산업',
+  INDUSTRIALES:'산업',NACIONAL:'국가',GRUPO:'그룹',COMERCIAL:'상사',COMERCIALIZADORA:'상사',DISTRIBUIDORA:'유통',DISTRIBUIDOR:'유통',MONTERREY:'몬테레이',GASOLINA:'휘발유',DIESEL:'경유',COMBUSTIBLE:'연료',COMBUSTIBLES:'연료',
+  MAGNA:'마그나',PREMIUM:'프리미엄',REGULAR:'일반',LITRO:'리터',LITROS:'리터',PIEZA:'개',PIEZAS:'개',PAGO:'지급',ANTICIPO:'선급금',AUTOPARTES:'자동차부품',LLANTA:'타이어',LLANTAS:'타이어',ACEITE:'오일',VEHICULO:'차량',VEHICULOS:'차량',
+  AUTO:'자동차',AUTOMOTRIZ:'자동차',CAMION:'트럭',LAVADO:'세차',EXAMEN:'검사',AMBULANCIA:'구급차',ADMINISTRACION:'관리',ADMINISTRATIVOS:'관리',LOGISTICA:'물류',ALMACEN:'창고',EMPAQUE:'포장',CAJA:'상자',CAJAS:'상자',TORNILLO:'볼트',
+  TORNILLOS:'볼트',ACERO:'강철',PINTURA:'도료',QUIMICOS:'화학',UNIFORMES:'유니폼',UNIFORME:'유니폼',CALZADO:'안전화',PROTECCION:'보호',SOFTWARE:'소프트웨어',LICENCIA:'라이선스',LICENCIAS:'라이선스',COMPUTO:'전산',MUEBLES:'가구',
+  TAXI:'택시',ESTACIONAMIENTO:'주차',CUOTA:'회비',CUOTAS:'회비',IMPUESTO:'세금',DERECHOS:'수수료',TRAMITE:'행정 절차',AGENTE:'대리인',ADUANAL:'통관',ADUANA:'세관',IMPORTACION:'수입',EXPORTACION:'수출',NORTE:'북부',SUR:'남부',CENTRO:'센터',MONTACARGAS:'지게차',CARTON:'골판지',TARIMA:'팔레트',TARIMAS:'팔레트',BOLSA:'봉투',BOLSAS:'봉투',ETIQUETA:'라벨',ETIQUETAS:'라벨',
+  ENERO:'1월',FEBRERO:'2월',MARZO:'3월',ABRIL:'4월',MAYO:'5월',JUNIO:'6월',JULIO:'7월',AGOSTO:'8월',SEPTIEMBRE:'9월',SETIEMBRE:'9월',OCTUBRE:'10월',NOVIEMBRE:'11월',DICIEMBRE:'12월',MES:'월',MENSUAL:'월',PERIODO:'기간'};
+const ES_STOP=new Set(['EL','LA','LOS','LAS','Y','E','EN','PARA','POR','CON','AL','A','UN','UNA','SIN']);
+const noAcc=t=>String(t||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase();
+const titleCase=t=>t.toLowerCase().replace(/(^|[\s.-])(\p{L})/gu,(m,a,b)=>a+b.toUpperCase());
+function esKo(src){
+  let t=noAcc(src).replace(/\s+/g,' ').trim();if(!t||/[가-힣]/.test(src))return src;
+  let corp=false;ES_PHRASE.forEach(([re,ko])=>{t=t.replace(new RegExp('(^|[\\s,])'+re+'(?=$|[\\s,.)])','g'),(m,a)=>{if(ko==='#CORP'){corp=true;return a}return a+'\u0001'+ko+'\u0002'})});
+  t=t.replace(/[,]+/g,' ').replace(/\s+/g,' ').trim();
+  const segs=t.split(/ (?:DE LA|DE LOS|DE LAS|DEL|DE) /), tailN=[];let hit=0,name='';
+  const out=segs.map((seg,si)=>{
+    const tok=seg.match(/\u0001[^\u0002]*\u0002|\S+/g)||[];
+    const tr=tok.filter(w=>!ES_STOP.has(w)).map(w=>{if(w[0]==='\u0001'){hit++;return w.slice(1,-1)}const k=ES_WORD[w.replace(/[^A-Z]/g,'')];if(k){hit++;return k}return null});
+    // trailing run of unknown words in the last segment is a person or brand name, kept as written
+    if(si===segs.length-1){let j=tr.length;while(j>0&&tr[j-1]===null&&/^[A-Z]{2,}$/.test(tok.filter(w=>!ES_STOP.has(w))[j-1]))j--;
+      if(j>0&&tr.length-j>=2){name=titleCase(tok.filter(w=>!ES_STOP.has(w)).slice(j).join(' '));tr.length=j}}
+    const kept=tok.filter(w=>!ES_STOP.has(w));
+    // words go into Korean order (modifier first); dates and numbers stay at the end in their own order
+    const MON=/^\d{1,2}월$/, words=[];
+    tr.forEach((k,i)=>{const w=kept[i];if(/\d/.test(w)||(k&&MON.test(k)))tailN.push(k||w);else words.push(k||(w.length<=4?w:titleCase(w)))});
+    return words.reverse().join(' ');
+  }).filter(Boolean);
+  if(!hit)return src;
+  const MON=/^\d{1,2}월$/, tl=tailN.length>1&&MON.test(tailN[0])&&/^\d{4}$/.test(tailN[1])?[tailN[1]+'년 '+tailN[0]].concat(tailN.slice(2)):tailN;
+  return (corp?'(주) ':'')+out.reverse().concat(tl).join(' ').replace(/\s+/g,' ').trim()+(name?` (${name})`:'');
+}
+// K-GAAP 계정: [키워드, 판관비 계정, 제조경비 계정]
+const KGAAP_RULES=[[/gasolin|diesel|combustib|magna|premium|15101/i,'차량유지비','차량유지비'],[/cirug|hospital|medic|consulta|farmac|medicament|laborator|clinic|quirurg|dental|optica|terapia/i,'복리후생비','복리후생비'],
+  [/aliment|comida|restaurant|consumo|cafeter|despensa/i,'복리후생비','복리후생비'],[/hotel|hospedaje|vuelo|avion|boleto|peaje|caseta|taxi|uber|viatic|estacionamiento/i,'여비교통비','여비교통비'],
+  [/telefon|telcel|telmex|internet|celular|telecom|izzi|totalplay/i,'통신비','통신비'],[/energia electrica|\bluz\b|\bcfe\b|comision federal de electricidad/i,'수도광열비','전력비'],[/\bagua\b|\bgas\b|potable/i,'수도광열비','가스수도료'],
+  [/renta|arrendamiento|alquiler/i,'임차료','임차료'],[/mantenimiento|reparacion|refaccion/i,'수선비','수선비'],[/papeler|papel|toner|oficina|articulos de escritorio/i,'사무용품비','소모품비'],
+  [/flete|envio|paqueteria|dhl|fedex|estafeta|mensajeria|transporte de carga/i,'운반비','운반비'],[/seguro|poliza|asegurador/i,'보험료','보험료'],[/honorario|servicios profesionales|comision|asesoria|consultor|auditor|notari/i,'지급수수료','지급수수료'],
+  [/capacitacion|curso|entrenamiento|diplomado/i,'교육훈련비','교육훈련비'],[/publicidad|anuncio|marketing|propaganda/i,'광고선전비','광고선전비'],[/libro|suscripcion|impresion|imprenta/i,'도서인쇄비','도서인쇄비'],
+  [/herramienta|consumible|uniforme|calzado|guantes|epp|limpieza/i,'소모품비','소모품비'],[/impuesto|derecho|tenencia|predial|tramite/i,'세금과공과','세금과공과']];
+function kgaapAcc(text,cat){const t=noAcc(text).toLowerCase(), r=KGAAP_RULES.find(([re])=>re.test(t));return r?(cat==='제조비용'?r[2]:r[1]):null}
+// rows registered from Factura before translation get Korean item and supplier names once
+function cfdiKoMigrate(){
+  let n=0;const fix=v=>{const k=esKo(v);if(k!==v)n++;return k};
+  const ids=new Set();
+  (DB.ap||[]).forEach(r=>{if(r.src!=='CFDI')return;ids.add(r.id);
+    if(/^Gasolina |^Diésel/.test(r.item||''))r.item=r.item.replace(/^Gasolina Magna/,'휘발유(마그나)').replace(/^Gasolina Premium/,'휘발유(프리미엄)').replace(/^Diésel/,'경유');
+    if(!r.itemEs&&!/[가-힣]/.test(r.item||'')){r.itemEs=r.item;r.item=fix(r.item)}});
+  (DB.cash||[]).forEach(c=>{const r=c.linkMod==='ap'&&ids.has(c.link)&&DB.ap.find(x=>x.id===c.link);if(!r)return;
+    c.memo=String(c.memo||'').replace(/^.*? 대금 지급 \(Factura/,`${r.item} 대금 지급 (Factura`)});
+  if(n)LS.set(KEY,DB);
+}
+cfdiKoMigrate();
 function rayaTemplate(){
   if(!window.XLSX){toast('엑셀 기능을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.');return}
   const H=['Código','Nombre','Días trabajados','Sueldo','Séptimo día','Tiempo extra','Premio asistencia','Total percepciones','I.S.R.','Subsidio al empleo','I.M.S.S.','Infonavit','Fonacot','Total deducciones','Neto','IMSS patronal','RCV','Infonavit 5%','ISN'];
