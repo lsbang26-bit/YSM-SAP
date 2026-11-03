@@ -392,6 +392,10 @@ table.tight th.c,table.tight td.c{text-align:center}
 table.tight td.w{white-space:nowrap;min-width:120px;max-width:190px;overflow:hidden;text-overflow:ellipsis}
 table.tight tfoot td:first-child{white-space:nowrap}
 table.tight tr.hl td{background:var(--accent-soft)}
+th.ck,td.ck{width:34px;text-align:center;padding-right:0!important}
+th.ck input,td.ck input{width:15px;height:15px;margin:0;vertical-align:middle;accent-color:var(--accent);cursor:pointer}
+tr.sel td{background:var(--accent-soft)}
+.btn.selbtn:disabled{background:var(--surface);border-color:var(--line);color:var(--faint);font-weight:500;cursor:default}
 table.tight .cell{height:30px}
 .daynav{display:flex;align-items:center;gap:6px}
 .daynav .btn{min-width:34px;justify-content:center}
@@ -1351,7 +1355,7 @@ const MODS={
     extra:rows=>groupSummary('분류별 매입',rows,'cat',[['매입액',M('amount'),money],['잔액',apBal,money]],r=>r.account),
     blank:p=>({date:p.d,vendor:'',cat:'제조비용',account:'원재료비',item:'',cur:'MXN',sub:0,amount:0,iva:'16%',factura:'발행',uuid:'',paid:0,due:addDs(p.d,30)})},
   ar:{name:'외상매출',desc:'고객사 매출 채권과 수금 현황',data:'ar',dated:true,tight:1,
-    cols:[C('date','발생일','date'),C('customer','고객사','text',{sug:'customers'}),C('item','품목','text',{wide:1}),CUR,C('fx','환율 (US$ 건)','num',{noTable:1,opt:1}),SUB({sum:1}),IVAF,VATR({sum:1}),TOT({sum:1}),FACTC_AR,UUIDC,C('received','수금액','money',{sum:1}),C('due','수금기일','date'),
+    cols:[C('date','발생일','date'),C('customer','고객사','text',{sug:'customers'}),C('folio','Factura No.','text',{opt:1}),C('pn','품번','text',{opt:1}),C('item','품명','text',{wide:1}),C('qty','수량','num',{opt:1,noTable:1}),C('price','단가','num',{opt:1,noTable:1}),C('disc','할인','num',{opt:1,noTable:1}),CUR,C('fx','환율 (US$ 건)','num',{noTable:1,opt:1}),SUB({sum:1}),IVAF,VATR({sum:1}),TOT({sum:1}),FACTC_AR,UUIDC,C('received','수금액','money',{sum:1}),C('due','수금기일','date'),
       C('bal','잔액','money',{sum:1,calc:arBal}),C('st','상태','calc',{calc:r=>dueStatus(arBal(r),r.due),pill:1,act:{mod:'ar',label:'입금 완료',show:r=>arBal(r)>0.5}})],
     kpis:(rows,p)=>{const all=DB.ar.filter(r=>r.date<=p.end),od=all.filter(r=>dueStatus(arBal(r),r.due)==='연체');return[kv('기간 청구액',money(sumBy(rows,M('amount'))),rows.length+'건'),kv('기간분 미수',money(sumBy(rows,arBal))),
       kv('전체 미수 잔액',money(sumBy(all,arBal)),p.end+' 기준','warn'),kv('연체',od.length+'건',plain(sumBy(od,arBal)),od.length?'bad':'')]},
@@ -1625,13 +1629,14 @@ function tableHTML(m,p,modId){
   if(!rows.length)return `<div class="empty">${m.filters&&fltOn(m,modId).length?'필터에 맞는 자료가 없습니다.':!m.filters&&UI.q?'검색 결과가 없습니다.':'이 기간에 등록된 자료가 없습니다. 등록 양식이나 엑셀 일괄 등록으로 입력하세요.'}</div>`;
   const hasSum=cols.some(c=>c.sum);
   const al=c=>isNum(c)?'n':m.tight&&(c.pill||c.t==='date')?'c':m.tight&&c.sug?'clip':'';
-  return `<div class="tw"><table${m.tight?' class="tight"':''}><thead><tr>${cols.map(c=>`<th class="${al(c)}">${esc(c.l)}</th>`).join('')}<th class="n">관리</th></tr></thead><tbody>
-    ${rows.map(r=>`<tr data-row="${r.id}"${r.id===flashId?' class="flash"':''}>${cols.map(c=>`<td class="${al(c)}${c.calc?' calc':''}${c.wide?' w':''}"${m.tight&&(c.wide||c.sug)?` title="${esc(r[c.k])}"`:''}>${cellView(c,r,p,m)}</td>`).join('')}
+  const S=selOf(modId), nOn=rows.filter(r=>S.has(r.id)).length;
+  return `<div class="tw"><table${m.tight?' class="tight"':''} data-seltbl="${modId}"><thead><tr><th class="ck"><input type="checkbox" data-selall="${modId}" aria-label="전체 선택"${nOn&&nOn===rows.length?' checked':''}></th>${cols.map(c=>`<th class="${al(c)}">${esc(c.l)}</th>`).join('')}<th class="n">관리</th></tr></thead><tbody>
+    ${rows.map(r=>`<tr data-row="${r.id}" class="${r.id===flashId?'flash':''}${S.has(r.id)?' sel':''}"><td class="ck"><input type="checkbox" data-selrow="${modId}" value="${r.id}" aria-label="선택"${S.has(r.id)?' checked':''}></td>${cols.map(c=>`<td class="${al(c)}${c.calc?' calc':''}${c.wide?' w':''}"${m.tight&&(c.wide||c.sug)?` title="${esc(r[c.k])}"`:''}>${cellView(c,r,p,m)}</td>`).join('')}
       <td><div class="acts"><button class="act" data-editrow="${r.id}" data-m="${em}">수정</button><button class="act danger" data-delrow="${r.id}" data-m="${em}">삭제</button></div></td></tr>`).join('')}
     </tbody>${m.footSplit?splitFoot(m,p,rows,cols):hasSum?footRow(m,cols,`합계 · ${rows.length}건`,'',c=>c.sum?footVal(c,rows,p,m):''):''}</table></div>`;
 }
 function footRow(m,cols,label,cls,fn,bare){
-  const lead=m.tight?Math.max(1,cols.findIndex(c=>isNum(c))):1, tr=`<tr class="${cls}"><td${lead>1?` colspan="${lead}"`:''}>${label}</td>${cols.slice(lead).map(c=>`<td class="${isNum(c)?'n':''}">${fn(c)}</td>`).join('')}<td></td></tr>`;
+  const lead=m.tight?Math.max(1,cols.findIndex(c=>isNum(c))):1, tr=`<tr class="${cls}"><td colspan="${lead+1}">${label}</td>${cols.slice(lead).map(c=>`<td class="${isNum(c)?'n':''}">${fn(c)}</td>`).join('')}<td></td></tr>`;
   return bare?tr:`<tfoot>${tr}</tfoot>`;
 }
 // 경리자료: totals of the filtered rows — 입금, 출금 and 순액 (입금 − 출금), money columns converted to MXN
@@ -1642,13 +1647,22 @@ function splitFoot(m,p,rows,cols){
   return `<tfoot class="split">${line(`입금 합계 · ${inn.length}건`,'',c=>money(val(c,inn)))}${line(`출금 합계 · ${out.length}건`,'',c=>money(val(c,out)))}
     ${line(`순액 (입금 − 출금) · ${rows.length}건`,'net',c=>{const v=val(c,inn)-val(c,out);return `<span class="${v<0?'neg':'pos'}">${money(v)}</span>`})}</tfoot>`;
 }
+// row selection in 상세 내역: SEL[modId] = Set of row ids; only rows on screen count
+const SEL={}, selOf=id=>SEL[id]||(SEL[id]=new Set());
+const selBtn=id=>`<button class="btn danger selbtn" data-delsel="${id}" disabled>선택삭제</button>`;
+function selVisible(id){const m=MODS[id];if(!m||!m.cols)return [];const S=selOf(id);return viewRows(m,curPeriod(),id).filter(r=>S.has(r.id))}
+function syncSel(){
+  document.querySelectorAll('[data-delsel]').forEach(b=>{const n=selVisible(b.dataset.delsel).length;b.disabled=!n;b.textContent=n?`선택삭제 (${n})`:'선택삭제'});
+  document.querySelectorAll('table[data-seltbl]').forEach(t=>{const all=[...t.querySelectorAll('[data-selrow]')],on=all.filter(x=>x.checked).length,h=t.querySelector('[data-selall]');
+    if(h){h.checked=!!all.length&&on===all.length;h.indeterminate=on>0&&on<all.length}all.forEach(x=>x.closest('tr').classList.toggle('sel',x.checked))});
+}
 function tableCard(m,p,modId,title){
   const note=hasCur(m)?`<span class="meta">· US$ 금액은 환율로 환산해 합계</span>`:'';
-  if(m.filters)return `<div class="card"><header class="fhead"><h2>${esc(title||'상세 내역')}</h2>${filterBar(m,p,modId)}</header>
+  if(m.filters)return `<div class="card"><header class="fhead"><h2>${esc(title||'상세 내역')}</h2>${filterBar(m,p,modId)}${selBtn(modId)}</header>
     <div id="tbl-${modId}">${tableHTML(m,p,modId)}</div></div>`;
   return `<div class="card"><header><h2>${esc(title||'상세 내역')}</h2>${m.monthNav?`<span class="monthbadge">${esc(p.label)}</span>`:`<span class="meta">${m.dated?esc(p.label):'전체 등록 자료'}</span>`}${note}
     <input class="search" id="q-${modId}" data-q="${modId}" type="search" placeholder="검색 (거래처, 품목, 이름 …)" value="${esc(UI.q)}">
-    ${(m.editAs||modId)!==impOf(UI.mod)?`<button class="btn" data-import="${m.editAs||modId}">⇪ 엑셀 일괄등록</button>`:''}</header>
+    ${(m.editAs||modId)!==impOf(UI.mod)?`<button class="btn" data-import="${m.editAs||modId}">⇪ 엑셀 일괄등록</button>`:''}${selBtn(modId)}</header>
     <div id="tbl-${modId}">${tableHTML(m,p,modId)}</div></div>`;
 }
 
@@ -2222,7 +2236,7 @@ function doCfdi(){
 const ES_PHRASE=[['S\\.? ?A\\.? DE C\\.? ?V\\.?','#CORP'],['S\\.? DE R\\.? ?L\\.?( DE C\\.? ?V\\.?)?','#CORP'],['S\\.? ?A\\.? P\\.? ?I\\.?( DE C\\.? ?V\\.?)?','#CORP'],['S\\.? ?C\\.?$','#CORP'],
   ['HONORARIOS MEDICOS','진료비'],['MANO DE OBRA','인건비'],['CONSUMO DE ALIMENTOS','식대'],['SERVICIOS? DE ALIMENTOS','식대'],['ESTACION DE SERVICIO','주유소'],['NUEVO LEON','누에보레온'],
   ['ENERGIA ELECTRICA','전기'],['SERVICIOS PROFESIONALES','전문 용역'],['GASOLINA MAGNA','휘발유(마그나)'],['GASOLINA PREMIUM','휘발유(프리미엄)'],['GASOLINA REGULAR','휘발유(일반)'],['AGUA POTABLE','수도'],['CAMBIO DE ACEITE','오일 교환']];
-const ES_WORD={SERVICIO:'서비스',SERVICIOS:'서비스',GASOLINERO:'주유',GASOLINEROS:'주유',GASOLINERA:'주유소',GASOLINERAS:'주유소',ESTACION:'스테이션',MEXICO:'멕시코',MEXICANA:'멕시코',MEXICANO:'멕시코',
+const ES_WORD={LAMINA:'강판',ROLADA:'압연',ROLADO:'압연',FRIO:'냉간',CALIENTE:'열간',EMPLEADO:'직원',EMPLEADOS:'직원',ENSAMBLE:'조립',ARNES:'하네스',CONECTOR:'커넥터',CONECTORES:'커넥터',ELECTRICOS:'전기',ELECTRICAS:'전기',CABLE:'케이블',CABLES:'케이블',TERMINAL:'단자',TERMINALES:'단자',PLASTICO:'플라스틱',PLASTICOS:'플라스틱',RESINA:'수지',TUBO:'파이프',TUBOS:'파이프',PLACA:'판재',ALUMINIO:'알루미늄',COBRE:'구리',SOPORTE:'브래킷',SOPORTES:'브래킷',MOLDE:'금형',MOLDES:'금형',TROQUEL:'프레스 금형',SOLDADURA:'용접',SERVICIO:'서비스',SERVICIOS:'서비스',GASOLINERO:'주유',GASOLINEROS:'주유',GASOLINERA:'주유소',GASOLINERAS:'주유소',ESTACION:'스테이션',MEXICO:'멕시코',MEXICANA:'멕시코',MEXICANO:'멕시코',
   ENERGETICOS:'에너지',ENERGETICO:'에너지',ENERGIA:'에너지',ALTIPLANO:'고원',CIRUGIA:'수술',RODILLA:'무릎',HOSPITAL:'병원',CONSULTA:'진료',MEDICA:'의료',MEDICO:'의료',MEDICOS:'의료',MEDICAMENTO:'의약품',MEDICAMENTOS:'의약품',
   FARMACIA:'약국',FARMACIAS:'약국',LABORATORIO:'검사',LABORATORIOS:'검사소',ANALISIS:'검사',CLINICA:'클리닉',CLINICO:'임상',DENTAL:'치과',OPTICA:'안경',LENTES:'안경',TERAPIA:'치료',FISIOTERAPIA:'물리치료',URGENCIAS:'응급',
   HOSPITALIZACION:'입원',RADIOGRAFIA:'엑스레이',ESTUDIO:'검사',ESTUDIOS:'검사',HONORARIOS:'보수',MANTENIMIENTO:'유지보수',REPARACION:'수리',REPARACIONES:'수리',RENTA:'임대료',ARRENDAMIENTO:'임대',TRANSPORTE:'운송',TRANSPORTES:'운송',
@@ -2744,16 +2758,19 @@ function parseImport(file,id){
   if(!window.XLSX){imp={mod:id,fatal:'엑셀 기능을 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 다시 열어 주세요.'};renderImp();return}
   const rd=new FileReader();
   rd.onload=()=>{try{
-    const wb=XLSX.read(new Uint8Array(rd.result),{type:'array'}), ws=wb.Sheets[wb.SheetNames[0]];
+    const wb=XLSX.read(new Uint8Array(rd.result),{type:'array'}), ws=wb.Sheets[wb.SheetNames.includes('등록')?'등록':wb.SheetNames[0]];
     const aoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true});
-    const head=(aoa[0]||[]).map(normH), idx={};
+    const head=(aoa[0]||[]).map(normH), idx={}, totI=head.indexOf(normH('합계')), seen=new Set();
+    if(id==='ar'&&AR_XL.filter(h=>head.includes(normH(h))).length>=6){imp=Object.assign({mod:id,file:file.name},arFromSheet(aoa));renderImp();return}
     cols.forEach(c=>{const i=head.findIndex(h=>h&&(h===normH(c.l)||h===c.k.toLowerCase()));if(i>=0)idx[c.k]=i});
-    const missing=cols.filter(c=>idx[c.k]==null).map(c=>c.l), base=m.blank(curPeriod()), rows=[], errs=[];
+    const missing=cols.filter(c=>idx[c.k]==null&&!(c.k==='sub'&&totI>=0)&&!(id==='ap'&&c.k==='account')&&c.k!=='due'&&!c.opt).map(c=>c.l), base=m.blank(curPeriod()), rows=[], errs=[];
     aoa.slice(1).forEach((line,n)=>{
       if(!line.some(v=>v!==''&&v!=null))return;
-      const r=Object.assign({id:uid()},base), bad=[];
-      cols.forEach(c=>{if(idx[c.k]==null)return;const v=line[idx[c.k]];if(v===''||v==null){if(isNum(c))r[c.k]=0;else if(c.t==='date'&&!c.opt)bad.push(c.l);else if(c.t!=='sel')r[c.k]='';return}
-        const x=convCell(c,v);if(x.err)bad.push(c.l);else r[c.k]=x.v});
+      const r=Object.assign({id:uid()},base), bad=[], got=new Set();
+      cols.forEach(c=>{if(idx[c.k]==null)return;const v=line[idx[c.k]];if(v===''||v==null){if(isNum(c))r[c.k]=0;else if(c.t==='date'&&!c.opt&&c.k!=='due')bad.push(c.l);else if(c.t!=='sel')r[c.k]='';return}
+        const x=convCell(c,v);if(x.err)bad.push(c.l);else{r[c.k]=x.v;got.add(c.k)}});
+      if(m.cols.some(c=>c.k==='due')&&!got.has('due')&&validD(r.date))r.due=addDs(r.date,partyTerms(id,r));
+      if(id==='ap'||id==='ar')impArap(id,r,got,totI>=0?line[totI]:'',bad,seen);
       const ac=m.cols.find(c=>c.optsOf);if(ac&&!ac.optsOf(r).includes(r[ac.k]))bad.push(ac.l);
       if(bad.length)errs.push({line:n+2,cols:bad});else rows.push(fixRow(m,r));
     });
@@ -2761,13 +2778,54 @@ function parseImport(file,id){
   }catch(e){imp={mod:id,fatal:'파일을 읽지 못했습니다. 엑셀(.xlsx, .xls) 또는 CSV 파일인지 확인해 주세요.'}}renderImp()};
   rd.readAsArrayBuffer(file);
 }
+// 외상매출·외상매입 rows: 합계만 적으면 금액(공급가액)을 역산, 스페인어 품목은 한국어로 (원문은 itemEs), 공급사·고객사명은 그대로,
+// 외상매입 계정과목을 비우면 K-GAAP 계정으로 자동 분류, 이미 등록된 CFDI UUID는 등록하지 않음
+const partyTerms=(id,r)=>{const L=id==='ap'?DB.vendors:id==='ar'?DB.customers:null,k=id==='ap'?r.vendor:r.customer,x=L&&k&&L.find(e=>e.name===k);return x&&+x.terms>0?+x.terms:30};
+const AP_DEF_ACC={'제조비용':'원재료비','판관비용':'기타','자산매입':'비품','차입금':'이자비용'};
+function impArap(id,r,got,tot,bad,seen){
+  const t=typeof tot==='number'?tot:parseFloat(String(tot||'').replace(/[^0-9.\-]/g,''));
+  if(!(+r.sub)&&isFinite(t)&&t>0)r.sub=r2(t/(1+ivaRt(r)));
+  if(r.item&&!/[가-힣]/.test(r.item)){const ko=esKo(r.item);if(ko!==r.item){r.itemEs=r.item;r.item=ko}}
+  if(id==='ap'&&!got.has('account')){const L=ACCOUNTS[r.cat]||[],k=kgaapAcc((r.itemEs||r.item||'')+' '+(r.vendor||''),r.cat);r.account=k&&L.includes(k)?k:AP_DEF_ACC[r.cat]||L[0]||'기타';r.autoAcc=1}
+  const u=String(r.uuid||'').trim().toLowerCase();
+  if(u){if(seen.has(u)||DB[id].concat(DB.cash).some(x=>String(x.uuid||'').toLowerCase()===u))bad.push('CFDI UUID (이미 등록)');seen.add(u)}
+  if(!(+r.sub))bad.push('금액 또는 합계');
+}
+// 외상매출 엑셀 (회사 양식): 고객사 · 날짜 · Factura · 통화 · 품번 · 품명 · 수량 · 단가 · 합계 · 할인 · Iva · 총합 · 결제텀 — 한 줄이 한 건
+const AR_XL=['고객사','날짜','Factura','통화','품번','품명','수량','단가','합계','할인','Iva','총합','결제텀'];
+function arFromSheet(aoa){
+  const head=(aoa[0]||[]).map(normH), at=h=>head.indexOf(normH(h)), I={};AR_XL.forEach(h=>I[h]=at(h));
+  const missing=AR_XL.filter(h=>I[h]<0), num=v=>typeof v==='number'?v:parseFloat(String(v??'').replace(/[^0-9.\-]/g,'')), rows=[], errs=[], seen=new Set();
+  aoa.slice(1).forEach((line,n)=>{
+    if(!line.some(v=>v!==''&&v!=null))return;
+    const g=h=>I[h]>=0?line[I[h]]:'', bad=[], r=Object.assign({id:uid()},MODS.ar.blank(curPeriod()));
+    const d=convCell({t:'date'},g('날짜'));if(d.err||g('날짜')==='')bad.push('날짜');else r.date=d.v;
+    r.customer=String(g('고객사')).trim();if(!r.customer)bad.push('고객사');
+    r.folio=String(g('Factura')).trim();r.pn=String(g('품번')).trim();r.item=String(g('품명')).trim()||r.pn;
+    const c=String(g('통화')).trim();r.cur=!c||/mx|peso|페소/i.test(c)?'MXN':/us|달러/i.test(c)?'USD':(bad.push('통화'),'MXN');
+    const q=num(g('수량')),pr=num(g('단가')),sum=num(g('합계')),dc=num(g('할인')),iva=num(g('Iva')),tot=num(g('총합')),tm=num(g('결제텀'));
+    if(isFinite(q))r.qty=q;if(isFinite(pr))r.price=pr;r.disc=isFinite(dc)?dc:0;
+    const gross=isFinite(sum)?sum:isFinite(q)&&isFinite(pr)?r2(q*pr):NaN;
+    r.sub=isFinite(gross)?r2(gross-r.disc):isFinite(tot)&&isFinite(iva)?r2(tot-iva):NaN;
+    if(!isFinite(r.sub)||r.sub<=0)bad.push('합계');
+    else{r.ivaAmt=isFinite(iva)?r2(iva):isFinite(tot)?r2(tot-r.sub):r2(r.sub*.16);const rt=r.ivaAmt/r.sub;r.iva=r.ivaAmt<=0.004?'0%':rt<0.11?'8%':'16%'}
+    r.factura=r.folio?'발행':'미발행';r.received=0;r.src='엑셀';
+    if(r.item&&!/[가-힣]/.test(r.item)){const ko=esKo(r.item);if(ko!==r.item){r.itemEs=r.item;r.item=ko}}
+    if(validD(r.date))r.due=addDs(r.date,isFinite(tm)&&tm>0?tm:partyTerms('ar',r));
+    const key=[r.customer,r.folio,r.pn].join('|').toLowerCase();
+    if(r.folio&&(seen.has(key)||DB.ar.some(x=>[x.customer,x.folio,x.pn].join('|').toLowerCase()===key)))bad.push('이미 등록된 Factura·품번');seen.add(key);
+    if(bad.length)errs.push({line:n+2,cols:bad});else{fixRow(MODS.ar,r);if(isFinite(tot)&&Math.abs(tot-r.amount)>0.05)r.totNote=tot;rows.push(r)}
+  });
+  return {rows,errs,missing};
+}
 function renderImp(){
   const box=$('#impPreview'), btn=$('[data-doimport]');if(!box)return;
   if(!imp){box.innerHTML='';return}
   if(imp.fatal){box.innerHTML=`<p class="err">${esc(imp.fatal)}</p>`;btn.disabled=true;return}
-  const m=MODS[imp.mod], p=curPeriod(), cols=m.cols.filter(c=>!c.calc&&!c.rowCur&&!c.noTable).slice(0,7);
+  const m=MODS[imp.mod], p=curPeriod(), cols=imp.mod==='ar'?m.cols.filter(c=>['date','customer','folio','pn','item','sub','amount','due'].includes(c.k)):m.cols.filter(c=>!c.calc&&!c.rowCur&&!c.noTable).slice(0,7);
   box.innerHTML=`<p style="margin:0"><b>${esc(imp.file)}</b> · <span class="ok">등록 가능 ${imp.rows.length}건</span>${imp.errs.length?` · <span class="err">오류 ${imp.errs.length}건 (등록하지 않음)</span>`:''}</p>
     ${imp.missing.length?`<p class="note">파일에 없는 제목: ${esc(imp.missing.join(', '))}. 이 항목은 기본값으로 채웁니다.</p>`:''}
+    ${(()=>{const a=imp.rows.filter(r=>r.autoAcc).length,k=imp.rows.filter(r=>r.itemEs).length;return a||k?`<p class="note">${[k?`스페인어 품목 ${k}건은 한국어로 바꿨습니다 (원문 보관)`:'',a?`계정과목이 빈 ${a}건은 품목으로 자동 분류했습니다`:''].filter(Boolean).join(' · ')}.</p>`:''})()}
     ${imp.errs.length?`<p class="note">${imp.errs.slice(0,8).map(e=>`${e.line}행: ${esc(e.cols.join(', '))}`).join(' · ')}${imp.errs.length>8?' …':''}</p>`:''}
     ${imp.rows.length?`<div class="tw" style="border:1px solid var(--line);border-radius:10px;margin-top:6px"><table><thead><tr>${cols.map(c=>`<th class="${isNum(c)?'n':''}">${esc(c.l)}</th>`).join('')}</tr></thead><tbody>
       ${imp.rows.slice(0,5).map(r=>`<tr>${cols.map(c=>`<td class="${isNum(c)?'n':''}">${cellView(c,r,p,m)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${imp.rows.length>5?`<p class="note">외 ${imp.rows.length-5}건</p>`:''}`:''}`;
@@ -2778,20 +2836,68 @@ function importModal(id){
   const hint=c=>c.k==='ped'?'예: 26 24 3807 6000123':c.t==='date'?(c.opt?'YYYY-MM-DD · 비워도 됨':'YYYY-MM-DD'):c.cls==='cur'?'MXN / USD':c.optsOf?'분류에 맞는 계정':c.t==='sel'?c.opts.join(' / '):isNum(c)?'숫자':'';
   return `<div class="modal-bg"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mt">
     <header><h3 id="mt">${esc(m.name)} 엑셀 일괄등록</h3><button type="button" class="x" data-close="1" aria-label="닫기">×</button></header>
-    <div class="mbody" style="display:grid;gap:14px">
-      <p class="note">엑셀(.xlsx, .xls)이나 CSV 파일의 첫 번째 시트를 읽습니다. 첫 행에 아래 제목을 쓰고, 둘째 행부터 한 줄에 한 건씩 적어 주세요. 계산 항목은 자동으로 채워집니다.</p>
-      <div class="colchips">${cols.map(c=>`<span>${esc(c.l)}${hint(c)?`<small>${esc(hint(c))}</small>`:''}</span>`).join('')}</div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><button type="button" class="btn" data-tpl="${id}">양식 내려받기 (.xlsx)</button><span class="hint">PC에 저장한 HTML 파일에서 동작합니다. 웹 미리보기에서는 위 제목으로 직접 만들어 주세요.</span></div>
-      <label class="filebox" for="impFile">파일 선택<input type="file" id="impFile" accept=".xlsx,.xls,.csv"></label>
+    <div class="mbody" style="display:grid;gap:14px;grid-template-columns:minmax(0,1fr)">
+      <p class="note">양식을 내려받아 "등록" 시트에 한 줄에 한 건씩 적은 뒤 올려 주세요. 작성 방법과 예시는 양식 안의 다른 시트에 있습니다.${id==='ap'?' 금액 대신 합계(부가세 포함)만 적어도 되고, 기일을 비우면 거래처 결제조건으로 채웁니다.':''}${id==='ap'?' 계정과목을 비우면 품목으로 자동 분류합니다.':''}${id==='ar'?' 회사 외상매출 양식(고객사 · 날짜 · Factura · … · 결제텀)을 그대로 올리면 됩니다. 한 줄(품번)이 한 건으로 등록됩니다.':''}</p>
+      <div class="colchips">${id==='ar'?AR_XL.map(h=>`<span>${esc(h)}</span>`).join(''):cols.map(c=>`<span>${esc(c.l)}${hint(c)?`<small>${esc(hint(c))}</small>`:''}</span>${c.k==='sub'&&(id==='ap'||id==='ar')?'<span>합계<small>부가세 포함 · 금액 대신</small></span>':''}`).join('')}</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><button type="button" class="btn primary" data-tpl="${id}">⇩ 양식 내려받기 (.xlsx)</button></div>
+      <label class="filebox" for="impFile">파일 선택 또는 여기로 끌어다 놓기 (.xlsx, .xls, .csv)<input type="file" id="impFile" accept=".xlsx,.xls,.csv"></label>
       <div id="impPreview"></div>
     </div>
     <footer><button type="button" class="btn" data-close="1">취소</button><button type="button" class="btn primary" data-doimport="1" disabled>등록</button></footer></div></div>`;
 }
-function downloadTpl(id){
-  const m=MODS[id], cols=m.cols.filter(c=>!c.calc), b=m.blank(curPeriod());
+function arTpl(){
   if(!window.XLSX){toast('엑셀 기능을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.');return}
-  try{const ws=XLSX.utils.aoa_to_sheet([cols.map(c=>c.l),cols.map(c=>b[c.k]??'')]);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'등록');XLSX.writeFile(wb,`${m.name.replace(/[\/]/g,'_')}_일괄등록_양식.xlsx`)}
-  catch(e){toast('이 화면에서는 파일을 내려받을 수 없습니다. 위 제목으로 엑셀을 만들어 주세요.')}
+  try{
+    const W=[34,12,10,8,14,30,10,10,12,10,10,12,8], wb=XLSX.utils.book_new();
+    const sheet=(aoa,w)=>{const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=w.map(x=>({wch:x}));return ws};
+    XLSX.utils.book_append_sheet(wb,sheet([AR_XL],W),'등록');
+    XLSX.utils.book_append_sheet(wb,sheet([AR_XL,['HYUNDAI MOBIS MEXICO','2026-08-03',6734,'USD','C256950010','RETAINER RING ASSY',8750,0.563,4926.25,0,788.2,5714.45,45],
+      ['HYUNDAI MOBIS MEXICO','2026-08-03',6734,'USD','R184592010','HOUSING ASSY',7840,2.825,22148,0,3543.68,25691.68,45]],W),'작성 예시');
+    const how=[['항목','필수','작성 방법'],['고객사','필수','Factura에 적힌 이름 그대로 (번역하지 않음)'],['날짜','필수','발행일. YYYY-MM-DD 또는 엑셀 날짜'],['Factura','선택','Factura 번호 (folio)'],
+      ['통화','선택','MXN 또는 USD. 비우면 MXN'],['품번','선택',''],['품명','필수','스페인어면 한국어로 바꿔 저장 (원문 보관)'],['수량','선택',''],['단가','선택',''],
+      ['합계','필수','수량 × 단가 (부가세 제외). 비우면 수량 × 단가로 계산'],['할인','선택','합계에서 뺄 금액. 없으면 0'],['Iva','선택','부가세 금액. 비우면 총합 − (합계 − 할인), 둘 다 없으면 16%'],
+      ['총합','선택','합계 − 할인 + Iva'],['결제텀','선택','결제 조건(일). 수금기일 = 날짜 + 결제텀. 비우면 고객사 결제조건(기본 30일)'],[],
+      ['• "등록" 시트 첫 행(제목)은 그대로 두고, 둘째 행부터 한 줄에 품번 하나씩 적습니다.'],['• 같은 고객사·Factura·품번이 이미 있으면 건너뜁니다.'],['• 수금은 화면의 "입금 완료"로 처리하세요. 잔액, 상태는 자동 계산됩니다.']];
+    XLSX.utils.book_append_sheet(wb,sheet(how,[12,8,70]),'작성 방법');
+    XLSX.writeFile(wb,'외상매출_일괄등록_양식.xlsx');
+  }catch(e){toast('이 화면에서는 파일을 내려받을 수 없습니다. 양식의 제목으로 엑셀을 만들어 주세요.')}
+}
+// 일괄등록 양식: 등록(빈 시트, 이 시트를 읽음) · 작성 예시 · 작성 방법 · 코드표
+const TPL_EX={
+  ap:[{date:'2026-11-03',vendor:'Aceros del Norte S.A. de C.V.',cat:'제조비용',account:'원재료비',item:'Lámina de acero rolada en frío',cur:'MXN',fx:'',sub:125000,iva:'16%',factura:'발행',uuid:'',paid:0,due:'2026-12-03'},
+    {date:'2026-11-04',vendor:'Montacargas Industriales del Bajío',cat:'제조비용',account:'',item:'Servicio de mantenimiento de montacargas',cur:'MXN',fx:'',sub:'',total:9860,iva:'16%',factura:'발행',uuid:'',paid:0,due:''},
+    {date:'2026-11-05',vendor:'Global Parts Supply LLC',cat:'제조비용',account:'부재료비',item:'Conectores eléctricos',cur:'USD',fx:18.35,sub:4200,iva:'0%',factura:'수입(Pedimento)',uuid:'',paid:0,due:'2026-12-20'}],
+  ar:[{date:'2026-11-03',customer:'Autopartes Saltillo S.A. de C.V.',item:'브래킷 A-120 · 5,000개',cur:'MXN',fx:'',sub:310000,iva:'16%',factura:'발행',uuid:'',received:0,due:'2026-12-03'},
+    {date:'2026-11-04',customer:'Línea Blanca Monterrey',item:'Ensamble de arnés eléctrico',cur:'USD',fx:18.4,sub:'',total:23200,iva:'16%',factura:'발행',uuid:'',received:0,due:''}]};
+const TPL_NOTE={date:'YYYY-MM-DD (예: 2026-11-03)',vendor:'Factura에 적힌 이름 그대로 (번역하지 않음)',customer:'Factura에 적힌 이름 그대로 (번역하지 않음)',
+  cat:'코드표의 분류 중 하나',account:'분류에 맞는 계정과목 (코드표). 비우면 품목으로 자동 분류',item:'스페인어로 적으면 한국어로 바꿔 저장 (원문 보관)',
+  cur:'MXN 또는 USD',fx:'US$ 건만. 비우면 현재 환율',sub:'부가세 제외 금액. 비우면 합계에서 역산',total:'부가세 포함 금액. 금액을 적었으면 비워 둠',
+  iva:'16% / 8% / 0% / 면세',factura:'코드표 참고',uuid:'CFDI UUID (선택). 이미 등록된 UUID는 건너뜀',paid:'이미 지급한 금액 (없으면 0)',received:'이미 받은 금액 (없으면 0)',
+  due:'YYYY-MM-DD. 비우면 발생일 + 거래처 결제조건(기본 30일)'};
+function downloadTpl(id){
+  if(id==='ar')return arTpl();
+  const m=MODS[id], b=m.blank(curPeriod()), arap=id==='ap'||id==='ar';
+  let cols=m.cols.filter(c=>!c.calc);
+  if(arap){const i=cols.findIndex(c=>c.k==='sub');cols=[...cols.slice(0,i+1),{k:'total',l:'합계',t:'money'},...cols.slice(i+1)]}
+  if(!window.XLSX){toast('엑셀 기능을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.');return}
+  try{
+    const H=cols.map(c=>c.l), wch=cols.map(c=>Math.max(10,Math.min(42,(c.wide||c.sug?28:String(c.l).length*2+4)))), wb=XLSX.utils.book_new();
+    const sheet=(aoa,w)=>{const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=w.map(x=>({wch:x}));return ws};
+    XLSX.utils.book_append_sheet(wb,sheet([H],wch),'등록');
+    const ex=TPL_EX[id]||[Object.assign({},b)];
+    XLSX.utils.book_append_sheet(wb,sheet([H,...ex.map(r=>cols.map(c=>r[c.k]??''))],wch.map(x=>Math.max(x,16))),'작성 예시');
+    const need=c=>(arap?['date','vendor','customer','item'].includes(c.k):(c.t==='date'||c.t==='text')&&!c.opt)?'필수':'선택';
+    const hint=c=>TPL_NOTE[c.k]&&arap?TPL_NOTE[c.k]:c.t==='date'?'YYYY-MM-DD':c.cls==='cur'?'MXN 또는 USD':c.optsOf?'분류에 맞는 계정 (코드표)':c.t==='sel'?c.opts.join(' / '):isNum(c)?'숫자':'';
+    const how=[['항목','필수','작성 방법','기본값'],...cols.map(c=>[c.l,need(c),hint(c),b[c.k]!=null&&b[c.k]!==''&&c.k!=='date'&&c.k!=='due'?String(b[c.k]):''])];
+    how.push([],['• "등록" 시트의 첫 행(제목)은 지우거나 바꾸지 마세요. 둘째 행부터 한 줄에 한 건씩 적습니다.'],['• 빈 줄은 건너뜁니다. 오류가 있는 줄은 등록하지 않고 미리보기에 행 번호를 보여 줍니다.'],
+      ...(arap?[['• 지급액/수금액은 등록 전 이미 정산된 금액입니다. 경리자료 전표는 만들지 않으니, 앞으로의 정산은 화면의 "'+(id==='ap'?'지급':'입금')+' 완료"로 처리하세요.'],['• 잔액, 상태, 부가세 금액은 자동 계산됩니다.']]:[['• 계산 항목은 자동으로 채워집니다.']]));
+    XLSX.utils.book_append_sheet(wb,sheet(how,[18,8,58,14]),'작성 방법');
+    const codes=[];
+    if(id==='ap'){const cats=CATS4.filter(c=>c!=='차입금'),L=cats.map(c=>ACCOUNTS[c].filter(x=>!/지급$|입금$|상환$/.test(x)));codes.push(['분류 → 계정과목 (K-GAAP)'],cats);for(let i=0;i<Math.max(...L.map(x=>x.length));i++)codes.push(L.map(x=>x[i]||''));codes.push([])}
+    cols.filter(c=>c.t==='sel'&&!c.optsOf).forEach(c=>{codes.push([c.l,...(c.cls==='cur'?['MXN','USD']:c.opts)])});
+    if(codes.length)XLSX.utils.book_append_sheet(wb,sheet(codes,[18,18,18,18,18]),'코드표');
+    XLSX.writeFile(wb,`${m.name.replace(/[\/]/g,'_')}_일괄등록_양식.xlsx`);
+  }catch(e){toast('이 화면에서는 파일을 내려받을 수 없습니다. 양식의 제목으로 엑셀을 만들어 주세요.')}
 }
 
 /* ---------- modal ---------- */
@@ -2816,6 +2922,17 @@ function renderModal(){
         <div class="form"><label>지급일<input type="date" name="sdate" value="${TODAY}" required></label></div>
         <p class="note" style="margin:0">확인하면 경리자료에 출금 전표 2건(퇴직급여, 미지급금 지급)이 생기고 상태가 "지급 완료"로 바뀝니다.</p></div>
       <footer><button type="button" class="btn" data-close="1">취소</button><button type="submit" class="btn primary">지급 확인</button></footer></form></div></div>`;return}
+  if(modal&&modal.type==='delsel'){
+    const id=modal.mod,m=MODS[id],em=MODS[m.editAs||id]||m,p=curPeriod(),rs=modal.ids.map(x=>DB[em.data].find(r=>r.id===x)).filter(Boolean);
+    const show=m.cols.filter(c=>!c.calc&&!c.rowCur&&!c.noTable&&!isNum(c)).slice(0,3), amt=m.cols.find(c=>isMoney(c)&&c.sum&&!c.calc)||m.cols.find(c=>isMoney(c)&&!c.calc);if(amt)show.push(amt);
+    const links=rs.filter(r=>r.link).length;
+    host.innerHTML=`<div class="modal-bg"><div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="mt">
+      <header><h3 id="mt">선택한 ${rs.length}건을 삭제하시겠습니까?</h3><button type="button" class="x" data-close="1" aria-label="닫기">×</button></header>
+      <div class="mbody"><p class="note">${esc(m.name)}에서 아래 항목을 삭제합니다.${links?` 입금·지급 완료로 만든 전표 ${links}건은 외상매출 수금액, 외상매입 지급액도 그 금액만큼 되돌립니다.`:''}</p>
+        <div class="tw" style="border:1px solid var(--line);border-radius:10px;max-height:320px;overflow:auto"><table class="tight"><thead><tr>${show.map(c=>`<th class="${isNum(c)?'n':''}">${esc(c.l)}</th>`).join('')}</tr></thead>
+        <tbody>${rs.map(r=>`<tr>${show.map(c=>`<td class="${isNum(c)?'n':''}">${cellView(c,r,p,em)||'–'}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>
+      <footer><button type="button" class="btn" data-close="1">취소</button><button type="button" class="btn danger" data-confirmdelsel="1">${rs.length}건 삭제</button></footer></div></div>`;
+    host.querySelector('[data-confirmdelsel]').focus();return}
   if(modal&&modal.type==='bankopen'){
     const B=BANKS(), since=B.find(b=>b.since)?B.find(b=>b.since).since:BDAY;
     host.innerHTML=`<div class="modal-bg"><div class="modal sm" role="dialog" aria-modal="true" aria-labelledby="mt"><form data-bankopenf="1">
@@ -2859,6 +2976,13 @@ function renderModal(){
   }
 }
 function closeModal(){modal=null;renderModal()}
+// removes one row; a 경리자료 row made by 입금/지급 완료 or 퇴직금 지급 first undoes what it settled
+function delRow(mod,id){
+  const m=MODS[mod],arr=DB[m.data],i=arr.findIndex(r=>r.id===id),row=arr[i];if(i<0)return;
+  if(row.link&&row.linkMod==='sever'){const L=DB.sever.find(x=>x.id===row.link);if(L){L.status='정산 대기';L.pdate=''}}
+  else if(row.link&&DB[row.linkMod]){const L=DB[row.linkMod].find(x=>x.id===row.link),k=row.linkMod==='ar'?'received':'paid';if(L)L[k]=Math.max(0,Math.round(((+L[k]||0)-(+row.amount||0))*100)/100)}
+  arr.splice(i,1);
+}
 
 /* ---------- front page: mind map of every screen. Groups sit on two sides of the center ring, their screens fan out beyond them ---------- */
 const coverOn=()=>!$('#cover').hidden;
@@ -3421,6 +3545,7 @@ function renderMain(){
   flashId=null;
   layDecorate();
   chartAnim();
+  syncSel();
 }
 // bars grow from their previous size (or from zero) whenever a chart is redrawn
 const CH_PREV=new Map();
@@ -3450,7 +3575,7 @@ function toast(msg,action){
 }
 
 /* ---------- events ---------- */
-function go(id){let tab=null;if(MODS[id]&&MODS[id].tab){tab=UI.dtab=MODS[id].tab;id='dash-all'}if(!MODS[id])return;UI.mod=id;UI.q='';saveUI();render();closeSide();window.scrollTo(0,0);
+function go(id){Object.keys(SEL).forEach(k=>delete SEL[k]);let tab=null;if(MODS[id]&&MODS[id].tab){tab=UI.dtab=MODS[id].tab;id='dash-all'}if(!MODS[id])return;UI.mod=id;UI.q='';saveUI();render();closeSide();window.scrollTo(0,0);
   if(tab){const el=document.querySelector('.dtabs');if(el)el.scrollIntoView({block:'start'})}}
 document.addEventListener('click',e=>{
   if(e.target.classList.contains('modal-bg')){closeModal();return}
@@ -3478,13 +3603,12 @@ document.addEventListener('click',e=>{
     const pr=e.target.closest('tr[data-pdetail]');if(pr){modal={type:'emp',id:pr.dataset.pdetail};renderModal()}return}
   const d=t.dataset;
   if(d.close){closeModal();return}
-  if(d.confirmdel){const m=MODS[modal.mod],arr=DB[m.data],i=arr.findIndex(r=>r.id===modal.id),row=arr[i];
-    if(row&&row.link&&row.linkMod==='sever'){const L=DB.sever.find(x=>x.id===row.link);if(L){L.status='정산 대기';L.pdate=''}}
-    else if(row&&row.link&&DB[row.linkMod]){const L=DB[row.linkMod].find(x=>x.id===row.link),k=row.linkMod==='ar'?'received':'paid';if(L)L[k]=Math.max(0,Math.round(((+L[k]||0)-(+row.amount||0))*100)/100)}
-    if(i>=0)arr.splice(i,1);save();closeModal();renderMain();toast('삭제했습니다');return}
+  if(d.confirmdel){delRow(modal.mod,modal.id);save();closeModal();renderMain();toast('삭제했습니다');return}
+  if(d.delsel){const rs=selVisible(d.delsel);if(!rs.length)return;modal={type:'delsel',mod:d.delsel,ids:rs.map(r=>r.id)};renderModal();return}
+  if(d.confirmdelsel){const id=modal.mod,em=MODS[id].editAs||id,n=modal.ids.length;modal.ids.forEach(x=>{delRow(em,x);selOf(id).delete(x)});save();closeModal();renderMain();toast(`${n}건을 삭제했습니다`);return}
   if(d.import){modal={type:'import',mod:d.import};renderModal();return}
   if(d.tpl){downloadTpl(d.tpl);return}
-  if(d.doimport){if(!imp||!imp.rows||!imp.rows.length)return;const m=MODS[imp.mod],n=imp.rows.length;DB[m.data].unshift(...imp.rows);save();imp=null;closeModal();renderMain();toast(`${n}건을 등록했습니다`);return}
+  if(d.doimport){if(!imp||!imp.rows||!imp.rows.length)return;const m=MODS[imp.mod],n=imp.rows.length;imp.rows.forEach(r=>delete r.autoAcc);DB[m.data].unshift(...imp.rows);save();imp=null;closeModal();renderMain();toast(`${n}건을 등록했습니다`);return}
   if(d.cons){const s=Array.isArray(UI.cons)?UI.cons:(DB.entities||[]).map(e=>e.id),i=s.indexOf(d.cons);if(i>=0)s.splice(i,1);else s.push(d.cons);UI.cons=s;saveUI();renderMain();return}
   if(d.editrow){modal={type:'edit',mod:d.m,id:d.editrow};renderModal();return}
   if(d.raya){modal={type:'raya'};renderModal();return}
@@ -3586,6 +3710,8 @@ document.addEventListener('change',e=>{
   if(t.id==='cf-acc'||t.id==='cf-pue'){renderCfdi();return}
   if(t.dataset&&t.dataset.cfcat){const a=t.parentNode.querySelector('[name="acc"]');if(a)a.innerHTML=cfdiAccs(t.value).map(x=>`<option>${esc(x)}</option>`).join('');return}
   if(t.id==='impFile'){if(t.files&&t.files[0])parseImport(t.files[0],modal.mod);return}
+  if(t.dataset&&t.dataset.selrow){const S=selOf(t.dataset.selrow);if(t.checked)S.add(t.value);else S.delete(t.value);syncSel();return}
+  if(t.dataset&&t.dataset.selall){const id=t.dataset.selall,S=selOf(id),tb=t.closest('table');tb.querySelectorAll('[data-selrow]').forEach(x=>{x.checked=t.checked;if(t.checked)S.add(x.value);else S.delete(x.value)});syncSel();return}
   if(t.dataset&&t.dataset.range){if(validD(t.value)){if(t.dataset.range==='s')UI.rs=t.value;else UI.re=t.value;if(UI.rs>UI.re)[UI.rs,UI.re]=[UI.re,UI.rs];saveUI();renderMain()}return}
   if(t.id==='rangeStart'||t.id==='rangeEnd'){if(validD(t.value)){if(t.id==='rangeStart')UI.rs=t.value;else UI.re=t.value;if(UI.rs>UI.re)[UI.rs,UI.re]=[UI.re,UI.rs];saveUI();renderMain()}return}
   if(t.id==='fx'){DB.settings.fx=parseFloat(t.value)||18.5;syncOpenCash();save();renderMain();return}
@@ -3603,7 +3729,7 @@ document.addEventListener('input',e=>{
     const p=curPeriod(),box=document.getElementById('tbl-'+fid);if(box)box.innerHTML=tableHTML(MODS[fid],p,fid);const cb=document.getElementById('chr-'+fid);if(cb&&MODS[fid].charts){cb.innerHTML=chartsHTML(MODS[fid],p,fid);chartAnim()}return}
   const id=e.target.dataset&&e.target.dataset.q;
   if(id==='employees'&&UI.mod==='employees'){UI.q=e.target.value;const b=$('#persList');if(b)b.innerHTML=persList(curPeriod());return}
-  if(id){UI.q=e.target.value;const box=document.getElementById('tbl-'+id);if(box)box.innerHTML=tableHTML(MODS[id],curPeriod(),id);const cb=document.getElementById('chr-'+id);if(cb&&MODS[id].charts)cb.innerHTML=chartsHTML(MODS[id],curPeriod(),id)}
+  if(id){UI.q=e.target.value;const box=document.getElementById('tbl-'+id);if(box){box.innerHTML=tableHTML(MODS[id],curPeriod(),id);syncSel()}const cb=document.getElementById('chr-'+id);if(cb&&MODS[id].charts)cb.innerHTML=chartsHTML(MODS[id],curPeriod(),id)}
 });
 document.addEventListener('submit',e=>{
   const f=e.target;e.preventDefault();
