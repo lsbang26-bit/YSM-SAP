@@ -407,6 +407,9 @@ table.tight .cell{height:30px}
 .bkv span{font-size:11px;color:var(--muted)}
 .bkv b{font-size:15px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bkv .in b{color:var(--good)} .bkv .out b{color:var(--bad)} .bkv .now b{font-size:17px}
+[data-bktx]{cursor:pointer} .bkv [data-bktx]{border-radius:8px;margin:-4px;padding:4px;transition:background .15s} .bkv [data-bktx]:hover,td[data-bktx]:hover{background:var(--surface-2)} td[data-bktx]{text-decoration:underline dotted;text-underline-offset:3px}
+.kpi.ccy .v{font-size:17px} .kpi.ccy .cx{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:14px;color:var(--fg-2);margin-top:2px} .kpi.ccy .cx i{font-style:normal;color:var(--muted);font-size:11px} .kpi.ccy .cx b{font-weight:600;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kpi[data-bktx]:hover{border-color:var(--accent)} .bkcnt{border:0;background:none;color:var(--accent);font:inherit;cursor:pointer;text-decoration:underline;padding:0}
 .bkshare{height:6px;margin:8px 16px 0;border-radius:999px;background:var(--surface-2);overflow:hidden}
 .bkshare i{display:block;height:100%;background:var(--h);border-radius:inherit}
 .bkfoot{display:flex;justify-content:space-between;padding:6px 16px 14px;font-size:11px;color:var(--muted)}
@@ -724,6 +727,7 @@ function rangeP(){
 /* ---------- currency ---------- */
 // Amounts are stored in each row's own currency (r.cur). Totals are converted to MXN. MXN is shown without a unit, US$ with one.
 const FX=()=>(DB&&DB.settings&&+DB.settings.fx)||18.5;
+const KRW=()=>(DB&&DB.settings&&+DB.settings.krw)||75; // 1 MXN = ? 원
 const rate=cur=>cur==='USD'?FX():1;
 const mx=(r,k)=>(+r[k]||0)*rate(r.cur);
 const M=k=>r=>mx(r,k);
@@ -1766,6 +1770,26 @@ function bankKpis(d){
   const st=bankStat(d), t=k=>sumBy(st,x=>x[k]), n=ty=>st.reduce((a,x)=>a+x.rs.filter(r=>r.type===ty).length,0);
   return [kv('전일잔고',money(t('prev')),addDs(d,-1)+' 마감'),kv('입금',money(t('i')),n('입금')+'건','good'),kv('지출',money(t('o')),n('출금')+'건','bad'),kv('현잔고',money(t('cur')),d+' 기준',t('cur')<0?'bad':'')];
 }
+function bankKpiHTML(d){
+  const st=bankStat(d), t=k=>sumBy(st,x=>x[k]), n=ty=>st.reduce((a,x)=>a+x.rs.filter(r=>r.type===ty).length,0);
+  const won=v=>plain(v);
+  const box=(l,v,s,tone,ty)=>`<div class="kpi ccy ${tone||''}"${ty?` data-bktx="${ty}" data-bkd="${d}" tabindex="0" role="button" title="${l} 내역 보기"`:''}><span class="l">${esc(l)}</span>
+    <div class="cx"><i>Peso (MXN)</i><b>${money(v)}</b><i>US$</i><b>${plain(v/FX())}</b><i>원화 (KRW)</i><b>${won(v*KRW())}</b></div><span class="s">${esc(s)}</span></div>`;
+  return `<section class="kpis">${box('전일잔고',t('prev'),addDs(d,-1)+' 마감')}${box('입금',t('i'),n('입금')+'건 · 눌러서 내역','good','입금')}${box('지출',t('o'),n('출금')+'건 · 눌러서 내역','bad','출금')}${box('현잔고',t('cur'),d+' 기준',t('cur')<0?'bad':'')}</section>
+    <p class="hint" style="margin:-4px 2px 0;font-size:11px;color:var(--faint)">환산: 1 US$ = ${FX()} MXN · 1 MXN = ${KRW()}원 (왼쪽 아래에서 환율 변경)</p>`;
+}
+// 입금/지출 팝업: d(일자) · ty(입금/출금) · bank(선택, 없으면 전체 은행)
+function bankTxModal(x){
+  const rs=DB.cash.filter(r=>r.date===x.d&&r.type===x.ty&&(!x.bank||bankOf(r)===x.bank)).sort((a,b)=>bankNames().indexOf(bankOf(a))-bankNames().indexOf(bankOf(b)));
+  const lbl=x.ty==='입금'?'입금':'지출', tot=sumBy(rs,M('amount'));
+  return `<div class="modal-bg"><div class="modal lg" role="dialog" aria-modal="true" aria-labelledby="mt">
+    <header><h3 id="mt">${lbl} 내역 · ${esc(x.bank||'전체 은행')} <span class="meta" style="font-weight:400;font-size:12px;color:var(--muted)">${esc(x.d)} · ${rs.length}건 · ${money(tot)}</span></h3><button type="button" class="x" data-close="1" aria-label="닫기">×</button></header>
+    <div class="mbody" style="display:grid;gap:14px;grid-template-columns:minmax(0,1fr)">
+    ${rs.length?`<div class="tw" style="border:1px solid var(--line);border-radius:10px;max-height:60vh;overflow:auto"><table class="tight"><thead><tr><th>은행</th><th class="c">분류</th><th>계정과목</th><th>거래처</th><th>적요</th><th class="n">금액</th><th class="n">MXN 환산</th><th class="c">관리</th></tr></thead><tbody>
+      ${rs.map(r=>`<tr><td>${esc(bankOf(r))}</td><td class="c">${pill(r.cat)}</td><td>${esc(r.account)}</td><td>${esc(r.party)}</td><td class="w" title="${esc(r.memo)}">${esc(r.memo)}</td><td class="n">${fmtCur(r.amount,r.cur||'MXN')}</td><td class="n">${money(mx(r,'amount'))}</td><td class="c"><button class="act" data-cashgo="${r.id}">경리자료</button></td></tr>`).join('')}
+      </tbody><tfoot><tr><td colspan="6">합계 · ${rs.length}건</td><td class="n">${money(tot)}</td><td></td></tr></tfoot></table></div>`:`<div class="empty">${esc(x.d)}에 ${lbl} 내역이 없습니다.</div>`}</div>
+    <footer><button type="button" class="btn" data-close="1">닫기</button></footer></div></div>`;
+}
 function bankToolbar(){
   return `<div class="daynav"><button class="btn" data-bday="-1" aria-label="전날">‹</button>
     <div class="range"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg><input type="date" id="bankDay" value="${esc(BDAY)}" aria-label="조회일"></div>
@@ -1780,9 +1804,9 @@ function bankPage(){
   const dot=i=>`<span class="bkdot" style="--h:${BANK_HUE[i%BANK_HUE.length]}"></span>`;
   const days=[];for(let k=6;k>=0;k--)days.push(addDs(d,-k));
   const hist=days.map(x=>({d:x,bal:B.map(b=>bankBefore(b,addDs(x,1))),rs:DB.cash.filter(r=>r.date===x)}));
-  return `<div class="content">${kpiHTML(bankKpis(d))}
+  return `<div class="content">${bankKpiHTML(d)}
     <div class="bkgrid">${st.map((x,i)=>`<div class="card bk" style="--h:${BANK_HUE[i%BANK_HUE.length]}"><header><h2>${dot(i)}${esc(x.b.name)}</h2><span class="meta">${x.rs.length}건</span></header>
-      <div class="bkv"><div><span>전일잔고</span><b>${bankNat(x.b,x.prev)}</b></div><div class="in"><span>입금</span><b>${bankNat(x.b,x.i)}</b></div><div class="out"><span>지출</span><b>${bankNat(x.b,x.o)}</b></div><div class="now"><span>현잔고</span><b class="${x.cur<0?'neg':''}">${bankNat(x.b,x.cur)}</b></div></div>
+      <div class="bkv"><div><span>전일잔고</span><b>${bankNat(x.b,x.prev)}</b></div><div class="in" data-bktx="입금" data-bkd="${d}" data-bkb="${esc(x.b.name)}" tabindex="0" role="button" title="입금 내역 보기"><span>입금 ›</span><b>${bankNat(x.b,x.i)}</b></div><div class="out" data-bktx="출금" data-bkd="${d}" data-bkb="${esc(x.b.name)}" tabindex="0" role="button" title="지출 내역 보기"><span>지출 ›</span><b>${bankNat(x.b,x.o)}</b></div><div class="now"><span>현잔고</span><b class="${x.cur<0?'neg':''}">${bankNat(x.b,x.cur)}</b></div></div>
       <div class="bkshare"><i style="width:${Math.max(0,Math.min(100,x.cur/tot*100)).toFixed(1)}%"></i></div><div class="bkfoot"><span>잔고 비중${x.b.cur==='USD'?` · 페소 환산 ${money(x.cur)} (1 US$ = ${FX()})`:''}</span><span>${pct(Math.max(0,x.cur)/tot)}</span></div></div>`).join('')}</div>
     <div class="card"><header class="fhead"><h2>거래 내역</h2><div class="fbar"><span class="monthbadge">${esc(d)}</span>
       <select class="fsel${BF?' on':''}" data-bf="1" aria-label="은행"><option value="">은행 전체</option>${B.map(b=>`<option${b.name===BF?' selected':''}>${esc(b.name)}</option>`).join('')}</select></div></header>
@@ -1792,9 +1816,9 @@ function bankPage(){
       <tfoot><tr><td colspan="6">합계 · ${rows.length}건</td><td class="n">${money(sumBy(rows.filter(r=>r.type==='입금'),M('amount')))}</td><td class="n">${money(sumBy(rows.filter(r=>r.type==='출금'),M('amount')))}</td><td></td></tr></tfoot></table></div>`
       :`<div class="empty">${esc(d)}에 ${BF?esc(BF)+' ':''}거래가 없습니다.</div>`}</div>
     <div class="card"><header><h2>최근 7일 잔고</h2></header><div class="tw"><table class="tight"><thead><tr><th>일자</th>${B.map((b,i)=>`<th class="n">${dot(i)}${esc(b.name)}</th>`).join('')}<th class="n">입금</th><th class="n">지출</th><th class="n">합계 잔고 (MXN)</th></tr></thead><tbody>
-      ${hist.slice().reverse().map(h=>`<tr${h.d===d?' class="hl"':''}><td>${esc(h.d)}</td>${h.bal.map((v,i)=>`<td class="n${v<0?' neg':''}">${bankNat(B[i],v)}</td>`).join('')}<td class="n">${money(sumBy(h.rs.filter(r=>r.type==='입금'),M('amount')))}</td><td class="n">${money(sumBy(h.rs.filter(r=>r.type==='출금'),M('amount')))}</td><td class="n"><b>${money(sumBy(h.bal,v=>v))}</b></td></tr>`).join('')}</tbody></table></div></div>
+      ${hist.slice().reverse().map(h=>`<tr${h.d===d?' class="hl"':''}><td>${esc(h.d)}</td>${h.bal.map((v,i)=>`<td class="n${v<0?' neg':''}">${bankNat(B[i],v)}</td>`).join('')}<td class="n" data-bktx="입금" data-bkd="${h.d}" title="입금 내역 보기">${money(sumBy(h.rs.filter(r=>r.type==='입금'),M('amount')))}</td><td class="n" data-bktx="출금" data-bkd="${h.d}" title="지출 내역 보기">${money(sumBy(h.rs.filter(r=>r.type==='출금'),M('amount')))}</td><td class="n"><b>${money(sumBy(h.bal,v=>v))}</b></td></tr>`).join('')}</tbody></table></div></div>
     <div class="card"><header><h2>은행 설정</h2><button class="btn" data-bankadd="1">＋ 은행 추가</button></header><div class="tw"><table class="tight"><thead><tr><th>은행명</th><th class="c">통화</th><th class="n">기초시재</th><th class="c">기준일</th><th class="n">전표</th><th class="c">관리</th></tr></thead><tbody>
-      ${B.map((b,i)=>{const n=DB.cash.filter(r=>bankOf(r)===b.name).length;return `<tr><td>${dot(i)}<input class="cell" data-bankname="${i}" value="${esc(b.name)}" aria-label="은행명" style="width:220px"></td><td class="c"><select class="cell" data-bankcur="${i}" aria-label="통화" style="width:90px"${n?' disabled':''}>${['MXN','USD'].map(c=>`<option${(b.cur||'MXN')===c?' selected':''}>${c}</option>`).join('')}</select></td><td class="n">${fmtCur(+b.open||0,b.cur||'MXN')}</td><td class="c">${b.since?esc(b.since):'<span class="dim">–</span>'}</td><td class="n">${n}건</td>
+      ${B.map((b,i)=>{const n=DB.cash.filter(r=>bankOf(r)===b.name).length;return `<tr><td>${dot(i)}<input class="cell" data-bankname="${i}" value="${esc(b.name)}" aria-label="은행명" style="width:220px"></td><td class="c"><select class="cell" data-bankcur="${i}" aria-label="통화" style="width:90px"${n?' disabled':''}>${['MXN','USD'].map(c=>`<option${(b.cur||'MXN')===c?' selected':''}>${c}</option>`).join('')}</select></td><td class="n">${fmtCur(+b.open||0,b.cur||'MXN')}</td><td class="c">${b.since?esc(b.since):'<span class="dim">–</span>'}</td><td class="n">${n?`<button class="bkcnt" data-bankgo="${esc(b.name)}" title="경리자료에서 이 은행 전표 보기">${n}건</button>`:'0건'}</td>
         <td class="c">${B.length>1&&!n?`<button class="act danger" data-bankdel="${i}">삭제</button>`:'<span class="dim">–</span>'}</td></tr>`}).join('')}</tbody></table></div></div>
   </div>`;
 }
@@ -2994,6 +3018,7 @@ function renderModal(){
         <p class="note" style="margin:0">확인하면 경리자료에 출금 전표 2건(퇴직급여, 미지급금 지급)이 생기고 상태가 "지급 완료"로 바뀝니다.</p></div>
       <footer><button type="button" class="btn" data-close="1">취소</button><button type="submit" class="btn primary">지급 확인</button></footer></form></div></div>`;return}
   if(modal&&modal.type==='arwk'){host.innerHTML=arWeekModal(modal.k);return}
+  if(modal&&modal.type==='banktx'){host.innerHTML=bankTxModal(modal);return}
   if(modal&&modal.type==='delsel'){
     const id=modal.mod,m=MODS[id],em=MODS[m.editAs||id]||m,p=curPeriod(),rs=modal.ids.map(x=>DB[em.data].find(r=>r.id===x)).filter(Boolean);
     const show=m.cols.filter(c=>!c.calc&&!c.rowCur&&!c.noTable&&!isNum(c)).slice(0,3), amt=m.cols.find(c=>isMoney(c)&&c.sum&&!c.calc)||m.cols.find(c=>isMoney(c)&&!c.calc);if(amt)show.push(amt);
@@ -3597,6 +3622,7 @@ function renderNav(){
     <button class="ghead" data-group="${g.id}" data-lgroup="${g.id}" aria-expanded="${open}"${edit.on?' draggable="true"':''}><span class="tog" aria-hidden="true">${open?'−':'+'}</span>${esc(g.name)}<span class="cnt">${g.items.filter(i=>!LAY.hide['nav|'+i]).length}</span></button>
     <ul class="items"${open?'':' hidden'}>${g.items.map(i=>`<li class="${LAY.hide['nav|'+i]?'lay-hidden':''}"><button data-mod="${i}" data-lnav="${i}" class="${UI.mod===i?'on':''}"${edit.on?' draggable="true"':''}>${esc(MODS[i].name)}</button></li>`).join('')}</ul></div>`}).join('');
   $('#sidefoot').innerHTML=`<label class="fx" for="fx">환율 1 US$ =<input id="fx" type="number" step="0.01" min="0" value="${FX()}">MXN</label>
+    <label class="fx" for="krw">환율 1 MXN =<input id="krw" type="number" step="0.01" min="0" value="${KRW()}">원</label>
     <button data-layedit="1">✎ 화면 편집 (위치·글씨)</button>
     <div class="row"><button data-allgroups="open">모두 펼치기</button><button data-allgroups="close">모두 접기</button></div>
     ${resetAsk?`<span>샘플 데이터로 되돌리면 입력한 내용이 모두 지워집니다.</span><div class="row"><button class="danger" data-reset="yes">초기화</button><button data-reset="no">취소</button></div>`:`<button data-reset="ask">샘플 데이터로 초기화</button>`}
@@ -3671,10 +3697,12 @@ document.addEventListener('click',e=>{
   if(coverOn()&&!e.target.closest('.eng-cmd')){const rb=$('#mmRes');if(rb)rb.hidden=true}
   if(e.target.closest('[data-cover]')){showCover();return}
   const t=e.target.closest('button');
-  if(!t){const kg=e.target.closest('#main .kpi');if(kg){const to=kg.dataset.kgo||(kg.closest('[data-sec]')||{dataset:{}}).dataset.sec;if(to&&MODS[to]){go(to);return}}
+  if(!t){const bx=e.target.closest('[data-bktx]');if(bx){modal={type:'banktx',ty:bx.dataset.bktx,d:bx.dataset.bkd,bank:bx.dataset.bkb||''};renderModal();return}
+    const kg=e.target.closest('#main .kpi');if(kg){const to=kg.dataset.kgo||(kg.closest('[data-sec]')||{dataset:{}}).dataset.sec;if(to&&MODS[to]){go(to);return}}
     const pr=e.target.closest('tr[data-pdetail]');if(pr){modal={type:'emp',id:pr.dataset.pdetail};renderModal()}return}
   const d=t.dataset;
   if(d.arwkgo){closeModal();go('ar');return}
+  if(d.bankgo){const rs=DB.cash.filter(r=>bankOf(r)===d.bankgo);UI.flt=UI.flt||{};UI.flt.cash={bank:d.bankgo};rs.forEach(r=>{if(r.date<UI.rs)UI.rs=r.date;if(r.date>UI.re)UI.re=r.date});saveUI();go('cash');return}
   if(d.cashgo){const r=DB.cash.find(x=>x.id===d.cashgo);if(r){UI.flt=UI.flt||{};UI.flt.cash={};if(r.date<UI.rs)UI.rs=r.date;if(r.date>UI.re)UI.re=r.date;saveUI();flashId=r.id;go('cash');setTimeout(()=>{const tr=document.querySelector(`tr[data-row="${r.id}"]`);if(tr)tr.scrollIntoView({block:'center'})},50)}return}
   if(d.close){closeModal();return}
   if(d.confirmdel){delRow(modal.mod,modal.id);save();closeModal();renderMain();toast('삭제했습니다');return}
@@ -3732,6 +3760,7 @@ document.addEventListener('click',e=>{
 $('#scrim').addEventListener('click',closeSide);
 document.addEventListener('dblclick',e=>{const w=e.target.closest&&e.target.closest('[data-arwk]');if(w){e.preventDefault();modal={type:'arwk',k:w.dataset.arwk};renderModal()}});
 document.addEventListener('keydown',e=>{if(e.key==='Enter'){const w=e.target.closest&&e.target.closest('[data-arwk]');if(w){modal={type:'arwk',k:w.dataset.arwk};renderModal()}}});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){const w=e.target.closest&&e.target.closest('[data-bktx]');if(w&&!modal){e.preventDefault();modal={type:'banktx',ty:w.dataset.bktx,d:w.dataset.bkd,bank:w.dataset.bkb||''};renderModal()}}});
 document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches&&e.target.matches('.kpi[data-kgo]')){e.preventDefault();go(e.target.dataset.kgo);return}if(e.key==='Escape'){if(modal)closeModal();else closeSide()}});
 
 let pending=null;
@@ -3794,6 +3823,7 @@ document.addEventListener('change',e=>{
   if(t.dataset&&t.dataset.selall){const id=t.dataset.selall,S=selOf(id),tb=t.closest('table');tb.querySelectorAll('[data-selrow]').forEach(x=>{x.checked=t.checked;if(t.checked)S.add(x.value);else S.delete(x.value)});syncSel();return}
   if(t.dataset&&t.dataset.range){if(validD(t.value)){if(t.dataset.range==='s')UI.rs=t.value;else UI.re=t.value;if(UI.rs>UI.re)[UI.rs,UI.re]=[UI.re,UI.rs];saveUI();renderMain()}return}
   if(t.id==='rangeStart'||t.id==='rangeEnd'){if(validD(t.value)){if(t.id==='rangeStart')UI.rs=t.value;else UI.re=t.value;if(UI.rs>UI.re)[UI.rs,UI.re]=[UI.re,UI.rs];saveUI();renderMain()}return}
+  if(t.id==='krw'){DB.settings.krw=parseFloat(t.value)||75;save();renderMain();return}
   if(t.id==='fx'){DB.settings.fx=parseFloat(t.value)||18.5;syncOpenCash();save();renderMain();return}
   if(t.dataset&&t.dataset.cnt){const [k,it,u]=t.dataset.cnt.split('|');setCount(k,it,u,t.value);return}
   if(t.dataset&&t.dataset.fxh){const h=(DB.fxHist||[]).find(x=>x.date===t.dataset.fxh);if(h&&parseFloat(t.value)>0){h.rate=parseFloat(t.value);save();later()}return}
