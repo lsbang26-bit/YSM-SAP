@@ -3608,7 +3608,10 @@ document.addEventListener('click',e=>{
   if(d.confirmdelsel){const id=modal.mod,em=MODS[id].editAs||id,n=modal.ids.length;modal.ids.forEach(x=>{delRow(em,x);selOf(id).delete(x)});save();closeModal();renderMain();toast(`${n}건을 삭제했습니다`);return}
   if(d.import){modal={type:'import',mod:d.import};renderModal();return}
   if(d.tpl){downloadTpl(d.tpl);return}
-  if(d.doimport){if(!imp||!imp.rows||!imp.rows.length)return;const m=MODS[imp.mod],n=imp.rows.length;imp.rows.forEach(r=>delete r.autoAcc);DB[m.data].unshift(...imp.rows);save();imp=null;closeModal();renderMain();toast(`${n}건을 등록했습니다`);return}
+  if(d.doimport){if(!imp||!imp.rows||!imp.rows.length)return;const m=MODS[imp.mod],n=imp.rows.length;imp.rows.forEach(r=>delete r.autoAcc);DB[m.data].unshift(...imp.rows);
+    // rows dated outside the shown period: widen the period so the new rows appear in 상세 내역
+    let wid='';const um=MODS[UI.mod];if(um&&!um.monthNav&&!um.toolbar&&m.dated){const ds_=imp.rows.map(r=>r.date).filter(validD).sort();if(ds_.length&&(ds_[0]<UI.rs||ds_[ds_.length-1]>UI.re)){UI.rs=ds_[0]<UI.rs?ds_[0]:UI.rs;UI.re=ds_[ds_.length-1]>UI.re?ds_[ds_.length-1]:UI.re;saveUI();wid=` · 기간을 ${UI.rs} ~ ${UI.re}로 넓혔습니다`}}
+    save();imp=null;closeModal();renderMain();toast(`${n}건을 등록했습니다${wid}`);return}
   if(d.cons){const s=Array.isArray(UI.cons)?UI.cons:(DB.entities||[]).map(e=>e.id),i=s.indexOf(d.cons);if(i>=0)s.splice(i,1);else s.push(d.cons);UI.cons=s;saveUI();renderMain();return}
   if(d.editrow){modal={type:'edit',mod:d.m,id:d.editrow};renderModal();return}
   if(d.raya){modal={type:'raya'};renderModal();return}
