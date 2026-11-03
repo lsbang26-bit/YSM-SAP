@@ -1355,7 +1355,7 @@ const MODS={
     extra:rows=>groupSummary('분류별 매입',rows,'cat',[['매입액',M('amount'),money],['잔액',apBal,money]],r=>r.account),
     blank:p=>({date:p.d,vendor:'',cat:'제조비용',account:'원재료비',item:'',cur:'MXN',sub:0,amount:0,iva:'16%',factura:'발행',uuid:'',paid:0,due:addDs(p.d,30)})},
   ar:{name:'외상매출',desc:'고객사 매출 채권과 수금 현황',data:'ar',dated:true,tight:1,
-    cols:[C('date','발생일','date'),C('customer','고객사','text',{sug:'customers'}),C('item','품목','text',{wide:1}),CUR,C('fx','환율 (US$ 건)','num',{noTable:1,opt:1}),SUB({sum:1}),IVAF,VATR({sum:1}),TOT({sum:1}),FACTC_AR,UUIDC,C('received','수금액','money',{sum:1}),C('due','수금기일','date'),
+    cols:[C('date','발생일','date'),C('customer','고객사','text',{sug:'customers'}),C('folio','Factura No.','text',{opt:1}),C('pn','품번','text',{opt:1}),C('item','품명','text',{wide:1}),C('qty','수량','num',{opt:1,noTable:1}),C('price','단가','num',{opt:1,noTable:1}),C('disc','할인','num',{opt:1,noTable:1}),CUR,C('fx','환율 (US$ 건)','num',{noTable:1,opt:1}),SUB({sum:1}),IVAF,VATR({sum:1}),TOT({sum:1}),FACTC_AR,UUIDC,C('received','수금액','money',{sum:1}),C('due','수금기일','date'),
       C('bal','잔액','money',{sum:1,calc:arBal}),C('st','상태','calc',{calc:r=>dueStatus(arBal(r),r.due),pill:1,act:{mod:'ar',label:'입금 완료',show:r=>arBal(r)>0.5}})],
     kpis:(rows,p)=>{const all=DB.ar.filter(r=>r.date<=p.end),od=all.filter(r=>dueStatus(arBal(r),r.due)==='연체');return[kv('기간 청구액',money(sumBy(rows,M('amount'))),rows.length+'건'),kv('기간분 미수',money(sumBy(rows,arBal))),
       kv('전체 미수 잔액',money(sumBy(all,arBal)),p.end+' 기준','warn'),kv('연체',od.length+'건',plain(sumBy(od,arBal)),od.length?'bad':'')]},
@@ -2761,6 +2761,7 @@ function parseImport(file,id){
     const wb=XLSX.read(new Uint8Array(rd.result),{type:'array'}), ws=wb.Sheets[wb.SheetNames.includes('등록')?'등록':wb.SheetNames[0]];
     const aoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true});
     const head=(aoa[0]||[]).map(normH), idx={}, totI=head.indexOf(normH('합계')), seen=new Set();
+    if(id==='ar'&&AR_XL.filter(h=>head.includes(normH(h))).length>=6){imp=Object.assign({mod:id,file:file.name},arFromSheet(aoa));renderImp();return}
     cols.forEach(c=>{const i=head.findIndex(h=>h&&(h===normH(c.l)||h===c.k.toLowerCase()));if(i>=0)idx[c.k]=i});
     const missing=cols.filter(c=>idx[c.k]==null&&!(c.k==='sub'&&totI>=0)&&!(id==='ap'&&c.k==='account')&&c.k!=='due'&&!c.opt).map(c=>c.l), base=m.blank(curPeriod()), rows=[], errs=[];
     aoa.slice(1).forEach((line,n)=>{
@@ -2790,11 +2791,38 @@ function impArap(id,r,got,tot,bad,seen){
   if(u){if(seen.has(u)||DB[id].concat(DB.cash).some(x=>String(x.uuid||'').toLowerCase()===u))bad.push('CFDI UUID (이미 등록)');seen.add(u)}
   if(!(+r.sub))bad.push('금액 또는 합계');
 }
+// 외상매출 엑셀 (회사 양식): 고객사 · 날짜 · Factura · 통화 · 품번 · 품명 · 수량 · 단가 · 합계 · 할인 · Iva · 총합 · 결제텀 — 한 줄이 한 건
+const AR_XL=['고객사','날짜','Factura','통화','품번','품명','수량','단가','합계','할인','Iva','총합','결제텀'];
+function arFromSheet(aoa){
+  const head=(aoa[0]||[]).map(normH), at=h=>head.indexOf(normH(h)), I={};AR_XL.forEach(h=>I[h]=at(h));
+  const missing=AR_XL.filter(h=>I[h]<0), num=v=>typeof v==='number'?v:parseFloat(String(v??'').replace(/[^0-9.\-]/g,'')), rows=[], errs=[], seen=new Set();
+  aoa.slice(1).forEach((line,n)=>{
+    if(!line.some(v=>v!==''&&v!=null))return;
+    const g=h=>I[h]>=0?line[I[h]]:'', bad=[], r=Object.assign({id:uid()},MODS.ar.blank(curPeriod()));
+    const d=convCell({t:'date'},g('날짜'));if(d.err||g('날짜')==='')bad.push('날짜');else r.date=d.v;
+    r.customer=String(g('고객사')).trim();if(!r.customer)bad.push('고객사');
+    r.folio=String(g('Factura')).trim();r.pn=String(g('품번')).trim();r.item=String(g('품명')).trim()||r.pn;
+    const c=String(g('통화')).trim();r.cur=!c||/mx|peso|페소/i.test(c)?'MXN':/us|달러/i.test(c)?'USD':(bad.push('통화'),'MXN');
+    const q=num(g('수량')),pr=num(g('단가')),sum=num(g('합계')),dc=num(g('할인')),iva=num(g('Iva')),tot=num(g('총합')),tm=num(g('결제텀'));
+    if(isFinite(q))r.qty=q;if(isFinite(pr))r.price=pr;r.disc=isFinite(dc)?dc:0;
+    const gross=isFinite(sum)?sum:isFinite(q)&&isFinite(pr)?r2(q*pr):NaN;
+    r.sub=isFinite(gross)?r2(gross-r.disc):isFinite(tot)&&isFinite(iva)?r2(tot-iva):NaN;
+    if(!isFinite(r.sub)||r.sub<=0)bad.push('합계');
+    else{r.ivaAmt=isFinite(iva)?r2(iva):isFinite(tot)?r2(tot-r.sub):r2(r.sub*.16);const rt=r.ivaAmt/r.sub;r.iva=r.ivaAmt<=0.004?'0%':rt<0.11?'8%':'16%'}
+    r.factura=r.folio?'발행':'미발행';r.received=0;r.src='엑셀';
+    if(r.item&&!/[가-힣]/.test(r.item)){const ko=esKo(r.item);if(ko!==r.item){r.itemEs=r.item;r.item=ko}}
+    if(validD(r.date))r.due=addDs(r.date,isFinite(tm)&&tm>0?tm:partyTerms('ar',r));
+    const key=[r.customer,r.folio,r.pn].join('|').toLowerCase();
+    if(r.folio&&(seen.has(key)||DB.ar.some(x=>[x.customer,x.folio,x.pn].join('|').toLowerCase()===key)))bad.push('이미 등록된 Factura·품번');seen.add(key);
+    if(bad.length)errs.push({line:n+2,cols:bad});else{fixRow(MODS.ar,r);if(isFinite(tot)&&Math.abs(tot-r.amount)>0.05)r.totNote=tot;rows.push(r)}
+  });
+  return {rows,errs,missing};
+}
 function renderImp(){
   const box=$('#impPreview'), btn=$('[data-doimport]');if(!box)return;
   if(!imp){box.innerHTML='';return}
   if(imp.fatal){box.innerHTML=`<p class="err">${esc(imp.fatal)}</p>`;btn.disabled=true;return}
-  const m=MODS[imp.mod], p=curPeriod(), cols=m.cols.filter(c=>!c.calc&&!c.rowCur&&!c.noTable).slice(0,7);
+  const m=MODS[imp.mod], p=curPeriod(), cols=imp.mod==='ar'?m.cols.filter(c=>['date','customer','folio','pn','item','sub','amount','due'].includes(c.k)):m.cols.filter(c=>!c.calc&&!c.rowCur&&!c.noTable).slice(0,7);
   box.innerHTML=`<p style="margin:0"><b>${esc(imp.file)}</b> · <span class="ok">등록 가능 ${imp.rows.length}건</span>${imp.errs.length?` · <span class="err">오류 ${imp.errs.length}건 (등록하지 않음)</span>`:''}</p>
     ${imp.missing.length?`<p class="note">파일에 없는 제목: ${esc(imp.missing.join(', '))}. 이 항목은 기본값으로 채웁니다.</p>`:''}
     ${(()=>{const a=imp.rows.filter(r=>r.autoAcc).length,k=imp.rows.filter(r=>r.itemEs).length;return a||k?`<p class="note">${[k?`스페인어 품목 ${k}건은 한국어로 바꿨습니다 (원문 보관)`:'',a?`계정과목이 빈 ${a}건은 품목으로 자동 분류했습니다`:''].filter(Boolean).join(' · ')}.</p>`:''})()}
@@ -2809,13 +2837,30 @@ function importModal(id){
   return `<div class="modal-bg"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mt">
     <header><h3 id="mt">${esc(m.name)} 엑셀 일괄등록</h3><button type="button" class="x" data-close="1" aria-label="닫기">×</button></header>
     <div class="mbody" style="display:grid;gap:14px;grid-template-columns:minmax(0,1fr)">
-      <p class="note">양식을 내려받아 "등록" 시트에 한 줄에 한 건씩 적은 뒤 올려 주세요. 작성 방법과 예시는 양식 안의 다른 시트에 있습니다.${id==='ap'||id==='ar'?' 금액 대신 합계(부가세 포함)만 적어도 되고, 기일을 비우면 거래처 결제조건으로 채웁니다.':''}${id==='ap'?' 계정과목을 비우면 품목으로 자동 분류합니다.':''}</p>
-      <div class="colchips">${cols.map(c=>`<span>${esc(c.l)}${hint(c)?`<small>${esc(hint(c))}</small>`:''}</span>${c.k==='sub'&&(id==='ap'||id==='ar')?'<span>합계<small>부가세 포함 · 금액 대신</small></span>':''}`).join('')}</div>
+      <p class="note">양식을 내려받아 "등록" 시트에 한 줄에 한 건씩 적은 뒤 올려 주세요. 작성 방법과 예시는 양식 안의 다른 시트에 있습니다.${id==='ap'?' 금액 대신 합계(부가세 포함)만 적어도 되고, 기일을 비우면 거래처 결제조건으로 채웁니다.':''}${id==='ap'?' 계정과목을 비우면 품목으로 자동 분류합니다.':''}${id==='ar'?' 회사 외상매출 양식(고객사 · 날짜 · Factura · … · 결제텀)을 그대로 올리면 됩니다. 한 줄(품번)이 한 건으로 등록됩니다.':''}</p>
+      <div class="colchips">${id==='ar'?AR_XL.map(h=>`<span>${esc(h)}</span>`).join(''):cols.map(c=>`<span>${esc(c.l)}${hint(c)?`<small>${esc(hint(c))}</small>`:''}</span>${c.k==='sub'&&(id==='ap'||id==='ar')?'<span>합계<small>부가세 포함 · 금액 대신</small></span>':''}`).join('')}</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><button type="button" class="btn primary" data-tpl="${id}">⇩ 양식 내려받기 (.xlsx)</button></div>
       <label class="filebox" for="impFile">파일 선택 또는 여기로 끌어다 놓기 (.xlsx, .xls, .csv)<input type="file" id="impFile" accept=".xlsx,.xls,.csv"></label>
       <div id="impPreview"></div>
     </div>
     <footer><button type="button" class="btn" data-close="1">취소</button><button type="button" class="btn primary" data-doimport="1" disabled>등록</button></footer></div></div>`;
+}
+function arTpl(){
+  if(!window.XLSX){toast('엑셀 기능을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.');return}
+  try{
+    const W=[34,12,10,8,14,30,10,10,12,10,10,12,8], wb=XLSX.utils.book_new();
+    const sheet=(aoa,w)=>{const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=w.map(x=>({wch:x}));return ws};
+    XLSX.utils.book_append_sheet(wb,sheet([AR_XL],W),'등록');
+    XLSX.utils.book_append_sheet(wb,sheet([AR_XL,['HYUNDAI MOBIS MEXICO','2026-08-03',6734,'USD','C256950010','RETAINER RING ASSY',8750,0.563,4926.25,0,788.2,5714.45,45],
+      ['HYUNDAI MOBIS MEXICO','2026-08-03',6734,'USD','R184592010','HOUSING ASSY',7840,2.825,22148,0,3543.68,25691.68,45]],W),'작성 예시');
+    const how=[['항목','필수','작성 방법'],['고객사','필수','Factura에 적힌 이름 그대로 (번역하지 않음)'],['날짜','필수','발행일. YYYY-MM-DD 또는 엑셀 날짜'],['Factura','선택','Factura 번호 (folio)'],
+      ['통화','선택','MXN 또는 USD. 비우면 MXN'],['품번','선택',''],['품명','필수','스페인어면 한국어로 바꿔 저장 (원문 보관)'],['수량','선택',''],['단가','선택',''],
+      ['합계','필수','수량 × 단가 (부가세 제외). 비우면 수량 × 단가로 계산'],['할인','선택','합계에서 뺄 금액. 없으면 0'],['Iva','선택','부가세 금액. 비우면 총합 − (합계 − 할인), 둘 다 없으면 16%'],
+      ['총합','선택','합계 − 할인 + Iva'],['결제텀','선택','결제 조건(일). 수금기일 = 날짜 + 결제텀. 비우면 고객사 결제조건(기본 30일)'],[],
+      ['• "등록" 시트 첫 행(제목)은 그대로 두고, 둘째 행부터 한 줄에 품번 하나씩 적습니다.'],['• 같은 고객사·Factura·품번이 이미 있으면 건너뜁니다.'],['• 수금은 화면의 "입금 완료"로 처리하세요. 잔액, 상태는 자동 계산됩니다.']];
+    XLSX.utils.book_append_sheet(wb,sheet(how,[12,8,70]),'작성 방법');
+    XLSX.writeFile(wb,'외상매출_일괄등록_양식.xlsx');
+  }catch(e){toast('이 화면에서는 파일을 내려받을 수 없습니다. 양식의 제목으로 엑셀을 만들어 주세요.')}
 }
 // 일괄등록 양식: 등록(빈 시트, 이 시트를 읽음) · 작성 예시 · 작성 방법 · 코드표
 const TPL_EX={
@@ -2830,6 +2875,7 @@ const TPL_NOTE={date:'YYYY-MM-DD (예: 2026-11-03)',vendor:'Factura에 적힌 �
   iva:'16% / 8% / 0% / 면세',factura:'코드표 참고',uuid:'CFDI UUID (선택). 이미 등록된 UUID는 건너뜀',paid:'이미 지급한 금액 (없으면 0)',received:'이미 받은 금액 (없으면 0)',
   due:'YYYY-MM-DD. 비우면 발생일 + 거래처 결제조건(기본 30일)'};
 function downloadTpl(id){
+  if(id==='ar')return arTpl();
   const m=MODS[id], b=m.blank(curPeriod()), arap=id==='ap'||id==='ar';
   let cols=m.cols.filter(c=>!c.calc);
   if(arap){const i=cols.findIndex(c=>c.k==='sub');cols=[...cols.slice(0,i+1),{k:'total',l:'합계',t:'money'},...cols.slice(i+1)]}
