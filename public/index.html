@@ -408,7 +408,7 @@ table.tight .cell{height:30px}
 .bkv b{font-size:15px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bkv .in b{color:var(--good)} .bkv .out b{color:var(--bad)} .bkv .now b{font-size:17px}
 [data-bktx]{cursor:pointer} .stklink{cursor:pointer;color:var(--accent);text-decoration:underline dotted;text-underline-offset:3px} .bkv [data-bktx]{border-radius:8px;margin:-4px;padding:4px;transition:background .15s} .bkv [data-bktx]:hover,td[data-bktx]:hover{background:var(--surface-2)} td[data-bktx]{text-decoration:underline dotted;text-underline-offset:3px}
-.kpi.ccy .v{font-size:17px} .kpi.ccy .cx{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:14px;color:var(--fg-2);margin-top:2px} .kpi.ccy .cx i{font-style:normal;color:var(--muted);font-size:11px} .kpi.ccy .cx b{font-weight:600;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kpi.ccy .v{font-size:17px} .kpi.ccy .cx{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:14px;color:var(--fg-2);margin-top:2px} .kpi.ccy .cx i{font-style:normal;color:var(--muted);font-size:11px} .kpi.ccy .cx .t{border-top:1px solid var(--line);padding-top:3px;margin-top:2px;color:var(--fg);font-weight:700} .kpi.ccy .cx b{font-weight:600;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .kpi[data-bktx]:hover{border-color:var(--accent)} .bkcnt{border:0;background:none;color:var(--accent);font:inherit;cursor:pointer;text-decoration:underline;padding:0}
 .bkshare{height:6px;margin:8px 16px 0;border-radius:999px;background:var(--surface-2);overflow:hidden}
 .bkshare i{display:block;height:100%;background:var(--h);border-radius:inherit}
@@ -1839,12 +1839,14 @@ function bankKpis(d){
   return [kv('전일잔고',money(t('prev')),addDs(d,-1)+' 마감'),kv('입금',money(t('i')),n('입금')+'건','good'),kv('지출',money(t('o')),n('출금')+'건','bad'),kv('현잔고',money(t('cur')),d+' 기준',t('cur')<0?'bad':'')];
 }
 function bankKpiHTML(d){
-  const st=bankStat(d), t=k=>sumBy(st,x=>x[k]), n=ty=>st.reduce((a,x)=>a+x.rs.filter(r=>r.type===ty).length,0);
-  const won=v=>plain(v);
-  const box=(l,v,s,tone,ty)=>`<div class="kpi ccy ${tone||''}"${ty?` data-bktx="${ty}" data-bkd="${d}" tabindex="0" role="button" title="${l} 내역 보기"`:''}><span class="l">${esc(l)}</span>
-    <div class="cx"><i>Peso (MXN)</i><b>${money(v)}</b><i>US$</i><b>${plain(v/FX())}</b><i>원화 (KRW)</i><b>${won(v*KRW())}</b></div><span class="s">${esc(s)}</span></div>`;
-  return `<section class="kpis">${box('전일잔고',t('prev'),addDs(d,-1)+' 마감')}${box('입금',t('i'),n('입금')+'건 · 눌러서 내역','good','입금')}${box('지출',t('o'),n('출금')+'건 · 눌러서 내역','bad','출금')}${box('현잔고',t('cur'),d+' 기준',t('cur')<0?'bad':'')}</section>
-    <p class="hint" style="margin:-4px 2px 0;font-size:11px;color:var(--faint)">환산: 1 US$ = ${FX()} MXN · 1 MXN = ${KRW()}원 (왼쪽 아래에서 환율 변경)</p>`;
+  // Peso = 페소 계좌 합계, US$ = 달러 계좌 합계(달러 그대로), 합계 = 전부 페소로 환산, 원화 = 합계를 원화로 환산
+  const st=bankStat(d), n=ty=>st.reduce((a,x)=>a+x.rs.filter(r=>r.type===ty).length,0);
+  const isU=x=>(x.b.cur||'MXN')==='USD', part=(k,u)=>sumBy(st.filter(x=>isU(x)===u),x=>x[k]/(u?rate('USD'):1)), tot=k=>sumBy(st,x=>x[k]);
+  const box=(l,k,s,tone,ty)=>{const v=tot(k);return `<div class="kpi ccy ${tone||''}"${ty?` data-bktx="${ty}" data-bkd="${d}" tabindex="0" role="button" title="${l} 내역 보기"`:''}><span class="l">${esc(l)}</span>
+    <div class="cx"><i>Peso 계좌</i><b>${plain(part(k,false))}</b><i>US$ 계좌</i><b>${nf2.format(part(k,true))}</b><i class="t">합계 (MXN 환산)</i><b class="t">${money(v)}</b><i>원화 환산</i><b>₩${plain(v*KRW())}</b></div><span class="s">${esc(s)}</span></div>`};
+  const cv=tot('cur');
+  return `<section class="kpis">${box('전일잔고','prev',addDs(d,-1)+' 마감')}${box('입금','i',n('입금')+'건 · 눌러서 내역','good','입금')}${box('지출','o',n('출금')+'건 · 눌러서 내역','bad','출금')}${box('현잔고','cur',d+' 기준',cv<0?'bad':'')}</section>
+    <p class="hint" style="margin:-4px 2px 0;font-size:11px;color:var(--faint)">합계 = Peso 계좌 + US$ 계좌 × ${FX()} · 원화 = 합계 × ${KRW()} (왼쪽 아래에서 환율 변경)</p>`;
 }
 // 입금/지출 팝업: d(일자) · ty(입금/출금) · bank(선택, 없으면 전체 은행)
 function bankTxModal(x){
