@@ -338,6 +338,17 @@ body.cover-on{overflow:hidden}
 .eng-cmd .mm-sbox{height:40px;border-color:rgba(255,210,63,.5);box-shadow:0 0 22px rgba(63,168,255,.25);background:rgba(6,26,72,.88)}
 .eng-cmd .mm-sbox input{font-size:13px}
 .eng-cmd .mm-res{position:absolute;left:0;right:0;bottom:48px}
+.eng-cmd.eng-top{top:64px;bottom:auto;width:min(560px,calc(100vw - 32px));display:grid;gap:8px}
+.eng-cmd.eng-top .mm-res{top:48px;bottom:auto}
+.eng-cmd.eng-top .mm-sbox{height:44px}.eng-cmd.eng-top .mm-sbox input{font-size:14px}
+.mm-send{border:0;background:rgba(255,194,26,.18);color:#FFE07A;border-radius:8px;width:30px;height:28px;cursor:pointer;font:inherit;font-weight:700}
+.mm-chat{display:grid;gap:6px;max-height:28vh;overflow:auto;padding:8px;border:1px solid rgba(120,190,255,.3);border-radius:12px;background:rgba(6,26,72,.82);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.mm-chat[hidden]{display:none}
+.mm-chat .q,.mm-chat .a{max-width:86%;padding:7px 11px;border-radius:12px;font-size:12.5px;line-height:1.45;white-space:pre-wrap;word-break:break-word}
+.mm-chat .q{justify-self:end;background:rgba(255,194,26,.2);color:#FFF3C4;border-bottom-right-radius:4px}
+.mm-chat .a{justify-self:start;background:rgba(63,168,255,.16);color:#DCEBFF;border-bottom-left-radius:4px}
+.mm-chat .a b{color:#FFE07A;font-weight:600}
+.mm-chat .clr{justify-self:center;border:0;background:none;color:rgba(220,235,255,.6);font-size:11px;cursor:pointer;font-family:inherit}
 .mm-kb{display:grid;place-items:center;border:0;background:none;color:#7FA3D6;line-height:1;padding:2px 7px;border-radius:999px;cursor:pointer;font-family:inherit}
 .mm-kb.ok{color:#3EE6A4}
 .mm-ans .ai-say{margin:0;font-size:14px;line-height:1.65;color:#EAF3FF;word-break:keep-all}
@@ -369,6 +380,8 @@ body.cover-on{overflow:hidden}
   .mm-ans,.mm-ans.dock{position:relative;top:0;right:0;bottom:auto;width:auto;min-width:0;margin:0 16px 12px}
   .eng-m{display:block!important;width:250px!important;height:250px!important;border:0!important;background:none!important;box-shadow:none!important;padding:0;margin:0 auto 4px!important}
   .eng-cmd{bottom:78px}
+  .eng-cmd.eng-top{position:relative;top:auto;left:auto;transform:none;width:auto;margin:0 16px 12px;z-index:4}
+  .mm-chat{max-height:40vh}
   .mm-voice{background:rgba(6,26,72,.85);border-radius:14px;padding:4px 8px}
   .mm-hud{grid-template-columns:1fr auto;padding-bottom:12px}
   .mm-panel{position:relative;top:0;left:0;width:auto;margin:0 16px 12px;grid-template-columns:1fr 1fr}
@@ -3240,6 +3253,7 @@ function coverHTML(){
     <div class="mm-pill"><i></i>YSM SAP</div>
     <div class="mm-hr"><button class="mm-enter" data-cgo="${MODS[UI.mod]&&!MODS[UI.mod].hidden?UI.mod:'dash-all'}">업무 화면 →</button></div>
   </div>
+  <div id="engCmd" class="eng-cmd eng-top"><div class="mm-sbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m5 7 5 5-5 5M13 17h6"/></svg><input id="mmQ" type="text" placeholder="무엇이든 물어보세요 · 예) 이번 달 매출 얼마야?" autocomplete="off" aria-label="질문 입력"><button type="button" class="mm-send" data-mmsend="1" aria-label="보내기">↵</button></div><div id="mmRes" class="mm-res" hidden></div><div id="mmChat" class="mm-chat"${voice.chat&&voice.chat.length?'':' hidden'}>${chatHTML()}</div></div>
   <div id="mmAns" class="mm-ans" hidden></div>
   <div class="mm-panel">${info.map(([l,v,go])=>`<button data-cgo="${go}"><span>${l}</span><b>${v}</b></button>`).join('')}</div>
   <svg class="mm-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="업무 마인드맵">
@@ -3250,7 +3264,6 @@ function coverHTML(){
     <g class="eng" data-eng="1" tabindex="0" role="button" aria-label="AI 실행엔진"><foreignObject x="${cx-240}" y="${cy-240}" width="480" height="480"><canvas class="eng-cv"></canvas></foreignObject></g>
     ${nodes}</svg>
   <div class="mm-voice"><button id="mmMic" class="mm-wave${voice.on?' on':''}" aria-label="음성인식 켜기·끄기"><span class="wv">${Array.from({length:9},(_,i)=>`<i style="--i:${i}"></i>`).join('')}<b></b>${Array.from({length:9},(_,i)=>`<i style="--i:${8-i}"></i>`).join('')}</span><span id="mmVs" class="mm-vs"></span></button><div class="mm-lang">${Object.entries(LANGS).map(([k,v])=>`<button data-vlang="${k}" class="${voice.lang===k?'on':''}">${v.tag}</button>`).join('')}<button class="mm-kb${aiOn()?' ok':''}" data-aikey="1" aria-label="AI 키 연결" title="${aiOn()?'AI 연결됨 · 키 설정':'AI 키 연결'}"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3M15 8l2 2"/></svg></button><button class="mm-kb" data-kb="1" aria-label="명령 입력" title="명령 입력"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M9.5 10h.01M13 10h.01M16.5 10h.01M7 14h10"/></svg></button></div></div>
-  <div id="engCmd" class="eng-cmd" hidden><div id="mmRes" class="mm-res" hidden></div><div class="mm-sbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m5 7 5 5-5 5M13 17h6"/></svg><input id="mmQ" type="text" placeholder="AI 엔진에게 명령 · 예) 자료 띄어줘" autocomplete="off" aria-label="AI 엔진 명령"></div></div>
   <div class="mm-list"><button class="mm-core-m eng-m" data-eng="1" aria-label="AI 실행엔진"><canvas class="eng-cv"></canvas></button>
     ${G.map(g=>`<section class="mm-card" data-g="${g.id}"><button class="mm-gh" data-cgo="dash-${g.id}"><b>${esc(g.name)}</b>${g.kpi?`<span>${esc(g.kpi)}</span>`:''}</button>
       <div class="mm-chips">${g.items.map(i=>`<button data-cgo="${i}">${esc(MODS[i].name)}</button>`).join('')}</div></section>`).join('')}</div>`;
@@ -3333,8 +3346,13 @@ function engTap(){
   if(isPhone()||!voice.on){if(voice.denied&&!voice.on){voice.denied=false;voice.micOk=false;voice.err=''}voice.userOff=false;voice.tapT=Date.now();voiceToggle();return}
   wake()}
 function engCmd(show){const w=$('#engCmd'),q=$('#mmQ'),k=document.querySelector('#cover [data-kb]');if(!w)return;
-  if(show===undefined)show=w.hidden;w.hidden=!show;if(k)k.classList.toggle('on',show);
-  if(show){q.focus()}else{q.value='';const r=$('#mmRes');if(r)r.hidden=true}}
+  if(show===undefined)show=document.activeElement!==q;w.hidden=false;if(k)k.classList.toggle('on',show);
+  if(show){q.focus()}else{q.value='';const r=$('#mmRes');if(r)r.hidden=true;q.blur()}}
+// 대화 기록 (상단 검색창 아래): 질문과 답을 말풍선으로, 최근 20개
+function chatHTML(){const C=voice.chat||[];if(!C.length)return '';
+  return C.map(x=>`<div class="q">${esc(x.q)}</div><div class="a"><b>${esc(x.t)}</b>${x.a?'\n'+esc(x.a):''}</div>`).join('')+'<button class="clr" data-mmclr="1">대화 지우기</button>';}
+function chatPush(q,A){voice.chat=voice.chat||[];voice.chat.push({q,t:A.title||'',a:String(A.ai||A.say||'').trim()});if(voice.chat.length>20)voice.chat.shift();
+  const c=$('#mmChat');if(c){c.innerHTML=chatHTML();c.hidden=false;c.scrollTop=c.scrollHeight}}
 function ansClose(){const a=$('#mmAns');if(a){a.hidden=true;a.classList.remove('dock')}const c=$('#cover');if(c)c.classList.remove('dock-on')}
 
 /* ---------- mind-map search, "하이 제니" voice assistant and answer panel ---------- */
@@ -3407,7 +3425,7 @@ function runCmd(text,lang,noAI){
   const PIN=/자료|데이터|\bdata\b|\bdatos\b|informaci[oó]n|\breport|\breporte/i.test(menu?t.replace(menu.l,''):t);CMD_PIN=PIN;
   let A=null;
   if(menu&&!PIN&&has(/열어|열기|이동|들어가|띄워|켜|\bopen\b|\bgo to\b|\babr(e|ir)\b|\bir a\b/i)){openIt(menu);return}
-  let dept=DEPTS.find(d=>new RegExp(d+'\\s*(팀|부서|부|파트|쪽)').test(t))||DEPTS.find((d,i)=>[/\bproduction\b|\bproducci[oó]n\b/i,/\bquality\b|\bcalidad\b/i,/\blogistics?\b|\blog[ií]stica\b/i,/\bsales\b|\bventas\b/i,/\badmin(istration)?\b|\badministraci[oó]n\b/i][i].test(t)&&has(/how many|people|employees|workers|staff|headcount|cu[aá]nt[oa]s|empleados|personas|trabajadores|personal/i));
+  let dept=DEPTS.find(d=>new RegExp(d+'\\s*(팀|부서|부|파트|쪽)').test(t))||DEPTS.find(d=>({생산:/\bproduction\b|\bproducci[oó]n\b/i,품질:/\bquality\b|\bcalidad\b/i,물류:/\blogistics?\b|\blog[ií]stica\b/i,'구매/영업':/\bsales\b|\bventas\b|\bpurchas|\bcompras\b/i,관리:/\badmin(istration)?\b|\badministraci[oó]n\b/i}[d]||/(?!)/).test(t)&&has(/how many|people|employees|workers|staff|headcount|cu[aá]nt[oa]s|empleados|personas|trabajadores|personal/i));
   const HC=has(/인원|직원|사람|재직|몇\s*명|명\s*이|명인지|팀원|부서별|employee|headcount|staff|people|workers|how many (people|employees|workers|are)|empleados|personal|plantilla|trabajadores|personas|cu[aá]nt[oa]s (hay|son|trabajan)/i)||(dept&&has(/몇|how many|cu[aá]nt/i));
   if(!dept&&HC)dept=DEPTS.find(d=>new RegExp('(^|[^가-힣])'+d+'(?!별)').test(t));
   if(HC&&!has(/인건비|급여|월급|임금|비용|cost|salar|payroll|wage|sueldo|n[oó]mina|costo/i)){
@@ -3603,6 +3621,7 @@ const CMD_EX={ko:['이번 달 매출 보여줘','10월 영업이익','BBVA 잔�
 const GREET={ko:'안녕하세요. 주인님',en:'Hello, boss.',es:'Hola, jefe.'};
 function answer(A){
   const el=$('#mmAns');if(!el)return;if(voice.heard){A.heard=voice.heard;voice.heard=''}
+  {const q=A.heard||voice.lastQ;voice.lastQ='';if(q&&!A.greet)chatPush(q,A)}
   const pin=!!(A.pin||(CMD_PIN&&!A.greet));CMD_PIN=false;
   const barsH=B=>{const mx_=Math.max(1,...B.map(b=>Math.abs(b[1])));return `<div class="bars">${B.map(([l,v,f])=>`<div class="br"><span title="${esc(l)}">${esc(l)}</span><i><em style="width:${Math.max(2,Math.abs(v)/mx_*100).toFixed(1)}%"${v<0?' class="neg"':''}></em></i><b>${f||plain(v)}</b></div>`).join('')}</div>`};
   clearTimeout(voice.closeT);
@@ -3786,6 +3805,8 @@ document.addEventListener('click',e=>{
   if(e.target.closest('#cover [data-snd]')){CL=voice.lastL||CL;speak(voice.last);return}
   if(e.target.closest('#cover [data-ansx]')){ansClose();return}
   if(e.target.closest('#cover [data-kb]')){engCmd();return}
+  if(e.target.closest('#cover [data-mmsend]')){const q=$('#mmQ'),v=q&&q.value.trim();if(v){voice.lastQ=v;$('#mmRes').hidden=true;runCmd(v);q.value=''}return}
+  if(e.target.closest('#cover [data-mmclr]')){voice.chat=[];const c=$('#mmChat');if(c){c.innerHTML='';c.hidden=true}return}
   if(e.target.closest('#cover [data-aikey]')){aiKeyPanel();return}
   if(e.target.closest('#cover [data-aisave]')){const v=($('#aiKeyIn')||{}).value||'';aiSaveKey(v);if(AI.key)aiTest();else aiKeyPanel();return}
   if(e.target.closest('#cover [data-aidel]')){aiSaveKey('');aiKeyPanel();return}
@@ -4229,7 +4250,7 @@ const cv=$('#cover');
 cv.addEventListener('mouseover',e=>{const n=e.target.closest('[data-g]'),sv=cv.querySelector('.mm-svg');if(sv){if(n&&n.closest('.mm-svg'))sv.dataset.hl=n.dataset.g;else delete sv.dataset.hl}});
 cv.addEventListener('keydown',e=>{if(e.target.id==='aiKeyIn'&&e.key==='Enter'){e.preventDefault();aiSaveKey(e.target.value);if(AI.key)aiTest()}});
 cv.addEventListener('input',e=>{if(e.target.id==='mmQ')searchShow(e.target.value)});
-cv.addEventListener('keydown',e=>{if(e.target.id==='mmQ'){if(e.key==='Enter'){e.preventDefault();const v=e.target.value.trim();$('#mmRes').hidden=true;if(v){runCmd(v);e.target.value='';if(isPhone())engCmd(false)}}if(e.key==='Escape'){engCmd(false)}return}});
+cv.addEventListener('keydown',e=>{if(e.target.id==='mmQ'){if(e.key==='Enter'){e.preventDefault();const v=e.target.value.trim();$('#mmRes').hidden=true;if(v){voice.lastQ=v;runCmd(v);e.target.value=''}}if(e.key==='Escape'){engCmd(false)}return}});
 // typing anywhere on the cover opens the engine's command line; clicking elsewhere with it empty closes it
 document.addEventListener('keydown',e=>{if(!coverOn()||e.ctrlKey||e.metaKey||e.altKey)return;const tg=e.target;if(tg&&(tg.closest('input,textarea,select,[contenteditable]')))return;
   if(e.key==='Escape'){ansClose();engCmd(false);return}
