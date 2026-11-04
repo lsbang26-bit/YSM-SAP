@@ -1075,6 +1075,7 @@ const KEY='ysm-sap-data-v1', UKEY='ysm-sap-ui-v1';
 let DB=null;
 DB=LS.get(KEY);
 if(!DB||!DB.cash){DB=migrate(seed());LS.set(KEY,DB)}else{DB=migrate(DB);LS.set(KEY,DB)}
+syncFromAR(DB);LS.set(KEY,DB);
 let UI=Object.assign({cons:null,mod:'dash-all',mode:'week',cur:'MXN',open:{fin:true,tax:true,in:true,prod:true,out:true,sales:true,gen:true},fs:{unit:'month',year:THIS_YEAR,sel:[TODAY_D.getMonth()+1]}},LS.get(UKEY)||{});
 if(!UI.fs||!Array.isArray(UI.fs.sel)||!UI.fs.sel.length)UI.fs={unit:'month',year:THIS_YEAR,sel:[TODAY_D.getMonth()+1]};
 UI.q='';UI.cur='MXN';UI.fm=Object.assign({year:THIS_YEAR,sel:[TODAY_D.getMonth()+1]},UI.fm||{});if(!Array.isArray(UI.fm.sel)||!UI.fm.sel.length)UI.fm.sel=[TODAY_D.getMonth()+1];
@@ -1082,7 +1083,32 @@ UI.mq=Object.assign({},UI.mq||{});
 UI.pf=Object.assign({dept:'',st:'',shift:'',contract:'',ten:'',view:'card'},UI.pf||{});
 if(!validD(UI.rs)||!validD(UI.re)){[UI.rs,UI.re]=presetRange('month')}
 let savedAt=null, flashId=null, resetAsk=false;
-function save(){VCACHE.clear();if(BANKS().length)DB.cash.forEach(r=>{if(!r.bank)r.bank=bankFor(r.cur)});if(LS.set(KEY,DB))savedAt=new Date();const el=$('#saved');if(el)el.textContent=savedText()}
+// 외상매출 → 고객사 등록·출고현황 자동 반영 (엑셀로 올린 품번/수량 있는 줄만; 샘플 외상매출은 제외)
+// 출고 줄은 arId로 연결: 외상매출을 고치면 같이 고쳐지고, 지우면 같이 지워짐
+function syncFromAR(D){
+  if(!D||!D.ar||!D.outbound||!D.customers)return {c:0,o:0,u:0,d:0};
+  const res={c:0,o:0,u:0,d:0}, nk=x=>String(x||'').trim().toLowerCase();
+  const src=D.ar.filter(r=>r.customer&&(r.pn||+r.qty>0||r.src==='엑셀'));
+  // 고객사
+  const have=new Set(D.customers.map(c=>nk(c.name)));
+  let no=D.customers.reduce((a,c)=>Math.max(a,+(String(c.code||'').match(/(\d+)$/)||[0,0])[1]),0);
+  const byC={};src.forEach(r=>(byC[r.customer.trim()]=byC[r.customer.trim()]||[]).push(r));
+  Object.entries(byC).forEach(([name,rs])=>{if(have.has(nk(name)))return;have.add(nk(name));
+    const cnt={};rs.forEach(r=>cnt[r.cur||'MXN']=(cnt[r.cur||'MXN']||0)+1);const cur=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a])[0];
+    const tms=rs.filter(r=>validD(r.date)&&validD(r.due)).map(r=>Math.round((pd(r.due)-pd(r.date))/864e5)).filter(x=>x>0);
+    const terms=tms.length?tms.sort((a,b)=>tms.filter(x=>x===b).length-tms.filter(x=>x===a).length)[0]:30;
+    D.customers.push({id:uid(),code:'C-'+pad3(++no),name,rfc:'',contact:'',phone:'',terms,cur,status:'거래중',src:'외상매출'});res.c++});
+  // 출고현황
+  const ids=new Set(src.map(r=>r.id)), cur=new Map(D.outbound.filter(o=>o.arId).map(o=>[o.arId,o]));
+  const n0=D.outbound.length;D.outbound=D.outbound.filter(o=>!o.arId||ids.has(o.arId));res.d=n0-D.outbound.length;
+  src.forEach(r=>{const q=+r.qty>0?+r.qty:1, sub=+r.sub>0?+r.sub:(+r.qty||0)*(+r.price||0)-(+r.disc||0);
+    const v={date:r.date,customer:r.customer.trim(),product:[r.pn,r.item].map(x=>String(x||'').trim()).filter(Boolean).join(' ')||'(품목 미지정)',qty:q,cur:r.cur||'MXN',fx:r.fx,price:Math.round(sub/q*10000)/10000,status:'출고완료',note:r.folio?'Factura '+r.folio:''};
+    const o=cur.get(r.id);
+    if(!o){D.outbound.push(Object.assign({id:uid(),arId:r.id},v));res.o++}
+    else if(Object.keys(v).some(k=>String(o[k]??'')!==String(v[k]??''))){Object.assign(o,v);res.u++}});
+  return res;
+}
+function save(){VCACHE.clear();syncFromAR(DB);if(BANKS().length)DB.cash.forEach(r=>{if(!r.bank)r.bank=bankFor(r.cur)});if(LS.set(KEY,DB))savedAt=new Date();const el=$('#saved');if(el)el.textContent=savedText()}
 function saveUI(){LS.set(UKEY,{vlang:UI.vlang,lastBank:UI.lastBank,cons:UI.cons,mod:UI.mod,dtab:UI.dtab,flt:UI.flt,rs:UI.rs,re:UI.re,pf:UI.pf,fm:UI.fm,mq:UI.mq,open:UI.open,fs:UI.fs})}
 const savedText=()=>savedAt?`저장됨 ${pad(savedAt.getHours())}:${pad(savedAt.getMinutes())}`:'이 브라우저에 자동 저장';
 
