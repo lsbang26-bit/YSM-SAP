@@ -786,7 +786,7 @@ function rng(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15
 function seed(){
   const r=rng(20261029), rint=(a,b)=>Math.floor(a+r()*(b-a+1)), pick=a=>a[Math.floor(r()*a.length)];
   const T=TODAY_D, weekStart=ds(addD(T,-((T.getDay()+6)%7))), fx=18.5;
-  const D={ver:12,cash:[],ap:[],ar:[],assets:[],loans:[],cost:[],inbound:[],production:[],outbound:[],customers:[],bom:[],employees:[],paid:[],
+  const D={ver:12,prices:[],cash:[],ap:[],ar:[],assets:[],loans:[],cost:[],inbound:[],production:[],outbound:[],customers:[],bom:[],employees:[],paid:[],
     settings:{openCash:1850000,openRM:2500000,agDays:15,vacPrem:25,sfRate:13,fx}};
   D.customers=[
     {id:uid(),code:'C-001',name:'Autopartes Saltillo S.A. de C.V.',rfc:'ASA150312KJ4',contact:'Laura Méndez',phone:'844 410 2231',terms:30,status:'거래중',cur:'MXN'},
@@ -926,6 +926,12 @@ function upgradeV12(D){
   S.openCash=Math.round(usd*fx+base+S.banks[2].open);
 }
 // v13 (2026-11-03): 실제 계좌 8개, 전월(10월) 말 잔고를 11/1 기초시재로. 예전 이름의 전표는 새 계좌로 옮김
+// v14: 출고현황 품목 → 품번·품명 분리, 판매단가표(적용일별) 추가
+const splitProd=s=>{s=String(s||'').trim();const m=s.match(/^(\S*\d\S*)\s+(.+)$/);return m&&!/[가-힣]/.test(m[1])?[m[1],m[2]]:['',s]};
+function upgradeV14(D){
+  if(!Array.isArray(D.prices))D.prices=[];
+  (D.outbound||[]).forEach(o=>{if(o.pn==null&&o.item==null){const [pn,item]=splitProd(o.product);o.pn=pn;o.item=item}});
+}
 function upgradeV13(D){
   const S=D.settings, MAP={'Base US$':'Banco Base US$ - 2015','Base Peso':'Banco Base Peso','BBVA Peso':'Santander Peso'}, since='2026-11-01';
   S.banks=[['Banco Base US$ - 2015','USD',284838.71],['Banco Base US$ - 2028','USD',0],['Banco Base Peso','MXN',538701.21],['Santander Peso','MXN',230954.33],
@@ -1058,7 +1064,7 @@ function seedGroup(D,r,withParentAP){
     D.ic.push({id:uid(),date:s25,seller:QRO,buyer:USA,item:'AB-100 반제품 수출',cur:'USD',amount:a2,settled:old?a2:0});
   }
 }
-function migrate(D){if((D.ver||1)<3)D=migrate3(D);if(D.ver<4){upgradeV4(D,rng(11));D.ver=4}if(D.ver<5){upgradeV5(D,rng(13),false);D.ver=5}if(D.ver<6){upgradeV6(D);D.ver=6}if(D.ver<7){upgradeV7(D,rng(17));D.ver=7}if(D.ver<8){upgradeV8(D,rng(19));D.ver=8}if(D.ver<9){upgradeV9(D);D.ver=9}if(D.ver<10){upgradeV10(D);D.ver=10}if(D.ver<11){upgradeV11(D);D.ver=11}if(D.ver<12){upgradeV12(D);D.ver=12}if(D.ver<13){upgradeV13(D);D.ver=13}return D}
+function migrate(D){if((D.ver||1)<3)D=migrate3(D);if(D.ver<4){upgradeV4(D,rng(11));D.ver=4}if(D.ver<5){upgradeV5(D,rng(13),false);D.ver=5}if(D.ver<6){upgradeV6(D);D.ver=6}if(D.ver<7){upgradeV7(D,rng(17));D.ver=7}if(D.ver<8){upgradeV8(D,rng(19));D.ver=8}if(D.ver<9){upgradeV9(D);D.ver=9}if(D.ver<10){upgradeV10(D);D.ver=10}if(D.ver<11){upgradeV11(D);D.ver=11}if(D.ver<12){upgradeV12(D);D.ver=12}if(D.ver<13){upgradeV13(D);D.ver=13}if(D.ver<14){upgradeV14(D);D.ver=14}return D}
 function migrate3(D){
   if(D.ver>=3)return D;
   if(D.ver===2){D.settings.openRM=D.settings.openRM||2500000;seedGroup(D,rng(7),false);D.ver=3;return D}
@@ -1102,7 +1108,7 @@ function syncFromAR(D){
   const ids=new Set(src.map(r=>r.id)), cur=new Map(D.outbound.filter(o=>o.arId).map(o=>[o.arId,o]));
   const n0=D.outbound.length;D.outbound=D.outbound.filter(o=>!o.arId||ids.has(o.arId));res.d=n0-D.outbound.length;
   src.forEach(r=>{const q=+r.qty>0?+r.qty:1, sub=+r.sub>0?+r.sub:(+r.qty||0)*(+r.price||0)-(+r.disc||0);
-    const v={date:r.date,customer:r.customer.trim(),product:[r.pn,r.item].map(x=>String(x||'').trim()).filter(Boolean).join(' ')||'(품목 미지정)',qty:q,cur:r.cur||'MXN',fx:r.fx,price:Math.round(sub/q*10000)/10000,status:'출고완료',note:r.folio?'Factura '+r.folio:''};
+    const v={date:r.date,customer:r.customer.trim(),pn:String(r.pn||'').trim(),item:String(r.item||'').trim(),product:[r.pn,r.item].map(x=>String(x||'').trim()).filter(Boolean).join(' ')||'(품목 미지정)',qty:q,cur:r.cur||'MXN',fx:r.fx,price:Math.round(sub/q*10000)/10000,status:'출고완료',note:r.folio?'Factura '+r.folio:''};
     const o=cur.get(r.id);
     if(!o){D.outbound.push(Object.assign({id:uid(),arId:r.id},v));res.o++}
     else if(Object.keys(v).some(k=>String(o[k]??'')!==String(v[k]??''))){Object.assign(o,v);res.u++}});
@@ -1323,6 +1329,8 @@ function balance(end){
 /* ---------- suggestions ---------- */
 const SUG={
   customers:()=>uniq(DB.customers.map(c=>c.name)),
+  pns:()=>uniq([...(DB.prices||[]).map(x=>x.pn),...DB.outbound.map(x=>x.pn),...DB.ar.map(x=>x.pn)].filter(Boolean)),
+  pitems:()=>uniq([...(DB.prices||[]).map(x=>x.item),...DB.outbound.map(x=>x.item),...DB.ar.map(x=>x.item)].filter(Boolean)),
   products:()=>uniq([...DB.bom.map(b=>b.product),...PRODUCTS.map(p=>p.n)]),
   suppliers:()=>uniq([...(DB.vendors||[]).map(x=>x.name),...DB.inbound.map(x=>x.vendor),...DB.ap.map(x=>x.vendor),...MATERIALS.map(m=>m.sup)]),
   materials:()=>uniq([...DB.bom.map(b=>b.material),...MATERIALS.map(m=>m.n)]),
@@ -1349,7 +1357,7 @@ const GROUPS=[
   {id:'tax',name:'세금',items:['cit','vat']},
   {id:'in',name:'입고관리',items:['vendors','inbound']},
   {id:'prod',name:'생산관리',items:['production']},
-  {id:'out',name:'출고관리',items:['customers','outbound']},
+  {id:'out',name:'출고관리',items:['customers','prices','outbound']},
   {id:'sales',name:'영업관리',items:['forecast','mrp','bom']},
   {id:'gen',name:'일반관리',items:['employees','empstatus','payroll','paytax','vac','sever','payables']}];
 const C=(k,l,t,o={})=>Object.assign({k,l,t},o);
@@ -1362,7 +1370,15 @@ const FACTC=C('factura','Factura','sel',{opts:FACT,pill:1}), FACTC_AR=C('factura
 const SUB=o=>C('sub','금액','money',o||{}), VATR=o=>C('vat','부가세 (세율)','money',Object.assign({calc:r=>ivaPart(r),rateNote:1},o||{})), TOT=o=>C('amount','합계','money',Object.assign({calc:r=>mx(r,'amount')},o||{}));
 const IVAF=C('iva','부가세율','sel',{opts:Object.keys(IVA_RATES),pct:1,noTable:1});
 const r2=v=>Math.round(v*100)/100;
-function fixRow(m,r){if(m.cols.some(c=>c.k==='folio')&&String(r.folio||'').trim())r.factura='발행';if(m.cols.some(c=>c.bank)){const b=BANKS().find(x=>x.name===r.bank);if(!b||(b.cur||'MXN')!==(r.cur||'MXN'))r.bank=bankFor(r.cur)}if(m.cols.some(c=>c.k==='sub'))r.amount=hasIvaAmt(r)?r2((+r.sub||0)+(+r.ivaAmt)):r2((+r.sub||0)*(1+ivaRt(r)));if(m.cols.some(c=>c.k==='fx')){if(r.cur==='USD'){if(!(+r.fx>0))r.fx=FX()}else r.fx=''}return r}
+// 판매단가: 같은 고객사·품번(없으면 품명)에서 적용일이 출고일 이전인 것 중 가장 최근 단가
+const nkp=x=>String(x||'').trim().toLowerCase();
+function priceAt(cust,pn,item,d){
+  const k=nkp(pn)||nkp(item);if(!cust||!k)return null;
+  return (DB.prices||[]).filter(x=>nkp(x.customer)===nkp(cust)&&(nkp(x.pn)||nkp(x.item))===k&&validD(x.date)&&(!validD(d)||x.date<=d)&&+x.price>0).sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0)[0]||null;
+}
+function fixRow(m,r){if(m===MODS.outbound||m===MODS.prices){r.pn=String(r.pn||'').trim();r.item=String(r.item||'').trim()}
+  if(m===MODS.outbound){const pr=priceAt(r.customer,r.pn,r.item,r.date);if(pr){if(!(+r.price>0)){r.price=+pr.price;r.cur=pr.cur||r.cur}if(!r.item)r.item=pr.item||'';if(!r.pn)r.pn=pr.pn||''}r.product=[r.pn,r.item].filter(Boolean).join(' ')||r.product||''}
+if(m.cols.some(c=>c.k==='folio')&&String(r.folio||'').trim())r.factura='발행';if(m.cols.some(c=>c.bank)){const b=BANKS().find(x=>x.name===r.bank);if(!b||(b.cur||'MXN')!==(r.cur||'MXN'))r.bank=bankFor(r.cur)}if(m.cols.some(c=>c.k==='sub'))r.amount=hasIvaAmt(r)?r2((+r.sub||0)+(+r.ivaAmt)):r2((+r.sub||0)*(1+ivaRt(r)));if(m.cols.some(c=>c.k==='fx')){if(r.cur==='USD'){if(!(+r.fx>0))r.fx=FX()}else r.fx=''}return r}
 const MODS={
   cash:{name:'경리자료',desc:'입금·출금 전표와 기간 현금 흐름. 분류를 고르면 그 분류의 계정과목만 선택됩니다.',data:'cash',dated:true,tight:1,
     cols:[C('date','일자','date'),BANKC,C('type','구분','sel',{opts:['입금','출금'],pill:1}),C('cat','분류','sel',{opts:[...CATS4,'매출수입','세금납부'],pill:1}),ACCT,
@@ -1464,14 +1480,21 @@ const MODS={
     charts:{trend:['생산 실적 (EA)',r=>+r.actual||0,0,'계획',r=>+r.plan||0],by:[['품목별 생산 실적 (EA)','product',r=>+r.actual||0,0,g=>'달성률 '+pct(sumBy(g,'actual')/(sumBy(g,'plan')||NaN))+' · 불량률 '+pct(sumBy(g,'defect')/(sumBy(g,'actual')||NaN))],['라인별 생산 실적 (EA)','line',r=>+r.actual||0,0,g=>'달성률 '+pct(sumBy(g,'actual')/(sumBy(g,'plan')||NaN))]]},
     blank:p=>({date:p.d,product:'',line:'L1',plan:0,actual:0,defect:0})},
   outbound:{name:'출고현황',desc:'고객사별 제품 출고와 출고 금액',data:'outbound',dated:true,
-    cols:[C('date','출고일','date'),C('customer','고객사','text',{sug:'customers',wide:1}),C('product','품목','text',{sug:'products'}),C('qty','수량','num',{sum:1}),CUR,C('price','단가','money2'),
+    cols:[C('date','출고일','date'),C('customer','고객사','text',{sug:'customers',wide:1}),C('pn','품번','text',{sug:'pns'}),C('item','품명','text',{sug:'pitems',wide:1}),C('qty','수량','num',{sum:1}),CUR,C('price','단가','money2',{opt:1}),
       C('amount','금액','money',{sum:1,calc:lineAmt}),C('status','상태','sel',{opts:['출고완료','출고예정'],pill:1}),C('note','송장번호','text')],
     kpis:rows=>[kv('출고 건수',rows.length+'건'),kv('출고 수량',nf0.format(sumBy(rows,'qty'))+' EA'),kv('출고 금액',money(sumBy(rows,lineAmt)),'','good'),kv('출고 고객사',uniq(rows.map(r=>r.customer)).length+'곳')],
     trend:{l:'기간별 출고 금액',fn:rows=>sumBy(rows,lineAmt),money:1},
     extra:rows=>groupSummary('고객사별 출고',rows,'customer',[['수량',r=>+r.qty,v=>nf0.format(v)],['금액',lineAmt,money]]),
-    filters:[['customer','고객사'],['product','품목']],
+    filters:[['customer','고객사'],['pn','품번'],['item','품명']],
     charts:{trend:['출고 금액',lineAmt,1],by:[['고객사별 출고 금액','customer',lineAmt,1],['품목별 출고 금액','product',lineAmt,1,g=>nf0.format(sumBy(g,'qty'))+' EA']]},
-    blank:p=>({date:p.d,customer:'',product:'',qty:0,cur:'MXN',price:0,status:'출고예정',note:''})},
+    blank:p=>({date:p.d,customer:'',pn:'',item:'',product:'',qty:0,cur:'MXN',price:0,status:'출고예정',note:''})},
+  prices:{name:'판매단가',desc:'고객사·품번별 판매단가와 적용일. 출고 등록 때 단가를 비워 두면 출고일 기준 단가가 자동으로 들어갑니다',data:'prices',dated:false,sortDate:1,
+    cols:[C('date','적용일','date'),C('customer','고객사','text',{sug:'customers',wide:1}),C('pn','품번','text',{sug:'pns'}),C('item','품명','text',{sug:'pitems',wide:1}),CUR,C('price','단가','money2'),
+      C('prev','이전 단가','calc',{n:1,calc:()=>'',view:r=>{const x=priceAt(r.customer,r.pn,r.item,addDs(r.date,-1));return x?fmtCur(x.price,x.cur||'MXN',1)+` <span class="dim">(${esc(x.date)})</span>`:'<span class="dim">–</span>'}}),
+      C('now','현재 적용','calc',{calc:()=>'',view:r=>{const x=priceAt(r.customer,r.pn,r.item,TODAY);return x&&x.id===r.id?pill('적용중'):r.date>TODAY?pill('예정'):'<span class="dim">지난 단가</span>'}}),C('memo','메모','text',{opt:1})],
+    kpis:rows=>{const cur=rows.filter(r=>{const x=priceAt(r.customer,r.pn,r.item,TODAY);return x&&x.id===r.id});
+      return[kv('등록 단가',rows.length+'건'),kv('적용중',cur.length+'건','오늘 기준','good'),kv('고객사',uniq(rows.map(r=>r.customer)).length+'곳'),kv('품번',uniq(rows.map(r=>r.pn||r.item)).length+'개')]},
+    blank:()=>({date:TODAY,customer:'',pn:'',item:'',cur:'MXN',price:0,memo:''})},
   forecast:{monthNav:1,toolbar:monthToolbar,page:p=>forecastPage(p),name:'Forecast',desc:'고객사·품목별 월 예상 수요. 실제 출고와 비교하고 소요량 계산의 기준이 됩니다',data:'forecast',dated:true,
     cols:[C('date','기준월','date'),C('customer','고객사','text',{sug:'customers',wide:1}),C('product','품목','text',{sug:'products'}),C('qty','예상 수량','num',{sum:1}),CUR,C('price','예상 단가','money2'),
       C('amount','예상 금액','money',{sum:1,calc:lineAmt}),C('actual','실제 출고','num',{sum:1,calc:fcActual}),C('rate','달성률','calc',{calc:r=>pct(+r.qty?fcActual(r)/r.qty:NaN),n:1}),
@@ -3893,6 +3916,14 @@ document.addEventListener('input',e=>{
   const id=e.target.dataset&&e.target.dataset.q;
   if(id==='employees'&&UI.mod==='employees'){UI.q=e.target.value;const b=$('#persList');if(b)b.innerHTML=persList(curPeriod());return}
   if(id){UI.q=e.target.value;const box=document.getElementById('tbl-'+id);if(box){box.innerHTML=tableHTML(MODS[id],curPeriod(),id);syncSel()}const cb=document.getElementById('chr-'+id);if(cb&&MODS[id].charts)cb.innerHTML=chartsHTML(MODS[id],curPeriod(),id)}
+});
+// 출고 등록·수정: 고객사·품번·품명·출고일을 고르면 판매단가표의 그날 단가를 채움 (단가를 직접 바꾼 경우는 그대로)
+document.addEventListener('change',e=>{const f=e.target.closest&&e.target.closest('form[data-reg="outbound"],form[data-edit="outbound"]');if(!f)return;
+  const k=e.target.name;if(k==='price'){f.dataset.priceManual=+e.target.value>0?'1':'';return}
+  if(!['customer','pn','item','date'].includes(k)||f.dataset.priceManual)return;
+  const g=n=>f.elements[n], pr=priceAt(g('customer')&&g('customer').value,g('pn')&&g('pn').value,g('item')&&g('item').value,g('date')&&g('date').value);
+  if(!pr)return;if(g('price'))g('price').value=pr.price;if(g('cur'))g('cur').value=pr.cur||'MXN';if(g('item')&&!g('item').value&&pr.item)g('item').value=pr.item;if(g('pn')&&!g('pn').value&&pr.pn)g('pn').value=pr.pn;
+  if(g('cur'))g('cur').dispatchEvent(new Event('change',{bubbles:true}));
 });
 document.addEventListener('submit',e=>{
   const f=e.target;e.preventDefault();
