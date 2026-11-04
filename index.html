@@ -537,6 +537,18 @@ details.mgmt>.inner{display:grid;gap:16px;padding:0 20px 20px}
 .dtag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:600;color:var(--h);background:color-mix(in srgb,var(--h) 14%,transparent);white-space:nowrap}
 .pfilters{display:grid;gap:10px;border-bottom:1px solid var(--line)}
 .dchips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.org{padding:18px 16px 20px;display:grid;justify-items:center;gap:0;overflow-x:auto}
+.otop{display:flex;gap:12px;justify-content:center}.ohead{display:grid;justify-items:center;gap:4px}.ohead i{font-style:normal;font-size:11px;color:var(--muted)}
+.oline{width:2px;height:22px;background:var(--line-strong)}
+.ocols{display:grid;grid-template-columns:repeat(var(--n),minmax(150px,1fr));gap:12px;width:100%;padding-top:16px;position:relative}.ocols::before{content:"";position:absolute;top:0;height:2px;background:var(--line-strong);left:calc((100% - (var(--n) - 1) * 12px) / var(--n) / 2);right:calc((100% - (var(--n) - 1) * 12px) / var(--n) / 2)}
+@media (max-width:760px){.ocols::before{display:none}}
+.ocol{display:grid;gap:8px;align-content:start;position:relative}.ocol::before{content:"";position:absolute;top:-16px;left:50%;width:2px;height:16px;background:var(--line-strong)}
+.odept{display:flex;justify-content:space-between;align-items:center;gap:6px;font-weight:700;font-size:13px;padding:8px 10px;border-radius:10px;background:color-mix(in srgb,var(--h) 12%,var(--surface));border:1px solid color-mix(in srgb,var(--h) 35%,var(--line));color:var(--fg)}
+.odept small{font-weight:500;color:var(--muted);font-size:11px}
+.onode{display:flex;align-items:center;gap:9px;width:100%;text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:7px 10px;cursor:pointer;font:inherit;color:var(--fg)}
+.onode:hover{border-color:var(--accent)}.onode span{display:grid;line-height:1.25;min-width:0}.onode b{font-size:13px}.onode small{font-size:11px;color:var(--muted)}
+.ohead .onode{min-width:170px;border-color:var(--fg-2);border-width:2px}
+@media (max-width:760px){.ocols{grid-template-columns:repeat(2,minmax(0,1fr))}.ocol::before{display:none}}
 .flabel{font-size:11px;color:var(--faint);margin-right:4px}
 .dchip{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:4px 11px;font-size:12px;color:var(--fg-2)}
 .dchip i{width:8px;height:8px;border-radius:50%}
@@ -747,7 +759,7 @@ const ACCOUNTS={
   '매출수입':['매출대금 수금','이자수익','기타수입'],
   '세금납부':['부가세 납부','법인세 납부','원천세 납부']};
 const CATS4=['자산매입','제조비용','판관비용','차입금'];
-const DEPTS=['생산','품질','물류','영업','관리'], DEPT_HUE={생산:'#0070F2',품질:'#7858FF',물류:'#C35500',영업:'#188918',관리:'#0F828F'};
+const DEPTS=['법인장','생산','품질','생기','생관','구매/영업','금형 보전','물류','영업','관리'], DEPT_HUE={법인장:'#1F2937',생산:'#0070F2',품질:'#7858FF',생기:'#0891B2',생관:'#CA8A04','구매/영업':'#188918','금형 보전':'#DB2777',물류:'#C35500',영업:'#188918',관리:'#0F828F'};
 const VAC_TYPES=['연차휴가','반차','특별휴가 (유급)','무급휴가'];
 const SEV_REASONS=['자진 퇴사 (Renuncia)','합의 퇴사 (Mutuo acuerdo)','해고 · 정당한 사유','해고 · 부당 (사유 없음)'];
 const VKINDS=['원자재','부자재','외주가공','설비·기타'], ISR_R=8, IMSS_R=2.5;
@@ -928,6 +940,13 @@ function upgradeV12(D){
 // v13 (2026-11-03): 실제 계좌 8개, 전월(10월) 말 잔고를 11/1 기초시재로. 예전 이름의 전표는 새 계좌로 옮김
 // v14: 출고현황 품목 → 품번·품명 분리, 판매단가표(적용일별) 추가
 const splitProd=s=>{s=String(s||'').trim();const m=s.match(/^(\S*\d\S*)\s+(.+)$/);return m&&!/[가-힣]/.test(m[1])?[m[1],m[2]]:['',s]};
+// v15: 인원 명단을 실제 조직(2026-11-04 캡처)으로 교체. 입사일 등 모르는 값은 비워 둠
+function upgradeV15(D){
+  const L=[['신승호','상무이사','법인장'],['정록철','수석','생산'],['박재영','수석','품질'],['최경익','책임','생기'],['안윤미','책임','구매/영업'],['백동현','선임','생관'],
+    ['신현호','매니저','품질'],['박치훈','매니저','생산'],['황경연','기장','금형 보전'],['김재식','기장','금형 보전'],['허성진','조장','생산']];
+  D.employees=L.map(([name,pos,dept],i)=>({id:uid(),no:'E-'+pad3(i+1),name,dept,pos,shift:'주간',hire:'',leave:'',work:'재직',contract:'정규직',cend:'',cur:'MXN',daily:0,bus:'',
+    birth:'',gender:'남',marital:'',kids:0,edu:'',nat:'대한민국',phone:'',email:'',addr:'',curp:'',rfc:'',nss:'',memo:i===0?'법인장':''}));
+}
 function upgradeV14(D){
   if(!Array.isArray(D.prices))D.prices=[];
   (D.outbound||[]).forEach(o=>{if(o.pn==null&&o.item==null){const [pn,item]=splitProd(o.product);o.pn=pn;o.item=item}});
@@ -1064,7 +1083,7 @@ function seedGroup(D,r,withParentAP){
     D.ic.push({id:uid(),date:s25,seller:QRO,buyer:USA,item:'AB-100 반제품 수출',cur:'USD',amount:a2,settled:old?a2:0});
   }
 }
-function migrate(D){if((D.ver||1)<3)D=migrate3(D);if(D.ver<4){upgradeV4(D,rng(11));D.ver=4}if(D.ver<5){upgradeV5(D,rng(13),false);D.ver=5}if(D.ver<6){upgradeV6(D);D.ver=6}if(D.ver<7){upgradeV7(D,rng(17));D.ver=7}if(D.ver<8){upgradeV8(D,rng(19));D.ver=8}if(D.ver<9){upgradeV9(D);D.ver=9}if(D.ver<10){upgradeV10(D);D.ver=10}if(D.ver<11){upgradeV11(D);D.ver=11}if(D.ver<12){upgradeV12(D);D.ver=12}if(D.ver<13){upgradeV13(D);D.ver=13}if(D.ver<14){upgradeV14(D);D.ver=14}return D}
+function migrate(D){if((D.ver||1)<3)D=migrate3(D);if(D.ver<4){upgradeV4(D,rng(11));D.ver=4}if(D.ver<5){upgradeV5(D,rng(13),false);D.ver=5}if(D.ver<6){upgradeV6(D);D.ver=6}if(D.ver<7){upgradeV7(D,rng(17));D.ver=7}if(D.ver<8){upgradeV8(D,rng(19));D.ver=8}if(D.ver<9){upgradeV9(D);D.ver=9}if(D.ver<10){upgradeV10(D);D.ver=10}if(D.ver<11){upgradeV11(D);D.ver=11}if(D.ver<12){upgradeV12(D);D.ver=12}if(D.ver<13){upgradeV13(D);D.ver=13}if(D.ver<14){upgradeV14(D);D.ver=14}if(D.ver<15){upgradeV15(D);D.ver=15}return D}
 function migrate3(D){
   if(D.ver>=3)return D;
   if(D.ver===2){D.settings.openRM=D.settings.openRM||2500000;seedGroup(D,rng(7),false);D.ver=3;return D}
@@ -1146,7 +1165,7 @@ const loanInt=(r,p)=>loanBal(r)*(+r.rate||0)/100/365*overlap(r.date,r.due,p.star
 const loanStatus=r=>loanBal(r)<=0?'상환완료':(validD(r.due)&&r.due<TODAY?'연체':(validD(r.due)&&diffD(TODAY,r.due)<=90?'만기임박':'상환중'));
 const costTotal=r=>mx(r,'mat')+mx(r,'labor')+mx(r,'oh');
 const lineAmt=r=>(+r.qty||0)*mx(r,'price');
-const empActive=(e,d)=>validD(e.hire)&&e.hire<=d&&(!validD(e.leave)||e.leave>=d);
+const empActive=(e,d)=>(!validD(e.hire)||e.hire<=d)&&(!validD(e.leave)||e.leave>=d);
 const empCost=(e,p)=>mx(e,'daily')*overlap(e.hire,e.leave,p.start,p.end);
 const asOf=p=>minS(p.end,TODAY);
 const tenureDays=e=>validD(e.hire)&&e.hire<=TODAY?diffD(e.hire,validD(e.leave)&&e.leave<TODAY?e.leave:TODAY)+1:0;
@@ -1207,7 +1226,7 @@ function payableYTD(e,end){
   return {ag:a.ag-paid('Aguinaldo'),vp:a.vp-paid('휴가수당'),sf:a.sf-paid('저축기금')};
 }
 // manufacturing cost statement (same layout as the IS sheet's 제조원가명세서)
-const MFG_DEPTS=['생산','품질','물류'], SGA_DEPTS=['영업','관리'], MFG_EXP=['전력비','가스수도료','수선비','외주가공비','소모품비','복리후생비','차량유지비','운반비','임차료','보험료','세금과공과','여비교통비','통신비','지급수수료','교육훈련비','도서인쇄비','광고선전비'];
+const MFG_DEPTS=['생산','품질','생기','생관','금형 보전','물류'], SGA_DEPTS=['법인장','구매/영업','영업','관리'], MFG_EXP=['전력비','가스수도료','수선비','외주가공비','소모품비','복리후생비','차량유지비','운반비','임차료','보험료','세금과공과','여비교통비','통신비','지급수수료','교육훈련비','도서인쇄비','광고선전비'];
 const isMfgAsset=r=>['기계장치','공구기구','건물'].includes(r.cat);
 const rmPurch=(s,e)=>sumBy(DB.inbound.filter(r=>r.date>=s&&r.date<=e&&r.check!=='반품'),r=>lineAmt(r)+(+r.igi||0)+(+r.dta||0));
 const rmUse=(s,e)=>sumBy(DB.production.filter(r=>r.date>=s&&r.date<=e),r=>(+r.actual||0)*bomUnitCost(r.product));
@@ -1988,15 +2007,29 @@ function persList(p){
       <b class="pn">${esc(e.name)}</b><span class="pp">${esc(e.pos||'–')} · ${esc(e.shift||'–')}</span>${deptTag(e.dept)}
       <span class="pi">${esc(e.no)} · 근속 ${tenureStr(e)}</span>${e.phone?`<span class="pi">${esc(e.phone)}</span>`:''}${st!=='재직'?pill(st):''}</button>`}).join('')}</div>`;
 }
+// 조직도: 법인장 → 부서별 칸, 칸 안은 직위 순
+const POS_ORDER=['상무이사','이사','부장','수석','책임','차장','과장','선임','매니저','대리','기장','조장','주임','사원','작업자'];
+function orgChartHTML(at){
+  const E=DB.employees.filter(e=>empActive(e,at)), rk=e=>{const i=POS_ORDER.indexOf(String(e.pos||'').trim());return i<0?99:i};
+  const head=E.filter(e=>e.dept==='법인장').sort((a,b)=>rk(a)-rk(b));
+  const ds=[...new Set([...DEPTS.filter(d=>d!=='법인장'),...E.map(e=>e.dept)])].filter(d=>d!=='법인장'&&E.some(e=>e.dept===d));
+  if(!E.length)return '';
+  const node=e=>`<button class="onode" data-pdetail="${e.id}">${avatar(e,30)}<span><b>${esc(e.name)}</b><small>${esc(e.pos||'')}</small></span></button>`;
+  return `<div class="card"><header><h2>조직도</h2><span class="meta">${E.length}명 · ${ds.length}개 부서</span></header><div class="org">
+    ${head.length?`<div class="otop">${head.map(e=>`<div class="ohead">${node(e)}<i>법인장</i></div>`).join('')}</div><div class="oline"></div>`:''}
+    <div class="ocols" style="--n:${ds.length}">${ds.map(d=>{const m=E.filter(e=>e.dept===d).sort((a,b)=>rk(a)-rk(b)||a.name.localeCompare(b.name));
+      return `<div class="ocol"><div class="odept" style="--h:${DEPT_HUE[d]||'#4B5563'}">${esc(d)}<small>${m.length}명</small></div>${m.map(node).join('')}</div>`}).join('')}</div></div></div>`;
+}
 function persPage(p){
   const at=asOf(p), E=DB.employees, F=UI.pf;
   const soon=E.filter(e=>cendSoon(e,60)).sort((a,b)=>a.cend<b.cend?-1:1);
   const mth=TODAY.slice(5,7), bdays=E.filter(e=>empActive(e,TODAY)&&validD(e.birth)&&e.birth.slice(5,7)===mth).sort((a,b)=>a.birth.slice(8)<b.birth.slice(8)?-1:1);
   const sel=(k,l,opts)=>`<select class="fsel${F[k]?' on':''}" data-pf="${k}" aria-label="${l}"><option value="">${l}: 전체</option>${opts.map(o=>{const [v,t]=Array.isArray(o)?o:[o,o];return `<option value="${esc(v)}"${F[k]===v?' selected':''}>${l}: ${esc(t)}</option>`}).join('')}</select>`;
   const any=['dept','st','shift','contract','ten'].some(k=>F[k])||UI.q;
-  const chips=DEPTS.map(d=>`<button class="dchip${F.dept===d?' on':''}" data-pdept="${d}" aria-pressed="${F.dept===d}"><i style="background:${DEPT_HUE[d]}"></i>${d}<b>${E.filter(e=>e.dept===d&&empActive(e,at)).length}</b></button>`).join('');
+  const chips=DEPTS.filter(d=>F.dept===d||E.some(e=>e.dept===d)).map(d=>`<button class="dchip${F.dept===d?' on':''}" data-pdept="${d}" aria-pressed="${F.dept===d}"><i style="background:${DEPT_HUE[d]}"></i>${d}<b>${E.filter(e=>e.dept===d&&empActive(e,at)).length}</b></button>`).join('');
   const mini=(list,f,empty)=>list.length?`<div class="tw"><table><tbody>${list.map(e=>`<tr class="click" data-pdetail="${e.id}"><td><span class="pname">${avatar(e,26)}<b>${esc(e.name)}</b></span></td><td>${deptTag(e.dept)}</td>${f(e)}</tr>`).join('')}</tbody></table></div>`:`<div class="empty">${empty}</div>`;
   return `<div class="content">${kpiHTML(MODS.employees.kpis(E,p))}
+    ${orgChartHTML(at)}
     <div class="card"><header><h2>직원 목록</h2>
         <input class="search" id="q-employees" data-q="employees" type="search" placeholder="이름·사번·직위 검색" value="${esc(UI.q)}">
         <div class="seg" role="group" aria-label="보기 방식"><button data-pview="card" class="${F.view!=='list'?'on':''}">카드</button><button data-pview="list" class="${F.view==='list'?'on':''}">리스트</button></div>
@@ -3778,6 +3811,7 @@ document.addEventListener('click',e=>{
     DB.production=DB.production.filter(r=>!(r.date>=x.s&&r.date<=x.e&&prods.includes(r.product)));
     const n=n0-DB.production.length;save();closeModal();renderMain();toast(`생산 기록 ${n}건을 지웠습니다`);return}
   if(d.stkgo&&modal&&modal.type==='stkprod'){const x=modal;UI.rs=x.s;UI.re=x.e;UI.flt=UI.flt||{};UI.flt.production={};saveUI();closeModal();go('production');return}
+  if(d.pdetail){modal={type:'emp',id:d.pdetail};renderModal();return}
   if(d.bankgo){const rs=DB.cash.filter(r=>bankOf(r)===d.bankgo);UI.flt=UI.flt||{};UI.flt.cash={bank:d.bankgo};rs.forEach(r=>{if(r.date<UI.rs)UI.rs=r.date;if(r.date>UI.re)UI.re=r.date});saveUI();go('cash');return}
   if(d.cashgo){const r=DB.cash.find(x=>x.id===d.cashgo);if(r){UI.flt=UI.flt||{};UI.flt.cash={};if(r.date<UI.rs)UI.rs=r.date;if(r.date>UI.re)UI.re=r.date;saveUI();flashId=r.id;go('cash');setTimeout(()=>{const tr=document.querySelector(`tr[data-row="${r.id}"]`);if(tr)tr.scrollIntoView({block:'center'})},50)}return}
   if(d.close){closeModal();return}
