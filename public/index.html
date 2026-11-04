@@ -2970,10 +2970,13 @@ function parseImport(file,id){
   if(!window.XLSX){imp={mod:id,fatal:'엑셀 기능을 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 다시 열어 주세요.'};renderImp();return}
   const rd=new FileReader();
   rd.onload=()=>{try{
-    const wb=XLSX.read(new Uint8Array(rd.result),{type:'array'}), ws=wb.Sheets[wb.SheetNames.includes('등록')?'등록':wb.SheetNames[0]];
-    const aoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true});
+    const wb=XLSX.read(new Uint8Array(rd.result),{type:'array'}), sheetAoa=n=>XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:'',raw:true});
+    // 외상매출: 제목이 가장 많이 맞는 시트를 고름 (등록 시트 우선)
+    let sn=wb.SheetNames.includes('등록')?'등록':wb.SheetNames[0];
+    if(id==='ar'){let best=-1;wb.SheetNames.forEach(n=>{const a=sheetAoa(n),v=Math.max(0,...a.slice(0,15).map(arScore))+(n==='등록'?.5:0);if(v>best){best=v;sn=n}})}
+    const aoa=sheetAoa(sn);
     const head=(aoa[0]||[]).map(normH), idx={}, totI=head.indexOf(normH('합계')), seen=new Set();
-    if(id==='ar'&&aoa.slice(0,10).some(l=>['품번','품명','총합','결제텀','할인','수량','단가'].filter(h=>(l||[]).map(normH).includes(normH(h))).length>=4)){imp=Object.assign({mod:id,file:file.name},arFromSheet(aoa));renderImp();return}
+    if(id==='ar'&&Math.max(0,...aoa.slice(0,15).map(arScore))>=4){imp=Object.assign({mod:id,file:file.name},arFromSheet(aoa));renderImp();return}
     cols.forEach(c=>{const i=head.findIndex(h=>h&&(h===normH(c.l)||h===c.k.toLowerCase()));if(i>=0)idx[c.k]=i});
     const missing=cols.filter(c=>idx[c.k]==null&&!(c.k==='sub'&&totI>=0)&&!(id==='ap'&&c.k==='account')&&c.k!=='due'&&!c.opt).map(c=>c.l), base=m.blank(curPeriod()), rows=[], errs=[];
     aoa.slice(1).forEach((line,n)=>{
@@ -2986,7 +2989,7 @@ function parseImport(file,id){
       const ac=m.cols.find(c=>c.optsOf);if(ac&&!ac.optsOf(r).includes(r[ac.k]))bad.push(ac.l);
       if(bad.length)errs.push({line:n+2,cols:bad});else rows.push(fixRow(m,r));
     });
-    imp={mod:id,rows,errs,missing,file:file.name};
+    imp={mod:id,rows,errs,missing,file:file.name,heads:id==='ar'?(aoa[0]||[]).map(x=>String(x).trim()).filter(Boolean):undefined};
   }catch(e){imp={mod:id,fatal:'파일을 읽지 못했습니다. 엑셀(.xlsx, .xls) 또는 CSV 파일인지 확인해 주세요.'}}renderImp()};
   rd.readAsArrayBuffer(file);
 }
@@ -3005,13 +3008,29 @@ function impArap(id,r,got,tot,bad,seen){
 }
 // 외상매출 엑셀 (회사 양식): 고객사 · 날짜 · Factura · 통화 · 품번 · 품명 · 수량 · 단가 · 합계 · 할인 · Iva · 총합 · 결제텀 — 한 줄이 한 건
 const AR_XL=['고객사','날짜','Factura','통화','품번','품명','수량','단가','합계','할인','Iva','총합','결제텀'];
+// 외상매출 엑셀 제목 인식: 악센트·기호·공백·대소문자 무시, 한국어·스페인어·영어 제목 모두
+const arNK=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').normalize('NFC').toLowerCase().replace(/[^a-z0-9가-힣]/g,'');
+const AR_AL={고객사:['고객사','고객','고객사명','cliente','customer','razonsocial','nombre','receptor','nombrereceptor','nombrecliente'],
+  날짜:['날짜','발행일','발생일','일자','fecha','date','fechaemision','fechadeemision','fechafactura','invoicedate'],
+  factura:['factura','facturano','facturanum','facturanumero','folio','invoice','invoiceno','인보이스','인보이스번호','factura번호','serieyfolio','nofactura','numerodefactura','foliofiscal'],
+  통화:['통화','moneda','currency','divisa','cur'],
+  품번:['품번','partno','partnumber','noparte','numerodeparte','numparte','parte','codigo','clave','sku','itemno','noidentificacion','numerodeparte'],
+  품명:['품명','품목','descripcion','description','producto','concepto','articulo','itemdescription'],
+  수량:['수량','cantidad','qty','quantity','cant'],
+  단가:['단가','precio','preciounitario','unitprice','valorunitario','price','pu'],
+  합계:['합계','금액','subtotal','importe','amount','monto'],
+  할인:['할인','descuento','discount'],
+  iva:['iva','부가세','tax','impuesto','ivatrasladado','ivatrasladado16'],
+  총합:['총합','total','totalfactura','grandtotal','importetotal','totalmxn','totalusd'],
+  결제텀:['결제텀','결제조건','결제기간','결제일','결제일수','텀','terms','term','plazo','dias','diasdecredito','credito','condicionesdepago']};
+const arAlias=h=>{const k=arNK(h);return AR_AL[k]||AR_AL[h]||[k]};
+const arScore=line=>{const L=(line||[]).map(arNK);return AR_XL.filter(h=>arAlias(h).some(a=>L.includes(a))).length};
 function arFromSheet(aoa){
   // 제목은 기호·공백·대소문자를 무시하고 비교 (Factura # · Factura No. · Folio 모두 Factura)
-  const nk=v=>String(v??'').toLowerCase().replace(/[^a-z0-9가-힣]/g,''), AL={factura:['factura','facturano','facturanum','facturanumero','folio','invoice','invoiceno','인보이스','인보이스번호','factura번호'],
-    iva:['iva','부가세'],결제텀:['결제텀','결제조건','결제기간','결제일','결제일수','텀','terms','term','plazo','dias','diasdecredito','credito','condicionesdepago'],날짜:['날짜','발행일','fecha','date'],고객사:['고객사','고객','cliente','customer']};
+  const nk=arNK;
   // 제목 줄은 맨 위 10줄 중 품번·품명이 있는 줄 (위에 제목·빈 줄이 있어도 됨)
-  const hr=Math.max(0,aoa.slice(0,10).findIndex(l=>(l||[]).map(nk).filter(x=>['품번','품명','고객사','총합'].includes(x)).length>=2));if(hr)aoa=aoa.slice(hr);
-  const head=(aoa[0]||[]).map(nk), at=h=>{const k=nk(h),al=AL[k]||[k];let i=head.findIndex(x=>al.includes(x));
+  const sc=aoa.slice(0,15).map(arScore), hr=sc.indexOf(Math.max(0,...sc));if(hr>0)aoa=aoa.slice(hr);
+  const head=(aoa[0]||[]).map(nk), at=h=>{const k=nk(h),al=arAlias(h);let i=head.findIndex(x=>al.includes(x));
     if(i<0&&k==='factura')i=head.findIndex(x=>/factura|folio|invoice|인보이스/.test(x)&&!/uuid|fecha|date|날짜/.test(x));
     if(i<0&&k==='결제텀')i=head.findIndex(x=>/텀|결제조건|결제기간|term|plazo|credit|credito|dias|días/.test(x));return i}, I={};AR_XL.forEach(h=>I[h]=at(h));
   const missing=AR_XL.filter(h=>I[h]<0), num=v=>typeof v==='number'?v:parseFloat(String(v??'').replace(/[^0-9.\-]/g,'')), rows=[], errs=[], seen=new Set(), fills=[], skip=[];
