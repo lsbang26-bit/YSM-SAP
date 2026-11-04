@@ -550,6 +550,10 @@ details.mgmt>.inner{display:grid;gap:16px;padding:0 20px 20px}
 .dtag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:600;color:var(--h);background:color-mix(in srgb,var(--h) 14%,transparent);white-space:nowrap}
 .pfilters{display:grid;gap:10px;border-bottom:1px solid var(--line)}
 .dchips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.fsum{display:flex;flex-wrap:wrap;align-items:center;gap:6px 22px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--surface-2);font-size:12px}
+.fsum.on{background:color-mix(in srgb,var(--accent) 8%,var(--surface))}
+.fsum .fl{font-weight:600;color:var(--fg-2)} .fsum div{display:flex;gap:6px;align-items:baseline} .fsum div span{color:var(--muted)} .fsum b{font-weight:600} .fsum b.strong{font-weight:700;color:var(--fg)}
+.fsum .fc{margin-left:auto;color:var(--muted)}
 .org{padding:18px 16px 20px;display:grid;justify-items:center;gap:0;overflow-x:auto}
 .otop{display:flex;gap:12px;justify-content:center}.ohead{display:grid;justify-items:center;gap:4px}.ohead i{font-style:normal;font-size:11px;color:var(--muted)}
 .oline{width:2px;height:22px;background:var(--line-strong)}
@@ -1443,7 +1447,8 @@ const MODS={
     extra:rows=>groupSummary('분류별 매입',rows,'cat',[['매입액',M('amount'),money],['잔액',apBal,money]],r=>r.account),
     blank:p=>({date:p.d,vendor:'',cat:'제조비용',account:'원재료비',item:'',cur:'MXN',sub:0,amount:0,iva:'16%',factura:'발행',uuid:'',paid:0,due:addDs(p.d,30)})},
   ar:{name:'외상매출',desc:'고객사 매출 채권과 수금 현황',data:'ar',dated:true,tight:1,after:(p,id)=>arFacturaCard(p,id),side:()=>arWeekCard(),
-    cols:[C('date','발생일','date'),C('customer','고객사','text',{sug:'customers'}),C('folio','Factura','text',{opt:1,view:r=>String(r.folio||'').trim()?`<span class="pill good">${esc(r.folio)}</span>`:pill(r.factura||'미발행')}),C('pn','품번','text',{opt:1}),C('item','품명','text',{wide:1}),C('qty','수량','num',{opt:1,noTable:1}),C('price','단가','num',{opt:1,noTable:1}),C('disc','할인','num',{opt:1,noTable:1}),CUR,C('fx','환율 (US$ 건)','num',{noTable:1,opt:1}),SUB({sum:1}),IVAF,VATR({sum:1}),TOT({sum:1}),Object.assign({},FACTC_AR,{noTable:1}),UUIDC,C('received','수금액','money',{sum:1}),C('due','수금기일','date'),
+    filters:[['customer','고객사'],['folio','Factura','text'],['pn','품번'],['item','품명','text'],['amount','합계','range'],['st','상태']],fsum:1,
+    cols:[C('date','발행일','date'),C('customer','고객사','text',{sug:'customers'}),C('folio','Factura','text',{opt:1,view:r=>String(r.folio||'').trim()?`<span class="pill good">${esc(r.folio)}</span>`:pill(r.factura||'미발행')}),C('pn','품번','text',{opt:1}),C('item','품명','text',{wide:1}),C('qty','수량','num',{opt:1,noTable:1}),C('price','단가','num',{opt:1,noTable:1}),C('disc','할인','num',{opt:1,noTable:1}),CUR,C('fx','환율 (US$ 건)','num',{noTable:1,opt:1}),SUB({sum:1}),IVAF,VATR({sum:1}),TOT({sum:1}),Object.assign({},FACTC_AR,{noTable:1}),UUIDC,C('received','수금액','money',{sum:1}),C('due','수금기일','date'),
       C('bal','잔액','money',{sum:1,calc:arBal}),C('st','상태','calc',{calc:r=>dueStatus(arBal(r),r.due),pill:1,act:{mod:'ar',label:'입금 완료',show:r=>arBal(r)>0.5}})],
     kpis:(rows,p)=>{const all=DB.ar.filter(r=>r.date<=p.end),od=all.filter(r=>dueStatus(arBal(r),r.due)==='연체');return[kv('기간 청구액',money(sumBy(rows,M('amount'))),rows.length+'건'),kv('기간분 미수',money(sumBy(rows,arBal))),
       kv('전체 미수 잔액',money(sumBy(all,arBal)),p.end+' 기준','warn'),kv('연체',od.length+'건',plain(sumBy(od,arBal)),od.length?'bad':'')]},
@@ -1679,11 +1684,21 @@ function footVal(c,rows,p,m){
 // column filters (입고·생산·출고 상세 내역): UI.flt[modId] = {column: value}
 const fltOf=id=>(UI.flt&&UI.flt[id])||{};
 const fltOn=(m,id)=>{const f=fltOf(id);return (m.filters||[]).filter(([k,,t])=>t==='range'?(f[k+'Min']||'')!==''||(f[k+'Max']||'')!=='':!!f[k])};
-const matchF=(m,id)=>{const f=fltOf(id),act=fltOn(m,id);return r=>act.every(([k,,t])=>{const v=r[k];
+const fval=(m,r,k)=>{const c=m.cols.find(x=>x.k===k);return c&&c.calc&&r[k]==null?c.calc(r,curPeriod()):r[k]};
+const matchF=(m,id)=>{const f=fltOf(id),act=fltOn(m,id);return r=>act.every(([k,,t])=>{const v=fval(m,r,k);
   if(t==='text')return String(v??'').toLowerCase().includes(String(f[k]).trim().toLowerCase());
   if(t==='range'){const x=+v||0,a=parseFloat(f[k+'Min']),b=parseFloat(f[k+'Max']);return (isNaN(a)||x>=a)&&(isNaN(b)||x<=b)}
   return String(v??'')===f[k]})};
 const viewRows=(m,p,id)=>m.filters?rowsFor(m,p).filter(matchF(m,id)):rowsFor(m,p).filter(matchQ);
+// 필터 합계: 지금 걸러진 줄의 공급가·부가세·합계·수금·잔액 (MXN 환산, 통화별 원금도 함께)
+function fsumHTML(m,p,id){
+  const rs=viewRows(m,p,id), on=fltOn(m,id).length, S=f=>sumBy(rs,f), byC={};
+  rs.forEach(r=>{const c=r.cur||'MXN';byC[c]=(byC[c]||0)+(+r.amount||0)});
+  const it=(l,v,b)=>`<div><span>${l}</span><b${b?' class="strong"':''}>${v}</b></div>`;
+  return `<div class="fsum${on?' on':''}"><span class="fl">${on?'필터 합계':'기간 합계'} · ${rs.length}건 · ${uniq(rs.map(r=>String(r.folio||'').trim()).filter(Boolean)).length} Factura</span>
+    ${it('공급가액',money(S(M('sub'))))}${it('부가세',money(S(r=>mx(r,'amount')-mx(r,'sub'))))}${it('합계',money(S(M('amount'))),1)}${it('수금액',money(S(M('received'))))}${it('잔액',money(S(arBal)),1)}
+    <span class="fc">${Object.entries(byC).map(([c,v])=>fmtCur(v,c,1)+(c==='USD'?'':' MXN')).join(' · ')}</span></div>`;
+}
 function filterBar(m,p,id){
   const f=fltOf(id), all=rowsFor(m,p), on=fltOn(m,id).length;
   return `<div class="fbar" role="group" aria-label="필터">
@@ -1692,7 +1707,7 @@ function filterBar(m,p,id){
     ${m.filters.map(([k,l,t])=>{
     if(t==='text')return `<input type="search" class="fsel ftext${f[k]?' on':''}" data-fltin="${id}:${k}" value="${esc(f[k]||'')}" placeholder="${esc(l)} 검색" aria-label="${esc(l)}">`;
     if(t==='range')return `<span class="frange${(f[k+'Min']||f[k+'Max'])?' on':''}"><span>${esc(l)}</span><input type="number" inputmode="decimal" data-fltin="${id}:${k}Min" value="${esc(f[k+'Min']||'')}" placeholder="최소" aria-label="${esc(l)} 최소"><span class="tilde">~</span><input type="number" inputmode="decimal" data-fltin="${id}:${k}Max" value="${esc(f[k+'Max']||'')}" placeholder="최대" aria-label="${esc(l)} 최대"></span>`;
-    const o=uniq(all.map(r=>String(r[k]??'')));if(f[k]&&!o.includes(f[k]))o.unshift(f[k]);
+    const o=uniq(all.map(r=>String(fval(m,r,k)??'')));if(f[k]&&!o.includes(f[k]))o.unshift(f[k]);
     return `<select class="fsel${f[k]?' on':''}" data-flt="${id}:${k}" aria-label="${esc(l)}"><option value="">${esc(l)} 전체</option>${o.map(v=>`<option${v===f[k]?' selected':''}>${esc(v)}</option>`).join('')}</select>`}).join('')}
     ${on||m.filters.some(x=>x[2])?`<button class="btn" data-fclear="${id}">필터 해제</button>`:''}</div>`;
 }
@@ -1755,6 +1770,7 @@ function syncSel(){
 function tableCard(m,p,modId,title){
   const note=hasCur(m)?`<span class="meta">· US$ 금액은 환율로 환산해 합계</span>`:'';
   if(m.filters)return `<div class="card"><header class="fhead"><h2>${esc(title||'상세 내역')}</h2>${filterBar(m,p,modId)}${(()=>{const all=rowsFor(m,p).length,vis=viewRows(m,p,modId).length;return all>vis?`<span class="meta" style="color:var(--warn)">필터로 숨긴 ${all-vis}건</span>`:''})()}${selBtn(modId)}</header>
+    ${m.fsum?`<div id="fsum-${modId}">${fsumHTML(m,p,modId)}</div>`:''}
     <div id="tbl-${modId}">${tableHTML(m,p,modId)}</div></div>`;
   return `<div class="card"><header><h2>${esc(title||'상세 내역')}</h2>${m.monthNav?`<span class="monthbadge">${esc(p.label)}</span>`:`<span class="meta">${m.dated?esc(p.label):'전체 등록 자료'}</span>`}${note}
     <input class="search" id="q-${modId}" data-q="${modId}" type="search" placeholder="검색 (거래처, 품목, 이름 …)" value="${esc(UI.q)}">
@@ -3969,7 +3985,7 @@ document.addEventListener('input',e=>{
   // vacation form: days = calendar days between the dates, Sundays excluded
   if(F&&(F.dataset.reg==='vac'||F.dataset.edit==='vac')&&['date','to'].includes(e.target.name)){const a=F.querySelector('[name="date"]').value,b=F.querySelector('[name="to"]').value;if(validD(a)&&validD(b)&&a<=b)F.querySelector('[name="days"]').value=workDays(a,b);return}
   if(e.target.dataset&&e.target.dataset.fltin){const [fid,k]=e.target.dataset.fltin.split(':');UI.flt=UI.flt||{};(UI.flt[fid]=UI.flt[fid]||{})[k]=e.target.value;saveUI();e.target.classList.toggle('on',!!e.target.value);
-    const p=curPeriod(),box=document.getElementById('tbl-'+fid);if(box)box.innerHTML=tableHTML(MODS[fid],p,fid);const cb=document.getElementById('chr-'+fid);if(cb&&MODS[fid].charts){cb.innerHTML=chartsHTML(MODS[fid],p,fid);chartAnim()}return}
+    const p=curPeriod(),box=document.getElementById('tbl-'+fid);if(box)box.innerHTML=tableHTML(MODS[fid],p,fid);const fs=document.getElementById('fsum-'+fid);if(fs)fs.innerHTML=fsumHTML(MODS[fid],p,fid);const cb=document.getElementById('chr-'+fid);if(cb&&MODS[fid].charts){cb.innerHTML=chartsHTML(MODS[fid],p,fid);chartAnim()}return}
   const id=e.target.dataset&&e.target.dataset.q;
   if(id==='employees'&&UI.mod==='employees'){UI.q=e.target.value;const b=$('#persList');if(b)b.innerHTML=persList(curPeriod());return}
   if(id){UI.q=e.target.value;const box=document.getElementById('tbl-'+id);if(box){box.innerHTML=tableHTML(MODS[id],curPeriod(),id);syncSel()}const cb=document.getElementById('chr-'+id);if(cb&&MODS[id].charts)cb.innerHTML=chartsHTML(MODS[id],curPeriod(),id)}
