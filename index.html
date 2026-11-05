@@ -3391,7 +3391,7 @@ function chatPush(q,A){voice.chat=voice.chat||[];voice.chat.push({q,t:A.title||'
   const c=$('#mmChat');if(c){c.innerHTML=chatHTML();c.hidden=false;c.scrollTop=c.scrollHeight}}
 function ansClose(){const a=$('#mmAns');if(a){a.hidden=true;a.classList.remove('dock')}const c=$('#cover');if(c)c.classList.remove('dock-on')}
 
-/* ---------- mind-map search, "하이 제니" voice assistant and answer panel ---------- */
+/* ---------- mind-map search, "만득아 일하자" voice assistant and answer panel ---------- */
 let SRES=[];
 function searchIndex(){
   const out=[], add=(l,s,go,f,q)=>{if(l&&!out.some(x=>x.l===l&&x.s===s))out.push({l:String(l),s,go,f,q})};
@@ -3566,7 +3566,7 @@ function aiSnapshot(){
   return JSON.stringify(S_);
 }
 const AI_SCREENS=()=>Object.keys(MODS).filter(i=>!MODS[i].hidden).map(i=>`${i}=${MODS[i].name}`).join(', ');
-function aiSystem(){return `너는 YSM SAP(멕시코에 있는 한국계 제조회사의 사내 ERP)의 AI 실행엔진 "제니"다. 사용자는 회사 대표/관리자이고 너를 "제니"라고 부른다.
+function aiSystem(){return `너는 YSM SAP(멕시코에 있는 한국계 제조회사의 사내 ERP)의 AI 실행엔진 "만득이"다. 사용자는 회사 대표/관리자이고 너를 "만득아"라고 부른다.
 - 사용자가 쓴 언어(한국어, 영어, 스페인어)로 답한다. 한국어는 존댓말로.
 - 답은 음성으로도 읽힌다. 2~5문장으로 짧고 자연스럽게, 표·마크다운 기호 없이. 금액은 "1,234,567 페소"처럼 쓰고, 필요하면 핵심 숫자만 말한다.
 - 회사 숫자는 아래 데이터 스냅샷에서만 근거를 찾는다. 스냅샷에 없는 숫자는 지어내지 말고 없다고 말한다. 계산(합계, 증감률, 비교)은 해도 된다.
@@ -3611,7 +3611,7 @@ async function askAI(text){
     AI.busy=false;ENG.busy=false;voiceUI();
     if(pinned){const keep=CL;voice.heard='';runCmdLocal(/자료|데이터/.test(pinned)?pinned:pinned+' 자료',CL,true);CL=keep;const el=$('#mmAns');
       if(el){const p=document.createElement('p');p.className='ai-say';p.textContent=say;el.querySelector('header').after(p)}speak(clean(say),()=>afterAnswer());voice.fromVoice=!!heard;return}
-    answer({title:S('제니','Jenny','Jenny'),period:'AI',ai:say,heard,say:clean(say)});
+    answer({title:S('만득이','Mandeuk','Mandeuk'),period:'AI',ai:say,heard,say:clean(say)});
     if(opened)setTimeout(()=>{hideCover();go(opened)},1800);
   }catch(e){AI.busy=false;ENG.busy=false;voiceUI();
     if(AI.hist.length&&AI.hist[AI.hist.length-1].role==='user')AI.hist.pop();
@@ -3668,7 +3668,7 @@ function answer(A){
     ${A.bars&&A.bars.length?barsH(A.bars):''}
     ${A.secs?A.secs.filter(x=>x.bars&&x.bars.length).map(x=>`<div class="sec"><h4>${esc(x.h)}${x.go?`<button data-cgo="${x.go}">${esc(S('열기 →','Open →','Abrir →'))}</button>`:''}</h4>${barsH(x.bars)}</div>`).join(''):''}
     ${A.list?`<div class="lst">${A.list.map((x,i)=>`<button data-sr="${i}"><b>${esc(x.l)}</b><span>${esc(x.s)}</span></button>`).join('')}</div>`:''}
-    ${A.examples?`<div class="ex">${CMD_EX[CL].map(c=>`<button data-cmd="${esc(c)}" data-cl="${CL}">“${CL==='es'?'Hola Jenny':CL==='en'?'Hi Jenny':'하이 제니'}, ${esc(c)}”</button>`).join('')}</div>`:''}
+    ${A.examples?`<div class="ex">${CMD_EX[CL].map(c=>`<button data-cmd="${esc(c)}" data-cl="${CL}">“만득아 일하자, ${esc(c)}”</button>`).join('')}</div>`:''}
     ${A.go?`<button class="mm-full" data-cgo="${A.go}">${esc(L('전체 화면 보기 →'))}</button>`:''}`;
   el.classList.toggle('dock',pin);const cv_=$('#cover');if(cv_)cv_.classList.toggle('dock-on',pin);
   el.hidden=false;if(pin)el.scrollTop=0;voice.fromVoice=!!A.heard||!!A.greet;if(A.say)speak(A.say,A.greet?null:()=>afterAnswer());
@@ -3699,7 +3699,8 @@ function voiceUI(msg){const b=$('#mmMic'),s=$('#mmVs');if(b){b.classList.toggle(
   document.querySelectorAll('#cover [data-vlang]').forEach(x=>x.classList.toggle('on',x.dataset.vlang===voice.lang));
   if(s)s.textContent=msg||(voice.awake?{ko:'듣고 있어요…',en:'Listening…',es:'Escuchando…'}[voice.lang]:voice.on?'':voice.err||(SR?(isPhone()?{ko:'파형을 누르고 말씀하세요',en:'Tap the wave and speak',es:'Toca la onda y habla'}[voice.lang]:'음성인식 꺼짐 · 눌러서 켜기'):noSRmsg()))}
 function wake(){voice.awake=true;voice.t=voice.gt=Date.now();CL=voice.lang;voiceUI();answer({title:GREET[CL],examples:1,greet:1,say:GREET[CL]})}
-const WAKE=/(?:^|[\s,.!?])(?:(?:하이|헤이|해이|아이|하이요|hi|hey|high|hai|hola|oye)[\s,.!]*)?(?:제니|재니|젠니|쩨니|지니|jenny|jennie|jenni|jeni|jenna|genie|jeanie|yeni|yenny)(?:야|아|님|씨)?(?=[\s,.!?]|$)[\s,.!?]*(.*)$/i;
+// 호출어 "만득아 일하자" (만득아만 불러도 됨; 음성인식이 흔히 바꿔 적는 만덕아·만둑아·만득이도 인정)
+const WAKE=/(?:^|[\s,.!?])(?:만득|만덕|만둑|만뜩|만득이|만덕이)(?:아|야|이|가)?[\s,.!]*(?:일\s*하자고?|일\s*해|일\s*하러\s*가자|일\s*좀\s*하자)?(?=[\s,.!?]|$)[\s,.!?]*(.*)$/;
 function voiceHear(txt,final){
   if(voice.speaking||/안녕하세요\s*주인님|hello,? boss|hola,? jefe/i.test(txt))return;
   const m=txt.match(WAKE);
