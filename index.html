@@ -1265,7 +1265,8 @@ const ivaRt=r=>IVA_RATES[r.iva]||0;
 const hasIvaAmt=r=>r.ivaAmt!=null&&r.ivaAmt!==''&&isFinite(+r.ivaAmt);
 const ivaPart=r=>{if(hasIvaAmt(r))return(+r.ivaAmt)*rate(r.cur);const t=ivaRt(r);return t?mx(r,'amount')*t/(1+t):0};
 const hasCfdi=r=>r.factura==='발행'||r.factura==='수입(Pedimento)';
-const expAmt=r=>mx(r,'amount')-(hasCfdi(r)?ivaPart(r):0);
+// 외상매입 원천징수(부가세·ISR Ret)는 지급액에서 빠지지만 비용에는 포함
+const expAmt=r=>mx(r,'amount')+((+r.ivaRet||0)+(+r.isrRet||0))*rate(r.cur)-(hasCfdi(r)?ivaPart(r):0);
 const expBy=(cat,acc,p)=>sumBy(DB.ap.filter(r=>r.cat===cat&&r.account===acc&&inP(r,p)),expAmt)+sumBy(DB.cash.filter(r=>r.type==='출금'&&r.cat===cat&&r.account===acc&&inP(r,p)),expAmt);
 // labor cost by department: payroll records (gross + employer contributions) when the period has any; otherwise daily wage × days
 function laborCost(depts,p){
@@ -1415,9 +1416,10 @@ function priceAt(cust,pn,item,d){
 }
 // 외상매입: 금액·부가세·합계 중 적은 것으로 나머지를 채움 (모두 비워도 등록, 거래일·지급기일 비우면 오늘·결제조건)
 function apNorm(r){
-  let s=+r.sub||0,t=+r.amount||0,v=hasIvaAmt(r)?+r.ivaAmt:null;
-  if(s){if(v==null)v=r2(s*ivaRt(r));t=r2(s+v)}else if(t){if(v==null){s=r2(t/(1+ivaRt(r)));v=r2(t-s)}else s=r2(t-v)}else v=v||0;
-  r.sub=s;r.ivaAmt=v;r.amount=t;r.folio=String(r.folio||'').trim();
+  // 합계(지급할 금액) = 금액 − 할인 + 부가세 − 부가세 Ret − ISR Ret, 부가세를 비우면 (금액 − 할인) × 세율
+  let s=+r.sub||0,t=+r.amount||0,v=hasIvaAmt(r)?+r.ivaAmt:null;const d=+r.disc||0,ri=+r.ivaRet||0,rs=+r.isrRet||0,k=ivaRt(r);
+  if(s){if(v==null)v=r2((s-d)*k);t=r2(s-d+v-ri-rs)}else if(t){const b=v==null?(t+ri+rs)/(1+k):t+ri+rs-v;if(v==null)v=r2(b*k);s=r2(b+d)}else v=v||0;
+  r.disc=d;r.ivaRet=ri;r.isrRet=rs;r.sub=s;r.ivaAmt=v;r.amount=t;r.folio=String(r.folio||'').trim();
   if(!validD(r.date))r.date=TODAY;if(!validD(r.due))r.due=addDs(r.date,partyTerms('ap',r));
   const L=ACCOUNTS[r.cat]||[];if(!r.account||!L.includes(r.account)){const k=kgaapAcc((r.itemEs||r.item||'')+' '+(r.vendor||''),r.cat);r.account=k&&L.includes(k)?k:AP_DEF_ACC[r.cat]||L[0]||'기타'}
   return r}
@@ -1449,13 +1451,13 @@ const MODS={
   vat:{name:'부가세',desc:'멕시코 부가세법(LIVA) 기준 현금주의 부가세(IVA)를 자동 계산합니다. 매출세액, 매입세액, 수입 부가세, 납부액',page:()=>vatPage(),toolbar:fsToolbar},
   ap:{name:'외상매입',desc:'공급사 매입 채무와 지급 현황. 분류를 고르면 그 분류의 계정과목만 선택됩니다.',data:'ap',dated:true,tight:1,
     cols:[C('date','거래일','date',{opt:1}),C('vendor','공급사','text',{sug:'suppliers'}),C('folio','Factura #','text',{opt:1,view:r=>String(r.folio||'').trim()?esc(r.folio):'<span class="muted">–</span>'}),C('cat','분류','sel',{opts:CATS4,pill:1}),C('dept','부서','sel',{opts:['',...DEPTS],opt:1}),ACCT,C('item','품목','text',{wide:1}),CUR,
-      C('fx','환율 (US$ 건)','num',{noTable:1,opt:1,regHide:1}),SUB({sum:1}),Object.assign({},IVAF,{regHide:1,opt:1}),C('ivaAmt','부가세','money',{noTable:1,opt:1,keepBlank:1}),VATR({sum:1,l:'부가세'}),TOT({sum:1,form:1,keepBlank:1}),Object.assign({},FACTC,{noTable:1,regHide:1,opt:1}),Object.assign({},UUIDC,{regHide:1}),C('paid','지급액','money',{sum:1,regHide:1,opt:1}),C('due','지급기일','date',{opt:1}),
+      C('fx','환율 (US$ 건)','num',{noTable:1,opt:1,regHide:1}),SUB({sum:1}),C('disc','할인','money',{sum:1,opt:1}),C('ivaRet','부가세 Ret','money',{sum:1,opt:1}),C('isrRet','ISR Ret','money',{sum:1,opt:1}),Object.assign({},IVAF,{regHide:1,opt:1}),C('ivaAmt','부가세','money',{noTable:1,opt:1,keepBlank:1}),VATR({sum:1,l:'부가세'}),TOT({sum:1,form:1,keepBlank:1}),Object.assign({},FACTC,{noTable:1,regHide:1,opt:1}),Object.assign({},UUIDC,{regHide:1}),C('paid','지급액','money',{sum:1,regHide:1,opt:1}),C('due','지급기일','date',{opt:1}),
       C('bal','잔액','money',{sum:1,calc:apBal}),C('st','상태','calc',{calc:r=>dueStatus(apBal(r),r.due),pill:1,act:{mod:'ap',label:'지급 완료',show:r=>apBal(r)>0.5}})],
     kpis:(rows,p)=>{const all=DB.ap.filter(r=>r.date<=p.end),od=all.filter(r=>dueStatus(apBal(r),r.due)==='연체');return[kv('기간 매입액',money(sumBy(rows,M('amount'))),rows.length+'건'),kv('기간분 미지급',money(sumBy(rows,apBal))),
       kv('전체 미지급 잔액',money(sumBy(all,apBal)),p.end+' 기준','warn'),kv('연체',od.length+'건',plain(sumBy(od,apBal)),od.length?'bad':'')]},
     trend:{l:'기간별 매입액',fn:rows=>sumBy(rows,M('amount')),money:1},
     extra:rows=>groupSummary('분류별 매입',rows,'cat',[['매입액',M('amount'),money],['잔액',apBal,money]],r=>r.account),
-    blank:p=>({date:p.d,vendor:'',folio:'',cat:'제조비용',dept:'',account:'원재료비',item:'',cur:'MXN',sub:0,ivaAmt:'',amount:0,iva:'16%',factura:'발행',uuid:'',paid:0,due:addDs(p.d,30)})},
+    blank:p=>({date:p.d,vendor:'',folio:'',cat:'제조비용',dept:'',account:'원재료비',item:'',cur:'MXN',sub:0,disc:0,ivaRet:0,isrRet:0,ivaAmt:'',amount:0,iva:'16%',factura:'발행',uuid:'',paid:0,due:addDs(p.d,30)})},
   ar:{name:'외상매출',desc:'고객사 매출 채권과 수금 현황',data:'ar',dated:true,tight:1,after:(p,id)=>arFacturaCard(p,id),side:()=>arWeekCard(),
     filters:[['customer','고객사'],['folio','Factura','text'],['amount','합계','range'],['st','상태']],fsum:1,
     cols:[C('date','발행일','date'),C('customer','고객사','text',{sug:'customers'}),C('folio','Factura','text',{opt:1,view:r=>String(r.folio||'').trim()?`<span class="pill good">${esc(r.folio)}</span>`:pill(r.factura||'미발행')}),CUR,C('fx','환율 (US$ 건)','num',{noTable:1,opt:1}),SUB({sum:1}),IVAF,VATR({sum:1}),TOT({sum:1}),Object.assign({},FACTC_AR,{noTable:1}),UUIDC,C('received','수금액','money',{sum:1}),C('due','수금기일','date'),
@@ -3076,7 +3078,7 @@ function renderImp(){
   const box=$('#impPreview'), btn=$('[data-doimport]');if(!box)return;
   if(!imp){box.innerHTML='';return}
   if(imp.fatal){box.innerHTML=`<p class="err">${esc(imp.fatal)}</p>`;btn.disabled=true;return}
-  const m=MODS[imp.mod], p=curPeriod(), cols=imp.mod==='ar'?m.cols.filter(c=>['date','customer','folio','pn','item','sub','amount','due'].includes(c.k)):imp.mod==='ap'?m.cols.filter(c=>['date','vendor','folio','dept','account','item','sub','vat','amount','due'].includes(c.k)):m.cols.filter(c=>!c.calc&&!c.rowCur&&!c.noTable).slice(0,7);
+  const m=MODS[imp.mod], p=curPeriod(), cols=imp.mod==='ar'?m.cols.filter(c=>['date','customer','folio','pn','item','sub','amount','due'].includes(c.k)):imp.mod==='ap'?m.cols.filter(c=>['date','vendor','folio','dept','account','item','sub','disc','ivaRet','isrRet','vat','amount','due'].includes(c.k)):m.cols.filter(c=>!c.calc&&!c.rowCur&&!c.noTable).slice(0,7);
   box.innerHTML=`<p style="margin:0"><b>${esc(imp.file)}</b> · <span class="ok">등록 가능 ${imp.rows.length}건</span>${imp.errs.length?` · <span class="err">오류 ${imp.errs.length}건 (등록하지 않음)</span>`:''}</p>
     ${imp.missing.length?`<p class="note">파일에 없는 제목: ${esc(imp.missing.join(', '))}. 이 항목은 기본값으로 채웁니다.${imp.heads?` (파일의 제목: ${esc(imp.heads.join(' · '))})`:''}</p>`:''}
     ${(()=>{const a=imp.rows.filter(r=>r.autoAcc).length,k=imp.rows.filter(r=>r.itemEs).length;return a||k?`<p class="note">${[k?`스페인어 품목 ${k}건은 한국어로 바꿨습니다 (원문 보관)`:'',a?`계정과목이 빈 ${a}건은 품목으로 자동 분류했습니다`:''].filter(Boolean).join(' · ')}.</p>`:''})()}
@@ -3121,7 +3123,8 @@ function arTpl(){
 }
 // 일괄등록 양식: 등록(빈 시트, 이 시트를 읽음) · 작성 예시 · 작성 방법 · 코드표
 const TPL_EX={
-  ap:[{date:'2026-11-03',vendor:'Aceros del Norte S.A. de C.V.',folio:'A-10234',cat:'제조비용',dept:'생산',account:'원재료비',item:'Lámina de acero rolada en frío',cur:'MXN',sub:125000,ivaAmt:20000,amount:145000,due:'2026-12-03'},
+  ap:[{date:'2026-11-03',vendor:'Aceros del Norte S.A. de C.V.',folio:'A-10234',cat:'제조비용',dept:'생산',account:'원재료비',item:'Lámina de acero rolada en frío',cur:'MXN',sub:125000,disc:0,ivaRet:0,isrRet:0,ivaAmt:20000,amount:145000,due:'2026-12-03'},
+    {date:'2026-11-03',vendor:'Transportes Ramírez',folio:'T-512',cat:'제조비용',dept:'물류',account:'운반비',item:'Flete Saltillo - Monterrey',cur:'MXN',sub:10000,disc:500,ivaRet:380,isrRet:0,ivaAmt:'',amount:'',due:''},
     {date:'2026-11-04',vendor:'Montacargas Industriales del Bajío',folio:'F-881',cat:'제조비용',dept:'생기',account:'',item:'Servicio de mantenimiento de montacargas',cur:'MXN',sub:'',ivaAmt:'',amount:9860,due:''},
     {date:'2026-11-05',vendor:'Global Parts Supply LLC',folio:'',cat:'제조비용',dept:'',account:'부재료비',item:'Conectores eléctricos',cur:'USD',sub:4200,ivaAmt:0,amount:'',due:'2026-12-20'}],
   ar:[{date:'2026-11-03',customer:'Autopartes Saltillo S.A. de C.V.',item:'브래킷 A-120 · 5,000개',cur:'MXN',fx:'',sub:310000,iva:'16%',factura:'발행',uuid:'',received:0,due:'2026-12-03'},
@@ -3130,7 +3133,7 @@ const TPL_NOTE={date:'YYYY-MM-DD (예: 2026-11-03)',vendor:'Factura에 적힌 �
   cat:'코드표의 분류 중 하나',account:'분류에 맞는 계정과목 (코드표). 비우면 품목으로 자동 분류',item:'스페인어로 적으면 한국어로 바꿔 저장 (원문 보관)',
   cur:'MXN 또는 USD',fx:'US$ 건만. 비우면 현재 환율',sub:'부가세 제외 금액. 비우면 합계에서 역산',total:'부가세 포함 금액. 금액을 적었으면 비워 둠',
   iva:'16% / 8% / 0% / 면세',factura:'코드표 참고',uuid:'CFDI UUID (선택). 이미 등록된 UUID는 건너뜀',paid:'이미 지급한 금액 (없으면 0)',received:'이미 받은 금액 (없으면 0)',
-  due:'YYYY-MM-DD. 비우면 발생일 + 거래처 결제조건(기본 30일)',folio:'Factura 번호 (비워도 됨)',dept:'부서명 (비워도 됨): '+DEPTS.join(' / '),ivaAmt:'부가세 금액. 비우면 금액 × 16%',amount:'부가세 포함 금액. 금액을 비우면 여기서 역산'};
+  due:'YYYY-MM-DD. 비우면 발생일 + 거래처 결제조건(기본 30일)',folio:'Factura 번호 (비워도 됨)',dept:'부서명 (비워도 됨): '+DEPTS.join(' / '),ivaAmt:'부가세 금액. 비우면 (금액 − 할인) × 16%',amount:'지급할 금액 = 금액 − 할인 + 부가세 − 부가세 Ret − ISR Ret. 금액을 비우면 여기서 역산',disc:'할인 금액 (없으면 비움)',ivaRet:'부가세 원천징수 (IVA retenido, 없으면 비움)',isrRet:'ISR 원천징수 (ISR retenido, 없으면 비움)'};
 function downloadTpl(id){
   if(id==='ar')return arTpl();
   const m=MODS[id], b=m.blank(curPeriod()), arap=id==='ap'||id==='ar';
@@ -3147,7 +3150,7 @@ function downloadTpl(id){
     const hint=c=>TPL_NOTE[c.k]&&arap?TPL_NOTE[c.k]:c.t==='date'?'YYYY-MM-DD':c.cls==='cur'?'MXN 또는 USD':c.optsOf?'분류에 맞는 계정 (코드표)':c.t==='sel'?c.opts.filter(Boolean).join(' / '):isNum(c)?'숫자':'';
     const how=[['항목','필수','작성 방법','기본값'],...cols.map(c=>[c.l,need(c),hint(c),b[c.k]!=null&&b[c.k]!==''&&!(id==='ap'&&isNum(c)&&!+b[c.k])&&c.k!=='date'&&c.k!=='due'?String(b[c.k]):id==='ap'&&c.k==='date'?'오늘':''])];
     how.push([],['• "등록" 시트의 첫 행(제목)은 지우거나 바꾸지 마세요. 둘째 행부터 한 줄에 한 건씩 적습니다.'],['• 빈 줄은 건너뜁니다. 오류가 있는 줄은 등록하지 않고 미리보기에 행 번호를 보여 줍니다.'],
-      ...(arap?[['• 지급액/수금액은 등록 전 이미 정산된 금액입니다. 경리자료 전표는 만들지 않으니, 앞으로의 정산은 화면의 "'+(id==='ap'?'지급':'입금')+' 완료"로 처리하세요.'],...(id==='ap'?[['• 모든 칸은 비워도 등록됩니다. 금액·부가세·합계 중 적은 것으로 나머지를 계산합니다 (부가세를 비우면 16%).']]:[]),['• 잔액, 상태는 자동 계산됩니다.']]:[['• 계산 항목은 자동으로 채워집니다.']]));
+      ...(arap?[['• 지급액/수금액은 등록 전 이미 정산된 금액입니다. 경리자료 전표는 만들지 않으니, 앞으로의 정산은 화면의 "'+(id==='ap'?'지급':'입금')+' 완료"로 처리하세요.'],...(id==='ap'?[['• 모든 칸은 비워도 등록됩니다. 금액·부가세·합계 중 적은 것으로 나머지를 계산합니다 (부가세를 비우면 16%). 합계 = 금액 − 할인 + 부가세 − 부가세 Ret − ISR Ret.']]:[]),['• 잔액, 상태는 자동 계산됩니다.']]:[['• 계산 항목은 자동으로 채워집니다.']]));
     XLSX.utils.book_append_sheet(wb,sheet(how,[18,8,58,14]),'작성 방법');
     const codes=[];
     if(id==='ap'){const cats=CATS4.filter(c=>c!=='차입금'),L=cats.map(c=>ACCOUNTS[c].filter(x=>!/지급$|입금$|상환$/.test(x)));codes.push(['분류 → 계정과목 (K-GAAP)'],cats);for(let i=0;i<Math.max(...L.map(x=>x.length));i++)codes.push(L.map(x=>x[i]||''));codes.push([])}
@@ -4073,11 +4076,11 @@ document.addEventListener('change',e=>{const f=e.target.closest&&e.target.closes
 });
 // 외상매입 입력: 금액을 적으면 부가세(16%)·합계, 부가세를 고치면 합계, 합계만 적으면 금액·부가세 역산
 document.addEventListener('input',e=>{const F=e.target.form,k=e.target.name;if(!F||(F.dataset.reg||F.dataset.edit)!=='ap')return;
-  if(!['sub','ivaAmt','amount'].includes(k))return;const g=n=>F.querySelector(`[name="${n}"]`),S=g('sub'),V=g('ivaAmt'),T=g('amount');if(!S||!V||!T)return;
-  const n=x=>parseFloat(x.value),f=x=>isFinite(x)?String(r2(x)):'';
-  if(k==='sub'){if(S.value===''){V.value='';T.value='';return}V.value=f(n(S)*.16);T.value=f(n(S)+n(V))}
-  else if(k==='ivaAmt'){if(S.value!=='')T.value=f(n(S)+(n(V)||0))}
-  else if(k==='amount'){if(T.value===''){S.value='';V.value='';return}const s=r2(n(T)/1.16);S.value=f(s);V.value=f(n(T)-s)}
+  if(!['sub','disc','ivaRet','isrRet','ivaAmt','amount'].includes(k))return;const g=n=>F.querySelector(`[name="${n}"]`),S=g('sub'),V=g('ivaAmt'),T=g('amount');if(!S||!V||!T)return;
+  const n=x=>parseFloat(x&&x.value)||0,f=x=>isFinite(x)?String(r2(x)):'',D=n(g('disc')),R=n(g('ivaRet'))+n(g('isrRet'));
+  if(k==='sub'||k==='disc'){if(S.value===''){if(k==='sub'){V.value='';T.value=''}return}V.value=f((n(S)-D)*.16);T.value=f(n(S)-D+n(V)-R)}
+  else if(k==='ivaAmt'||k==='ivaRet'||k==='isrRet'){if(S.value!=='')T.value=f(n(S)-D+n(V)-R)}
+  else if(k==='amount'){if(T.value===''){S.value='';V.value='';return}const b=r2((n(T)+R)/1.16);S.value=f(b+D);V.value=f(n(T)+R-b)}
 });
 document.addEventListener('submit',e=>{
   const f=e.target;e.preventDefault();
