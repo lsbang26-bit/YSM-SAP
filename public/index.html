@@ -129,6 +129,7 @@ table.stk .mrg.neg{color:var(--bad)}
 .sidefoot .row{display:flex;gap:6px;align-items:center}
 .sidefoot .row button{flex:1;text-align:center}
 .sidefoot .danger{color:var(--bad)}
+.bkbox{display:grid;gap:6px;padding-top:6px;border-top:1px solid var(--line)}.bkst{font-size:11px;color:var(--good);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bkbtn{font-weight:600!important;color:var(--accent)!important}.bkbtn.warn{color:var(--warn)!important}
 .fx{display:flex;align-items:center;gap:6px;background:var(--surface-2);border:1px solid var(--line);border-radius:9px;padding:6px 10px;color:var(--fg-2)}
 .fx input{width:76px;border:1px solid var(--line);border-radius:6px;background:var(--surface);padding:2px 6px;text-align:right}
 
@@ -1150,7 +1151,7 @@ function syncFromAR(D){
     else if(Object.keys(v).some(k=>String(o[k]??'')!==String(v[k]??''))){Object.assign(o,v);res.u++}});
   return res;
 }
-function save(){VCACHE.clear();syncFromAR(DB);if(BANKS().length)DB.cash.forEach(r=>{if(!r.bank)r.bank=bankFor(r.cur)});if(LS.set(KEY,DB))savedAt=new Date();const el=$('#saved');if(el)el.textContent=savedText()}
+function save(){VCACHE.clear();LS.set('ysm-sap-saved-at',Date.now());bkQueue();syncFromAR(DB);if(BANKS().length)DB.cash.forEach(r=>{if(!r.bank)r.bank=bankFor(r.cur)});if(LS.set(KEY,DB))savedAt=new Date();const el=$('#saved');if(el)el.textContent=savedText()}
 function saveUI(){LS.set(UKEY,{vlang:UI.vlang,lastBank:UI.lastBank,cons:UI.cons,mod:UI.mod,dtab:UI.dtab,flt:UI.flt,rs:UI.rs,re:UI.re,pf:UI.pf,fm:UI.fm,mq:UI.mq,open:UI.open,fs:UI.fs})}
 const savedText=()=>savedAt?`저장됨 ${pad(savedAt.getHours())}:${pad(savedAt.getMinutes())}`:'이 브라우저에 자동 저장';
 
@@ -3774,6 +3775,46 @@ function voiceToggle(){
 }
 
 /* ---------- nav ---------- */
+/* ---------- 백업 파일: 자료를 PC 파일에도 저장 (Chrome·Edge 자동 저장) + 수동 내려받기·불러오기 ----------
+   브라우저 저장소는 주소(파일 위치·사이트)마다 따로라서, 새 버전을 다른 곳에서 열면 빈 자료로 시작함 → 백업 파일로 이어 줌 */
+const BK={h:null,ok:false,at:null,name:'',t:null,busy:false};
+const BK_TYPES=[{description:'YSM SAP 백업',accept:{'application/json':['.json']}}];
+function bkIDB(mode,fn){return new Promise(res=>{try{const r=indexedDB.open('ysm-sap-bk',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');
+  r.onsuccess=()=>{try{const tx=r.result.transaction('kv',mode),q=fn(tx.objectStore('kv'));tx.oncomplete=()=>res(q&&q.result);tx.onerror=()=>res(null)}catch(e){res(null)}};r.onerror=()=>res(null)}catch(e){res(null)}})}
+const bkPayload=()=>JSON.stringify({app:'YSM SAP',savedAt:new Date().toISOString(),data:DB,ui:LS.get(UKEY),layout:LS.get('ysm-sap-layout-v1')});
+const bkTime=d=>{if(!d)return '';const x=new Date(d);return `${x.getMonth()+1}/${x.getDate()} ${String(x.getHours()).padStart(2,'0')}:${String(x.getMinutes()).padStart(2,'0')}`};
+async function bkWrite(){if(!BK.h||!BK.ok||BK.busy)return;BK.busy=true;try{const w=await BK.h.createWritable();await w.write(bkPayload());await w.close();BK.at=new Date()}catch(e){BK.ok=false}BK.busy=false;try{renderNav()}catch(e){}}
+function bkQueue(){if(!BK.h||!BK.ok)return;clearTimeout(BK.t);BK.t=setTimeout(bkWrite,700)}
+async function bkRead(h){try{const j=JSON.parse(await (await h.getFile()).text());return j&&j.data&&j.data.cash?j:null}catch(e){return null}}
+function bkApply(j){DB=migrate(j.data);LS.set(KEY,DB);LS.set('ysm-sap-saved-at',Date.parse(j.savedAt)||Date.now());if(j.ui)LS.set(UKEY,j.ui);if(j.layout)LS.set('ysm-sap-layout-v1',j.layout);location.reload()}
+// 파일 쪽이 더 최신이면 불러오고, 아니면 지금 자료로 파일을 갱신
+async function bkSync(){const j=await bkRead(BK.h);const local=+LS.get('ysm-sap-saved-at')||0;
+  if(j&&Date.parse(j.savedAt)>local+1000){bkApply(j);return}await bkWrite()}
+async function bkConnect(){
+  if(!window.showOpenFilePicker){toast('이 브라우저는 자동 백업을 지원하지 않습니다. 백업 내려받기·불러오기를 써 주세요');return}
+  try{
+    const old=confirm('이미 만들어 둔 백업 파일이 있나요?\n\n확인 = 기존 백업 파일 열기 (그 자료를 불러올 수 있음)\n취소 = 새 백업 파일 만들기');
+    const h=old?(await showOpenFilePicker({types:BK_TYPES}))[0]:await showSaveFilePicker({suggestedName:'ysm-sap-data.json',types:BK_TYPES});
+    if((await h.requestPermission({mode:'readwrite'}))!=='granted')return;
+    BK.h=h;BK.ok=true;BK.name=h.name;await bkIDB('readwrite',st=>st.put(h,'h'));
+    const j=await bkRead(h);
+    if(j&&confirm(`백업 파일의 자료(${bkTime(j.savedAt)} 저장)를 불러올까요?\n\n확인 = 백업 파일 자료로 바꿈\n취소 = 지금 화면의 자료를 백업 파일에 저장`)){bkApply(j);return}
+    await bkWrite();toast('백업 파일에 연결했습니다. 이제 입력할 때마다 자동 저장됩니다');
+  }catch(e){if(e&&e.name!=='AbortError')toast('백업 파일 연결 실패: '+(e.message||e))}
+}
+async function bkReconnect(){if(!BK.h)return bkConnect();try{if((await BK.h.requestPermission({mode:'readwrite'}))!=='granted')return;BK.ok=true;await bkSync();renderNav()}catch(e){toast('다시 연결하지 못했습니다')}}
+function bkDownload(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([bkPayload()],{type:'application/json'}));a.download=`ysm-sap-backup-${TODAY}.json`;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)}
+function bkUpload(){const i=document.createElement('input');i.type='file';i.accept='.json,application/json';i.onchange=async()=>{const f=i.files[0];if(!f)return;let j=null;try{j=JSON.parse(await f.text())}catch(e){}
+  if(!j||!j.data||!j.data.cash){toast('YSM SAP 백업 파일이 아닙니다');return}
+  if(confirm(`${f.name} (${bkTime(j.savedAt)} 저장)의 자료로 바꿀까요? 지금 화면의 자료는 이 백업으로 대체됩니다.`))bkApply(j)};i.click()}
+(async()=>{const h=await bkIDB('readonly',st=>st.get('h'));if(!h)return;BK.h=h;BK.name=h.name;
+  try{BK.ok=(await h.queryPermission({mode:'readwrite'}))==='granted'}catch(e){BK.ok=false}
+  if(BK.ok)await bkSync();try{renderNav()}catch(e){}})();
+function bkFoot(){
+  const st=BK.h?(BK.ok?`<span class="bkst ok">💾 ${esc(BK.name)} 자동 저장${BK.at?' · '+bkTime(BK.at):''}</span>`:`<button class="bkbtn warn" data-bk="re">💾 백업 파일 다시 연결 (${esc(BK.name)})</button>`)
+    :`<button class="bkbtn" data-bk="conn">💾 백업 파일 연결 (자동 저장)</button>`;
+  return `<div class="bkbox">${st}<div class="row"><button data-bk="down">백업 내려받기</button><button data-bk="up">백업 불러오기</button></div></div>`;
+}
 function renderNav(){
   $('#nav').innerHTML=GROUPS.map(g=>{if(g.id==='dash')return `<div class="group"><button class="ghead solo mmnav" data-cover="1"><span class="tog" aria-hidden="true">◎</span>마인드맵</button></div><div class="group" data-lgwrap="dash"><button class="ghead solo ${UI.mod==='dash-all'?'on':''}" data-mod="dash-all" data-lnav="dash-all"${edit.on?' draggable="true"':''}><span class="tog" aria-hidden="true">▦</span>${esc(MODS['dash-all'].name)}</button></div>`;const open=UI.open[g.id]!==false;return `<div class="group" data-lgwrap="${g.id}">
     <button class="ghead" data-group="${g.id}" data-lgroup="${g.id}" aria-expanded="${open}"${edit.on?' draggable="true"':''}><span class="tog" aria-hidden="true">${open?'−':'+'}</span>${esc(g.name)}<span class="cnt">${g.items.filter(i=>!LAY.hide['nav|'+i]).length}</span></button>
@@ -3783,7 +3824,7 @@ function renderNav(){
     <button data-layedit="1">✎ 화면 편집 (위치·글씨)</button>
     <div class="row"><button data-allgroups="open">모두 펼치기</button><button data-allgroups="close">모두 접기</button></div>
     ${resetAsk?`<span>샘플 데이터로 되돌리면 입력한 내용이 모두 지워집니다.</span><div class="row"><button class="danger" data-reset="yes">초기화</button><button data-reset="no">취소</button></div>`:`<button data-reset="ask">샘플 데이터로 초기화</button>`}
-    <span>자료는 이 브라우저에 저장됩니다.</span>`;
+    ${bkFoot()}`;
   layMarkSel();
 }
 
@@ -3922,6 +3963,7 @@ document.addEventListener('click',e=>{
   if(d.fssel){const v=+d.fssel,s=UI.fs.sel,i=s.indexOf(v);if(i>=0){if(s.length>1)s.splice(i,1)}else s.push(v);saveUI();renderMain();return}
   if(d.reset==='ask'){resetAsk=true;renderNav();return}
   if(d.reset==='no'){resetAsk=false;renderNav();return}
+  if(d.bk){({conn:bkConnect,re:bkReconnect,down:bkDownload,up:bkUpload}[d.bk]||(()=>{}))();return}
   if(d.reset==='yes'){resetAsk=false;DB=migrate(seed());seedTaxPays();save();render();toast('샘플 데이터로 초기화했습니다');return}
   if(t.id==='burger'){$('#side').classList.add('open');$('#scrim').classList.add('open');return}
 });
