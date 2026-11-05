@@ -198,6 +198,13 @@ h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.025em;line-height:1.
 .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
 
 .tw{overflow-x:auto}
+/* 상세 내역: 제목 줄·합계 줄 고정, 표 안에서 상하·좌우 스크롤 */
+.tw.frz{max-height:calc(100vh - 150px);overflow:auto;scrollbar-gutter:stable}
+.tw.frz thead{position:sticky;top:0;z-index:3;box-shadow:0 1px 0 var(--line)}
+.tw.frz tfoot{position:sticky;bottom:0;z-index:3;box-shadow:0 -1px 0 var(--line-strong)}
+.tw.frz::-webkit-scrollbar{height:12px;width:10px}
+.tw.frz::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--muted) 45%,transparent);border-radius:8px;border:2px solid var(--surface)}
+.tw.frz::-webkit-scrollbar-track{background:var(--surface-2)}
 table{width:100%;border-collapse:collapse;font-size:12px}
 th,td{padding:12px 16px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap;vertical-align:middle}
 th{font-size:10.5px;color:var(--muted);font-weight:600;background:var(--surface-2);letter-spacing:.01em}
@@ -1450,6 +1457,7 @@ const MODS={
   cit:{name:'법인세',desc:'멕시코 법인세법(LISR) 기준 법인세(ISR 30%)를 자동 계산합니다. 연간 추정과 월별 예정납부(Pagos provisionales)',page:()=>citPage(),toolbar:fsToolbar},
   vat:{name:'부가세',desc:'멕시코 부가세법(LIVA) 기준 현금주의 부가세(IVA)를 자동 계산합니다. 매출세액, 매입세액, 수입 부가세, 납부액',page:()=>vatPage(),toolbar:fsToolbar},
   ap:{name:'외상매입',desc:'공급사 매입 채무와 지급 현황. 분류를 고르면 그 분류의 계정과목만 선택됩니다.',data:'ap',dated:true,tight:1,
+    filters:[['vendor','공급사'],['folio','Factura','text'],['cat','분류'],['dept','부서'],['account','계정과목'],['item','품목','text'],['cur','통화'],['amount','합계','range'],['st','상태']],fsum:1,
     cols:[C('date','거래일','date',{opt:1}),C('vendor','공급사','text',{sug:'suppliers'}),C('folio','Factura #','text',{opt:1,view:r=>String(r.folio||'').trim()?esc(r.folio):'<span class="muted">–</span>'}),C('cat','분류','sel',{opts:CATS4,pill:1}),C('dept','부서','sel',{opts:['',...DEPTS],opt:1}),ACCT,C('item','품목','text',{wide:1}),CUR,
       C('fx','환율 (US$ 건)','num',{noTable:1,opt:1,regHide:1}),SUB({sum:1}),C('disc','할인','money',{sum:1,opt:1}),C('ivaRet','부가세 Ret','money',{sum:1,opt:1}),C('isrRet','ISR Ret','money',{sum:1,opt:1}),Object.assign({},IVAF,{regHide:1,opt:1}),C('ivaAmt','부가세','money',{noTable:1,opt:1,keepBlank:1}),VATR({sum:1,l:'부가세'}),TOT({sum:1,form:1,keepBlank:1}),Object.assign({},FACTC,{noTable:1,regHide:1,opt:1}),Object.assign({},UUIDC,{regHide:1}),C('paid','지급액','money',{sum:1,regHide:1,opt:1}),C('due','지급기일','date',{opt:1}),
       C('bal','잔액','money',{sum:1,calc:apBal}),C('st','상태','calc',{calc:r=>dueStatus(apBal(r),r.due),pill:1,act:{mod:'ap',label:'지급 완료',show:r=>apBal(r)>0.5}})],
@@ -1708,7 +1716,8 @@ function fsumHTML(m,p,id){
   rs.forEach(r=>{const c=r.cur||'MXN';byC[c]=(byC[c]||0)+(+r.amount||0)});
   const it=(l,v,b)=>`<div><span>${l}</span><b${b?' class="strong"':''}>${v}</b></div>`;
   return `<div class="fsum${on?' on':''}"><span class="fl">${on?'필터 합계':'기간 합계'} · ${rs.length}건 · ${uniq(rs.map(r=>String(r.folio||'').trim()).filter(Boolean)).length} Factura</span>
-    ${it('공급가액',money(S(M('sub'))))}${it('부가세',money(S(r=>mx(r,'amount')-mx(r,'sub'))))}${it('합계',money(S(M('amount'))),1)}${it('수금액',money(S(M('received'))))}${it('잔액',money(S(arBal)),1)}
+    ${m===MODS.ap?`${it('금액',money(S(M('sub'))))}${it('할인',money(S(M('disc'))))}${it('부가세',money(S(ivaPart)))}${it('부가세 Ret',money(S(M('ivaRet'))))}${it('ISR Ret',money(S(M('isrRet'))))}${it('합계',money(S(M('amount'))),1)}${it('지급액',money(S(M('paid'))))}${it('잔액',money(S(apBal)),1)}`
+    :`${it('공급가액',money(S(M('sub'))))}${it('부가세',money(S(r=>mx(r,'amount')-mx(r,'sub'))))}${it('합계',money(S(M('amount'))),1)}${it('수금액',money(S(M('received'))))}${it('잔액',money(S(arBal)),1)}`}
     <span class="fc">${Object.entries(byC).map(([c,v])=>fmtCur(v,c,1)+(c==='USD'?'':' MXN')).join(' · ')}</span></div>`;
 }
 function filterBar(m,p,id){
@@ -1719,7 +1728,7 @@ function filterBar(m,p,id){
     ${m.filters.map(([k,l,t])=>{
     if(t==='text')return `<input type="search" class="fsel ftext${f[k]?' on':''}" data-fltin="${id}:${k}" value="${esc(f[k]||'')}" placeholder="${esc(l)} 검색" aria-label="${esc(l)}">`;
     if(t==='range')return `<span class="frange${(f[k+'Min']||f[k+'Max'])?' on':''}"><span>${esc(l)}</span><input type="number" inputmode="decimal" data-fltin="${id}:${k}Min" value="${esc(f[k+'Min']||'')}" placeholder="최소" aria-label="${esc(l)} 최소"><span class="tilde">~</span><input type="number" inputmode="decimal" data-fltin="${id}:${k}Max" value="${esc(f[k+'Max']||'')}" placeholder="최대" aria-label="${esc(l)} 최대"></span>`;
-    const o=uniq(all.map(r=>String(fval(m,r,k)??'')));if(f[k]&&!o.includes(f[k]))o.unshift(f[k]);
+    const o=uniq(all.map(r=>String(fval(m,r,k)??''))).filter(v=>v!=='');if(f[k]&&!o.includes(f[k]))o.unshift(f[k]);
     return `<select class="fsel${f[k]?' on':''}" data-flt="${id}:${k}" aria-label="${esc(l)}"><option value="">${esc(l)} 전체</option>${o.map(v=>`<option${v===f[k]?' selected':''}>${esc(v)}</option>`).join('')}</select>`}).join('')}
     ${on||m.filters.some(x=>x[2])?`<button class="btn" data-fclear="${id}">필터 해제</button>`:''}</div>`;
 }
@@ -1753,7 +1762,7 @@ function tableHTML(m,p,modId){
   const hasSum=cols.some(c=>c.sum);
   const al=c=>isNum(c)?'n':m.tight&&(c.pill||c.t==='date')?'c':m.tight&&c.sug?'clip':'';
   const S=selOf(modId), nOn=rows.filter(r=>S.has(r.id)).length;
-  return `<div class="tw"><table${m.tight?' class="tight"':''} data-seltbl="${modId}"><thead><tr><th class="ck"><input type="checkbox" data-selall="${modId}" aria-label="전체 선택"${nOn&&nOn===rows.length?' checked':''}></th>${cols.map(c=>`<th class="${al(c)}">${esc(c.l)}</th>`).join('')}<th class="n">관리</th></tr></thead><tbody>
+  return `<div class="tw frz"><table${m.tight?' class="tight"':''} data-seltbl="${modId}"><thead><tr><th class="ck"><input type="checkbox" data-selall="${modId}" aria-label="전체 선택"${nOn&&nOn===rows.length?' checked':''}></th>${cols.map(c=>`<th class="${al(c)}">${esc(c.l)}</th>`).join('')}<th class="n">관리</th></tr></thead><tbody>
     ${rows.map(r=>`<tr data-row="${r.id}" class="${r.id===flashId?'flash':''}${S.has(r.id)?' sel':''}"><td class="ck"><input type="checkbox" data-selrow="${modId}" value="${r.id}" aria-label="선택"${S.has(r.id)?' checked':''}></td>${cols.map(c=>`<td class="${al(c)}${c.calc?' calc':''}${c.wide?' w':''}"${m.tight&&(c.wide||c.sug)?` title="${esc(r[c.k])}"`:''}>${cellView(c,r,p,m)}</td>`).join('')}
       <td><div class="acts"><button class="act" data-editrow="${r.id}" data-m="${em}">수정</button><button class="act danger" data-delrow="${r.id}" data-m="${em}">삭제</button></div></td></tr>`).join('')}
     </tbody>${m.footSplit?splitFoot(m,p,rows,cols):hasSum?footRow(m,cols,`합계 · ${rows.length}건`,'',c=>c.sum?footVal(c,rows,p,m):''):''}</table></div>`;
