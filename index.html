@@ -802,7 +802,7 @@ function mkPay(e,date,from,days,ot){const daily=+e.daily||0;
 function stockIO(D,item,kind,a,b){
   const inR=x=>x.date>a&&x.date<=b;
   if(kind==='제품')return {i:sumBy(D.production.filter(x=>x.product===item&&inR(x)),'actual'),o:sumBy(D.outbound.filter(x=>x.product===item&&x.status==='출고완료'&&inR(x)),'qty')};
-  return {i:sumBy(D.inbound.filter(x=>x.item===item&&x.check!=='반품'&&inR(x)),'qty'),o:sumBy(D.bom.filter(x=>x.material===item),bm=>sumBy(D.production.filter(x=>x.product===bm.product&&inR(x)),'actual')*(+bm.qty||0))};
+  return {i:sumBy(D.inbound.filter(x=>x.item===item&&x.check!=='반품'&&inR(x)),'qty'),o:sumBy(bomMain(D).filter(x=>x.material===item),bm=>sumBy(D.production.filter(x=>x.product===bm.product&&inR(x)),'actual')*(+bm.qty||0))};
 }
 
 /* ---------- sample data ---------- */
@@ -966,6 +966,11 @@ function upgradeV12(D){
 // v14: 출고현황 품목 → 품번·품명 분리, 판매단가표(적용일별) 추가
 const splitProd=s=>{s=String(s||'').trim();const m=s.match(/^(\S*\d\S*)\s+(.+)$/);return m&&!/[가-힣]/.test(m[1])?[m[1],m[2]]:['',s]};
 // v15: 인원 명단을 실제 조직(2026-11-04 캡처)으로 교체. 입사일 등 모르는 값은 비워 둠
+// v16: BOM을 회사 양식 항목으로 (기존 제품·자재·소요량·단가는 ASSY·SUB·GROSS·단가로 옮김)
+function upgradeV16(D){(D.bom||[]).forEach(b=>{if(b.assyPn!=null||b.assyName!=null)return;const[pn,nm]=splitProd(b.product);Object.assign(b,{customer:'',project:'',ptype:'',lvl:'2',assyPn:pn,assyName:nm,us:1,mult:1});
+  if(b.kind==='원자재'&&b.unit==='kg')Object.assign(b,{codigo:b.material,gross:+b.qty||0,rmPrice:+b.price||0,subPn:'',subName:''});
+  else{const[sp,sn]=splitProd(b.material);Object.assign(b,{codigo:'',subPn:sp,subName:sn,us:+b.qty||0,spUnit:b.cur||'MXN',spPrice:+b.price||0})}
+  if(b.codigo)b.rmCur=b.cur||'MXN';bomNorm(b)})}
 function upgradeV15(D){
   const L=[['신승호','상무이사','법인장'],['정록철','수석','생산'],['박재영','수석','품질'],['최경익','책임','생기'],['안윤미','책임','구매/영업'],['백동현','선임','생관'],
     ['신현호','매니저','품질'],['박치훈','매니저','생산'],['황경연','기장','금형 보전'],['김재식','기장','금형 보전'],['허성진','조장','생산']];
@@ -1108,7 +1113,7 @@ function seedGroup(D,r,withParentAP){
     D.ic.push({id:uid(),date:s25,seller:QRO,buyer:USA,item:'AB-100 반제품 수출',cur:'USD',amount:a2,settled:old?a2:0});
   }
 }
-function migrate(D){if((D.ver||1)<3)D=migrate3(D);if(D.ver<4){upgradeV4(D,rng(11));D.ver=4}if(D.ver<5){upgradeV5(D,rng(13),false);D.ver=5}if(D.ver<6){upgradeV6(D);D.ver=6}if(D.ver<7){upgradeV7(D,rng(17));D.ver=7}if(D.ver<8){upgradeV8(D,rng(19));D.ver=8}if(D.ver<9){upgradeV9(D);D.ver=9}if(D.ver<10){upgradeV10(D);D.ver=10}if(D.ver<11){upgradeV11(D);D.ver=11}if(D.ver<12){upgradeV12(D);D.ver=12}if(D.ver<13){upgradeV13(D);D.ver=13}if(D.ver<14){upgradeV14(D);D.ver=14}if(D.ver<15){upgradeV15(D);D.ver=15}return D}
+function migrate(D){if((D.ver||1)<3)D=migrate3(D);if(D.ver<4){upgradeV4(D,rng(11));D.ver=4}if(D.ver<5){upgradeV5(D,rng(13),false);D.ver=5}if(D.ver<6){upgradeV6(D);D.ver=6}if(D.ver<7){upgradeV7(D,rng(17));D.ver=7}if(D.ver<8){upgradeV8(D,rng(19));D.ver=8}if(D.ver<9){upgradeV9(D);D.ver=9}if(D.ver<10){upgradeV10(D);D.ver=10}if(D.ver<11){upgradeV11(D);D.ver=11}if(D.ver<12){upgradeV12(D);D.ver=12}if(D.ver<13){upgradeV13(D);D.ver=13}if(D.ver<14){upgradeV14(D);D.ver=14}if(D.ver<15){upgradeV15(D);D.ver=15}if(D.ver<16){upgradeV16(D);D.ver=16}return D}
 function migrate3(D){
   if(D.ver>=3)return D;
   if(D.ver===2){D.settings.openRM=D.settings.openRM||2500000;seedGroup(D,rng(7),false);D.ver=3;return D}
@@ -1227,7 +1232,9 @@ function severCalc(r){
   return {e,d,yrs,wage,ag,vdays,vleft,vprop,vac,pv,sf,ind3,ind20,antig,fin,liq,total:fin+liq};
 }
 const stockRes=r=>{const d=stockDiff(r);return d==null?'기초':d===0?'일치':d>0?'과잉':'부족'};
-const bomUnitCost=prod=>sumBy(DB.bom.filter(b=>b.product===prod),b=>(+b.qty||0)*mx(b,'price'));
+// 계산용 BOM: 조립품 줄 제외, 같은 제품이 여러 고객사에 있으면 첫 고객사 BOM만 (중복 소요 방지)
+function bomMain(D){const first={};return (D.bom||[]).filter(b=>{if(!b.material||b.kind==='조립품')return false;const k=b.product;if(!(k in first))first[k]=b.customer||'';return (b.customer||'')===first[k]})}
+const bomUnitCost=prod=>sumBy(bomMain(DB).filter(b=>b.product===prod),b=>(+b.qty||0)*mx(b,'price'));
 const serviceYears=(hire,at)=>validD(hire)?Math.max(0,diffD(hire,at)/365.25):0;
 // paid vacation balance under LFT art. 76 (2023): days are granted on each work anniversary and must be used in the next service year
 const isPaidVac=x=>x.status==='승인'&&(x.type==='연차휴가'||x.type==='반차');
@@ -1378,7 +1385,7 @@ const SUG={
   pitems:()=>uniq([...(DB.prices||[]).map(x=>x.item),...DB.outbound.map(x=>x.item),...DB.ar.map(x=>x.item)].filter(Boolean)),
   products:()=>uniq([...DB.bom.map(b=>b.product),...PRODUCTS.map(p=>p.n)]),
   suppliers:()=>uniq([...(DB.vendors||[]).map(x=>x.name),...DB.inbound.map(x=>x.vendor),...DB.ap.map(x=>x.vendor),...MATERIALS.map(m=>m.sup)]),
-  materials:()=>uniq([...DB.bom.map(b=>b.material),...MATERIALS.map(m=>m.n)]),
+  materials:()=>uniq([...bomMain(DB).map(b=>b.material),...MATERIALS.map(m=>m.n)]),
   employees:()=>uniq(DB.employees.map(e=>e.name)),
   parties:()=>uniq([...DB.cash.map(c=>c.party),...DB.customers.map(c=>c.name)]),
   hqitems:()=>uniq([...(DB.hq||[]).map(r=>r.item),'본사 경영지원 수수료','ERP·IT 사용료','기술 로열티']),
@@ -1387,7 +1394,7 @@ const SUG={
   entities:()=>uniq((DB.entities||[]).map(e=>e.name)),
   positions:()=>uniq([...DB.employees.map(e=>e.pos),'작업자','반장','담당','팀장']),
   busroutes:()=>uniq([...DB.employees.map(e=>e.bus),'Ruta 1','Ruta 2','Ruta 3']),
-  stockitems:()=>uniq([...MATERIALS.map(m=>m.n),...DB.bom.map(b=>b.material),...DB.bom.map(b=>b.product),...PRODUCTS.map(p=>p.n)])
+  stockitems:()=>uniq([...MATERIALS.map(m=>m.n),...bomMain(DB).map(b=>b.material),...DB.bom.map(b=>b.product),...PRODUCTS.map(p=>p.n)])
 };
 const TONE={'입금':'good','출금':'bad','완료':'good','진행':'info','연체':'bad','검수완료':'good','검수대기':'warn','반품':'bad','출고완료':'good','출고예정':'info',
   '거래중':'good','중지':'','발행':'good','미발행':'warn','정산 대기':'warn','지급 완료':'good','승인':'good','신청':'info','반려':'bad','연차휴가':'acc','반차':'acc','무급휴가':'','해고 · 부당 (사유 없음)':'bad','해고 · 정당한 사유':'warn','수입(Pedimento)':'info','수입':'info','국내':'','세금납부':'warn','재직':'good','휴직':'warn','퇴사':'','일치':'good','과잉':'warn','부족':'bad','기초':'info','외주가공':'acc','입사예정':'info','상환중':'info','상환완료':'good','만기임박':'warn','원자재':'info','부자재':'',
@@ -1430,7 +1437,17 @@ function apNorm(r){
   if(!validD(r.date))r.date=TODAY;if(!validD(r.due))r.due=addDs(r.date,partyTerms('ap',r));
   const L=ACCOUNTS[r.cat]||[];if(!r.account||!L.includes(r.account)){const k=kgaapAcc((r.itemEs||r.item||'')+' '+(r.vendor||''),r.cat);r.account=k&&L.includes(k)?k:AP_DEF_ACC[r.cat]||L[0]||'기타'}
   return r}
-function fixRow(m,r){if(m===MODS.outbound||m===MODS.prices){r.pn=String(r.pn||'').trim();r.item=String(r.item||'').trim()}
+// BOM: 회사 BOM 양식(ASSY·SUB·Raw Material·Sub Part) → 계산용 제품·자재·구분·소요량·단위·통화·단가
+// 소요량 = 상위 조립품 배수(mult) × U/S × GROSS(원자재, kg) 또는 × U/S(부품, EA). 원자재 단가는 US$/kg
+function bomNorm(r){
+  r.assyPn=String(r.assyPn||'').trim();r.assyName=String(r.assyName||'').trim();r.subPn=String(r.subPn||'').trim();r.subName=String(r.subName||'').trim();r.codigo=String(r.codigo||'').trim();
+  r.product=[r.assyPn,r.assyName].filter(Boolean).join(' ');const k=(+r.mult||1)*(+r.us||0);
+  if(r.assy){r.kind='조립품';r.material=[r.subPn,r.subName].filter(Boolean).join(' ');r.unit='EA';r.qty=+k.toFixed(6);r.cur='USD';r.price=0}
+  else if(r.codigo){r.kind='원자재';r.material=r.codigo;r.unit='kg';r.qty=+(k*(+r.gross||0)).toFixed(6);r.cur=r.rmCur==='MXN'?'MXN':'USD';r.price=+r.rmPrice||0}
+  else if(r.subPn||r.subName){r.kind='부자재';r.material=[r.subPn,r.subName].filter(Boolean).join(' ');r.unit='EA';r.qty=+k.toFixed(6);r.cur=r.spUnit==='MXN'?'MXN':'USD';r.price=+r.spPrice||0}
+  else{r.kind='';r.material='';r.qty=0;r.price=0}
+  return r}
+function fixRow(m,r){if(m===MODS.bom)return bomNorm(r);if(m===MODS.outbound||m===MODS.prices){r.pn=String(r.pn||'').trim();r.item=String(r.item||'').trim()}
   if(m===MODS.outbound){const pr=priceAt(r.customer,r.pn,r.item,r.date);if(pr){if(!(+r.price>0)){r.price=+pr.price;r.cur=pr.cur||r.cur}if(!r.item)r.item=pr.item||'';if(!r.pn)r.pn=pr.pn||''}r.product=[r.pn,r.item].filter(Boolean).join(' ')||r.product||''}
 if(m.cols.some(c=>c.k==='folio')&&String(r.folio||'').trim())r.factura='발행';if(m.cols.some(c=>c.bank)){const b=BANKS().find(x=>x.name===r.bank);if(!b||(b.cur||'MXN')!==(r.cur||'MXN'))r.bank=bankFor(r.cur)}if(m===MODS.ap)apNorm(r);else if(m.cols.some(c=>c.k==='sub'))r.amount=hasIvaAmt(r)?r2((+r.sub||0)+(+r.ivaAmt)):r2((+r.sub||0)*(1+ivaRt(r)));if(m.cols.some(c=>c.k==='fx')){if(r.cur==='USD'){if(!(+r.fx>0))r.fx=FX()}else r.fx=''}return r}
 const MODS={
@@ -1578,15 +1595,21 @@ const MODS={
       return[kv('거래중 고객사',rows.filter(r=>r.status==='거래중').length+'곳','전체 '+rows.length+'곳'),kv('기간 매출',money(sumBy(s,'v')),'','good'),kv('미수 잔액',money(sumBy(DB.ar.filter(a=>a.date<=p.end),arBal)),p.end+' 기준','warn'),kv('기간 최대 매출',s[0]&&s[0].v?esc(s[0].n):'–',s[0]?plain(s[0].v):'')]},
     trend:{l:'기간별 총 매출',fn:(rows,p)=>sumBy(DB.outbound.filter(o=>inP(o,p)),lineAmt),money:1},
     blank:()=>({code:'C-'+pad3(DB.customers.length+1),name:'',rfc:'',contact:'',phone:'',terms:30,cur:'MXN',status:'거래중'})},
-  bom:{name:'BOM',desc:'제품별 자재 구성과 기간 소요량',data:'bom',dated:false,
-    cols:[C('product','제품','text',{sug:'products',wide:1}),C('material','자재','text',{sug:'materials'}),C('kind','구분','sel',{opts:['원자재','부자재'],pill:1}),C('qty','소요량','num'),
-      C('unit','단위','sel',{opts:['kg','EA','m','L','롤']}),CUR,C('price','단가','money2'),C('uc','단위 자재비','money2',{calc:lineAmt}),
+  bom:{name:'BOM',desc:'제품별 자재 구성과 기간 소요량',data:'bom',dated:false,tight:1,
+    filters:[['customer','Customer'],['project','Project'],['ptype','Product'],['assyPn','ASSY 품번','text'],['subPn','SUB 품번','text'],['kind','구분'],['codigo','Codigo','text'],['spSupplier','Sub Part 공급사']],
+    cols:[C('customer','Customer','text',{sug:'customers',opt:1}),C('project','Project','text',{opt:1}),C('ptype','Product','text',{opt:1}),C('lvl','BOM','sel',{opts:['1','2','3','4']}),
+      C('assyPn','ASSY Part No','text'),C('assyName','ASSY Part Name','text',{wide:1}),C('subPn','SUB Part No','text'),C('subName','SUB Part Name','text',{wide:1}),C('us','U/S','num'),
+      C('rmSupplier','RM Supplier','text',{opt:1,sec:'Raw Material'}),C('rmCond','RM Condition','text',{opt:1}),C('codigo','Codigo','text',{opt:1}),C('spec','Spec','text',{opt:1}),C('st','S/Treatment','text',{opt:1}),
+      C('thick','Thickness','num',{opt:1}),C('width','Width','num',{opt:1}),C('pitch','Pitch','num',{opt:1}),C('cvt','CVT','num',{opt:1}),C('sg','SG','num',{opt:1}),
+      C('net','NET','num',{opt:1}),C('gross','GROSS','num',{opt:1}),C('scrap','SCRAP','num',{opt:1}),C('rmPrice','RM Price','money2',{opt:1,mxn:1}),
+      C('spCond','SP Condition','text',{opt:1,sec:'Sub Part'}),C('spSupplier','SP Supplier','text',{opt:1}),C('spUnit','Unit','sel',{opts:['','USD','MXN'],opt:1}),C('spPrice','P/Price','money2',{opt:1,mxn:1}),
+      C('kind','구분','calc',{calc:r=>r.kind||'',pill:1}),C('qty','소요량','calc',{calc:r=>+r.qty||0,n:1,view:r=>`${q1(+r.qty||0)} ${esc(r.unit||'')}`}),C('uc','단위 자재비','money2',{calc:lineAmt}),
       C('need','기간 소요량','num',{calc:(r,p)=>sumBy(DB.production.filter(x=>x.product===r.product&&inP(x,p)),'actual')*(+r.qty||0)})],
     kpis:(rows,p)=>{const prods=uniq(rows.map(r=>r.product));const mc=sumBy(prods,pr=>sumBy(DB.production.filter(x=>x.product===pr&&inP(x,p)),'actual')*bomUnitCost(pr));
       return[kv('등록 제품',prods.length+'개'),kv('자재 항목',rows.length+'개'),kv('기간 생산량',nf0.format(sumBy(DB.production.filter(x=>inP(x,p)&&prods.includes(x.product)),'actual'))+' EA'),kv('기간 표준 자재비',money(mc),'BOM × 생산 실적','good')]},
     trend:{l:'기간별 표준 자재비',fn:(rows,p)=>sumBy(uniq(rows.map(r=>r.product)),pr=>sumBy(DB.production.filter(x=>x.product===pr&&inP(x,p)),'actual')*bomUnitCost(pr)),money:1},
     extra:(rows,p)=>groupSummary('제품별 단위 자재비',rows,'product',[['자재 수',()=>1,v=>v+'개'],['단위 자재비',lineAmt,moneyD],['기간 생산량',null,null,(g,key)=>nf0.format(sumBy(DB.production.filter(x=>x.product===key&&inP(x,p)),'actual'))]]),
-    blank:()=>({product:'',material:'',kind:'원자재',qty:1,unit:'EA',cur:'MXN',price:0})},
+    blank:()=>({customer:'',project:'',ptype:'',lvl:'2',assyPn:'',assyName:'',subPn:'',subName:'',us:1,rmSupplier:'',rmCond:'',codigo:'',spec:'',st:'',thick:0,width:0,pitch:0,cvt:0,sg:0,net:0,gross:0,scrap:0,rmPrice:0,spCond:'',spSupplier:'',spUnit:'',spPrice:0,mult:1})},
   employees:{name:'인원관리',desc:'직원 인사카드: 기본·근무·개인 정보, 계약과 재직 상태를 관리합니다. 카드를 누르면 상세 정보가 열립니다.',data:'employees',dated:false,page:p=>persPage(p),big:1,editTitle:'직원 정보',
     cols:[C('no','사번','text',{sec:'기본 정보'}),C('name','이름','text'),C('dept','부서','sel',{opts:DEPTS}),C('pos','직위','text',{sug:'positions'}),C('shift','근무조','sel',{opts:['주간','야간','교대']}),
       C('hire','입사일','date',{sec:'근무 정보'}),C('leave','퇴사일','date',{opt:1}),C('work','근무상태','sel',{opts:['재직','휴직']}),C('contract','계약유형','sel',{opts:['정규직','계약직','수습','파견직']}),C('cend','계약만료일','date',{opt:1}),
@@ -1723,8 +1746,8 @@ function fsumHTML(m,p,id){
 function filterBar(m,p,id){
   const f=fltOf(id), all=rowsFor(m,p), on=fltOn(m,id).length;
   return `<div class="fbar" role="group" aria-label="필터">
-    <div class="range" title="기간"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
-      <input type="date" data-range="s" value="${esc(p.start)}" max="${esc(p.end)}" aria-label="시작일"><span class="tilde">~</span><input type="date" data-range="e" value="${esc(p.end)}" min="${esc(p.start)}" aria-label="종료일"></div>
+    ${m.dated===false?'':`<div class="range" title="기간"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+      <input type="date" data-range="s" value="${esc(p.start)}" max="${esc(p.end)}" aria-label="시작일"><span class="tilde">~</span><input type="date" data-range="e" value="${esc(p.end)}" min="${esc(p.start)}" aria-label="종료일"></div>`}
     ${m.filters.map(([k,l,t])=>{
     if(t==='text')return `<input type="search" class="fsel ftext${f[k]?' on':''}" data-fltin="${id}:${k}" value="${esc(f[k]||'')}" placeholder="${esc(l)} 검색" aria-label="${esc(l)}">`;
     if(t==='range')return `<span class="frange${(f[k+'Min']||f[k+'Max'])?' on':''}"><span>${esc(l)}</span><input type="number" inputmode="decimal" data-fltin="${id}:${k}Min" value="${esc(f[k+'Min']||'')}" placeholder="최소" aria-label="${esc(l)} 최소"><span class="tilde">~</span><input type="number" inputmode="decimal" data-fltin="${id}:${k}Max" value="${esc(f[k+'Max']||'')}" placeholder="최대" aria-label="${esc(l)} 최대"></span>`;
@@ -2575,9 +2598,9 @@ function mrpYear(y){
   const fc=DB.forecast.filter(r=>validD(r.date)&&+r.date.slice(0,4)===y), cm=y<THIS_YEAR?12:y>THIS_YEAR?0:TODAY_D.getMonth();
   const P=uniq(fc.map(r=>r.product)).map(pr=>{const dem=zeros();fc.filter(r=>r.product===pr).forEach(r=>dem[+r.date.slice(5,7)-1]+=+r.qty||0);
     let st=onHand(pr,'제품');const stk=st, need=dem.map((d,i)=>{if(i<cm)return d;const n=Math.max(0,d-st);st=Math.max(0,st-d);return n});
-    return {pr,dem,need,stk,bom:DB.bom.filter(b=>b.product===pr).length}});
+    return {pr,dem,need,stk,bom:DB.bom.filter(b=>b.product===pr).length}});const BM=bomMain(DB);
   const mats={};
-  P.forEach(x=>DB.bom.filter(b=>b.product===x.pr).forEach(b=>{const m=mats[b.material]||(mats[b.material]={mat:b.material,kind:b.kind,unit:b.unit,cur:b.cur,price:+b.price||0,req:zeros(),used:[]});x.need.forEach((n,i)=>m.req[i]+=n*(+b.qty||0));m.used.push(x.pr)}));
+  P.forEach(x=>BM.filter(b=>b.product===x.pr).forEach(b=>{const m=mats[b.material]||(mats[b.material]={mat:b.material,kind:b.kind,unit:b.unit,cur:b.cur,price:+b.price||0,req:zeros(),used:[]});x.need.forEach((n,i)=>m.req[i]+=n*(+b.qty||0));m.used.push(x.pr)}));
   const M=Object.values(mats).map(m=>{let st=onHand(m.mat,m.kind);const stk=st, short=m.req.map((r,i)=>{if(i<cm)return 0;const s2=Math.max(0,r-st);st=Math.max(0,st-r);return s2});
     const lastIn=DB.inbound.filter(r=>r.item===m.mat).sort((a,b)=>a.date<b.date?1:-1)[0], mt=MATERIALS.find(x=>x.n===m.mat);
     return Object.assign(m,{stk,short,amt:short.map(s3=>s3*m.price*rate(m.cur)),vendor:lastIn?lastIn.vendor:(mt?mt.sup:'')})}).sort((a,b)=>a.mat.localeCompare(b.mat));
@@ -2815,7 +2838,7 @@ function consPage(){
 function stockItems(){
   // 앱에 등록된 자료(BOM·입고·생산·출고·재고조사)에 있는 품목만 — 내장 샘플 품목 목록은 쓰지 않음
   const mats={}, st=DB.stock||[], add=(n,kind,unit)=>{n=String(n||'').trim();if(n&&!mats[n])mats[n]={kind:kind||'원자재',unit:unit||'EA'}};
-  DB.bom.forEach(b=>add(b.material,b.kind,b.unit));
+  bomMain(DB).forEach(b=>add(b.material,b.kind,b.unit));
   DB.inbound.forEach(x=>{if(x.kind!=='제품')add(x.item,x.kind,x.unit)});
   st.forEach(x=>{if(x.kind&&x.kind!=='제품')add(x.item,x.kind,x.unit)});
   const prods=uniq([...DB.bom.map(b=>b.product),...DB.production.map(x=>x.product),...DB.outbound.map(x=>x.product),...st.filter(x=>x.kind==='제품').map(x=>x.item)].map(x=>String(x||'').trim()).filter(Boolean));
@@ -2827,7 +2850,7 @@ function qtyAt(item,kind,d){
 }
 const monthOf=d=>({start:d.slice(0,8)+'01',end:monthEnd(d)});
 const countIn=(it,m)=>(DB.stock||[]).filter(x=>x.item===it.item&&x.kind===it.kind&&x.date>=m.start&&x.date<=m.end).sort((a,b)=>a.date<b.date?1:-1)[0];
-const firstPrice=it=>{const ib=DB.inbound.filter(x=>x.item===it.item&&+x.price>0).sort((a,b)=>a.date<b.date?-1:1)[0];if(ib)return mx(ib,'price');const b=DB.bom.find(x=>x.material===it.item);if(b)return mx(b,'price');const m=MATERIALS.find(x=>x.n===it.item);return m?m.price*rate(m.cur):0};
+const firstPrice=it=>{const ib=DB.inbound.filter(x=>x.item===it.item&&+x.price>0).sort((a,b)=>a.date<b.date?-1:1)[0];if(ib)return mx(ib,'price');const b=bomMain(DB).find(x=>x.material===it.item);if(b)return mx(b,'price');const m=MATERIALS.find(x=>x.n===it.item);return m?m.price*rate(m.cur):0};
 // 자산평가 단가 (이동평균): 원/부자재 = (전월재고 금액 + 당월입고 금액·관세·DTA) ÷ (전월재고 수량 + 당월입고 수량)
 // 완제품 = (전월재고 금액 + 당월 제조원가) ÷ (전월재고 수량 + 당월생산 수량); 제조원가 = 투입 자재 (BOM × 자재 평가단가) + 노무비·경비 (품별 제조원가)
 function stockRoll(p){
@@ -2850,7 +2873,7 @@ function stockRoll(p){
     };
     S.mats.forEach(it=>{const r=roll(it,()=>sumBy(DB.inbound.filter(x=>x.item===it.item&&x.check!=='반품'&&inP(x,M)),x=>lineAmt(x)+(+x.igi||0)+(+x.dta||0)),()=>sumBy(DB.inbound.filter(x=>x.item===it.item&&x.check!=='반품'&&inP(x,M)),lineAmt));if(r)rows.mats.push(r)});
     S.prods.forEach(it=>{const r=roll(it,q=>{if(!q)return 0;
-      const mat=sumBy(DB.bom.filter(b=>b.product===it.item),b=>(+b.qty||0)*(unit[(b.kind||'원자재')+'|'+b.material]??mx(b,'price')))*q;
+      const mat=sumBy(bomMain(DB).filter(b=>b.product===it.item),b=>(+b.qty||0)*(unit[(b.kind||'원자재')+'|'+b.material]??mx(b,'price')))*q;
       const conv=sumBy(DB.cost.filter(x=>x.product===it.item&&inP(x,M)),x=>mx(x,'labor')+mx(x,'oh'));return mat+conv});if(r)rows.prods.push(r)});
     if(last){out.raw=rows.mats.filter(r=>r.kind==='원자재');out.sub=rows.mats.filter(r=>r.kind!=='원자재');out.prods=rows.prods}
   }
@@ -2892,7 +2915,7 @@ function stockTable(title,rows,labels,p,tip,refL){
 // 당월사용(자재) / 당월생산(제품)을 만든 생산현황 기록: 자재는 그 자재를 BOM에 쓰는 제품의 생산 실적 × BOM 소요량
 function stkProdModal(x){
   const inR=r=>r.date>=x.s&&r.date<=x.e, isP=x.kind==='제품';
-  const bq=isP?null:Object.fromEntries(DB.bom.filter(b=>b.material===x.item).map(b=>[b.product,+b.qty||0]));
+  const bq=isP?null:Object.fromEntries(bomMain(DB).filter(b=>b.material===x.item).map(b=>[b.product,+b.qty||0]));
   const rs=DB.production.filter(r=>inR(r)&&(isP?r.product===x.item:bq[r.product]!=null)).sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
   const use=r=>isP?+r.actual||0:(+r.actual||0)*bq[r.product], tot=sumBy(rs,use);
   return `<div class="modal-bg"><div class="modal lg" role="dialog" aria-modal="true" aria-labelledby="mt">
@@ -3005,13 +3028,17 @@ function parseImport(file,id){
     aoa.slice(1).forEach((line,n)=>{
       if(!line.some(v=>v!==''&&v!=null))return;
       const r=Object.assign({id:uid()},base), bad=[], got=new Set();
-      cols.forEach(c=>{if(idx[c.k]==null)return;const v=line[idx[c.k]];if(v===''||v==null){if(isNum(c))r[c.k]=c.keepBlank?'':0;else if(c.t==='date'&&!c.opt&&c.k!=='due')bad.push(c.l);else if(c.t!=='sel')r[c.k]='';return}
+      cols.forEach(c=>{if(idx[c.k]==null)return;const v=line[idx[c.k]];if(v===''||v==null||(typeof v==='string'&&!v.trim())){if(isNum(c))r[c.k]=c.keepBlank?'':0;else if(c.t==='date'&&!c.opt&&c.k!=='due')bad.push(c.l);else if(c.t!=='sel')r[c.k]='';return}
         const x=convCell(c,v);if(x.err)bad.push(c.l);else{r[c.k]=x.v;got.add(c.k)}});
       if(m.cols.some(c=>c.k==='due')&&!got.has('due')&&validD(r.date))r.due=addDs(r.date,partyTerms(id,r));
       if(id==='ap'||id==='ar')impArap(id,r,got,totI>=0?line[totI]:'',bad,seen);
       const ac=m.cols.find(c=>c.optsOf);if(ac&&!ac.optsOf(r).includes(r[ac.k]))bad.push(ac.l);
       if(bad.length)errs.push({line:n+2,cols:bad});else rows.push(fixRow(m,r));
     });
+    if(id==='bom'){const mul={};let key='';rows.forEach(r=>{const L=Math.min(4,Math.max(1,+r.lvl||2)),pk=r.assyPn+'|'+r.assyName;if(pk!==key){key=pk;for(const x in mul)delete mul[x]}
+      r.mult=L>2&&mul[L-1]?mul[L-1]:1;mul[L]=r.mult*(+r.us||1);for(let x=L+1;x<=4;x++)delete mul[x];bomNorm(r)});
+      rows.forEach((r,i)=>{const n=rows[i+1];r.assy=n&&n.assyPn===r.assyPn&&n.assyName===r.assyName&&(+n.lvl||2)>(+r.lvl||2)&&!r.codigo&&(+r.lvl||2)>1?1:0;bomNorm(r)});
+      for(let i=rows.length-1;i>=0;i--)if(!rows[i].material)rows.splice(i,1)}
     imp={mod:id,rows,errs,missing,file:file.name,heads:id==='ar'?(aoa[0]||[]).map(x=>String(x).trim()).filter(Boolean):undefined};
   }catch(e){imp={mod:id,fatal:'파일을 읽지 못했습니다. 엑셀(.xlsx, .xls) 또는 CSV 파일인지 확인해 주세요.'}}renderImp()};
   rd.readAsArrayBuffer(file);
@@ -3136,6 +3163,9 @@ const TPL_EX={
     {date:'2026-11-03',vendor:'Transportes Ramírez',folio:'T-512',cat:'제조비용',dept:'물류',account:'운반비',item:'Flete Saltillo - Monterrey',cur:'MXN',sub:10000,disc:500,ivaRet:380,isrRet:0,ivaAmt:'',amount:'',due:''},
     {date:'2026-11-04',vendor:'Montacargas Industriales del Bajío',folio:'F-881',cat:'제조비용',dept:'생기',account:'',item:'Servicio de mantenimiento de montacargas',cur:'MXN',sub:'',ivaAmt:'',amount:9860,due:''},
     {date:'2026-11-05',vendor:'Global Parts Supply LLC',folio:'',cat:'제조비용',dept:'',account:'부재료비',item:'Conectores eléctricos',cur:'USD',sub:4200,ivaAmt:0,amount:'',due:'2026-12-20'}],
+  bom:[{customer:'ABC',project:'P100',ptype:'BODY',lvl:'1',assyPn:'10000-AA000',assyName:'BRACKET ASSY',subPn:'',subName:'',us:''},
+    {customer:'ABC',project:'P100',ptype:'',lvl:'2',assyPn:'10000-AA000',assyName:'BRACKET ASSY',subPn:'10000-AA000-1',subName:'BRKT',us:1,rmSupplier:'Steel Co.',rmCond:'직구매',codigo:'SPCC_1.6_120',spec:'SPCC',st:'',thick:1.6,width:120,pitch:85,cvt:1,sg:7.85,net:0.098,gross:0.128,scrap:0.03,rmPrice:1.05},
+    {customer:'ABC',project:'P100',ptype:'',lvl:'2',assyPn:'10000-AA000',assyName:'BRACKET ASSY',subPn:'10000-AB000',subName:'BOLT M8',us:2,spCond:'LP',spSupplier:'Fastener SA',spUnit:'MXN',spPrice:1.8}],
   ar:[{date:'2026-11-03',customer:'Autopartes Saltillo S.A. de C.V.',item:'브래킷 A-120 · 5,000개',cur:'MXN',fx:'',sub:310000,iva:'16%',factura:'발행',uuid:'',received:0,due:'2026-12-03'},
     {date:'2026-11-04',customer:'Línea Blanca Monterrey',item:'Ensamble de arnés eléctrico',cur:'USD',fx:18.4,sub:'',total:23200,iva:'16%',factura:'발행',uuid:'',received:0,due:''}]};
 const TPL_NOTE={date:'YYYY-MM-DD (예: 2026-11-03)',vendor:'Factura에 적힌 이름 그대로 (번역하지 않음)',customer:'Factura에 적힌 이름 그대로 (번역하지 않음)',
@@ -3930,7 +3960,7 @@ document.addEventListener('click',e=>{
   if(d.stkdel&&modal&&modal.type==='stkprod'){const x=modal;
     if(d.stkdel==='ask'){x.ask=1;renderModal();return}
     if(d.stkdel==='no'){x.ask=0;renderModal();return}
-    const isP=x.kind==='제품', prods=isP?[x.item]:DB.bom.filter(b=>b.material===x.item).map(b=>b.product), n0=DB.production.length;
+    const isP=x.kind==='제품', prods=isP?[x.item]:bomMain(DB).filter(b=>b.material===x.item).map(b=>b.product), n0=DB.production.length;
     DB.production=DB.production.filter(r=>!(r.date>=x.s&&r.date<=x.e&&prods.includes(r.product)));
     const n=n0-DB.production.length;save();closeModal();renderMain();toast(`생산 기록 ${n}건을 지웠습니다`);return}
   if(d.stkgo&&modal&&modal.type==='stkprod'){const x=modal;UI.rs=x.s;UI.re=x.e;UI.flt=UI.flt||{};UI.flt.production={};saveUI();closeModal();go('production');return}
