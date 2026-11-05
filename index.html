@@ -749,7 +749,7 @@ function monthP(){
   return {start,end,mode:'week',days:diffD(start,end)+1,short:`${a}월`,label:a===b?`${F.year}년 ${a}월`:`${F.year}년 ${a}월 ~ ${b}월`,d:TODAY>=start&&TODAY<=end?TODAY:start,months:ms};
 }
 function monthToolbar(){
-  const F=UI.fm, years=[];for(let y=THIS_YEAR-2;y<=THIS_YEAR+1;y++)years.push(y);
+  const F=UI.fm, years=[];for(let y=THIS_YEAR-2;y<=THIS_YEAR+2;y++)years.push(y);
   return `<div class="chips" role="group" aria-label="연도">${years.map(y=>`<button class="chip yr ${F.year===y?'on':''}" data-fmyear="${y}" aria-pressed="${F.year===y}">${y}년</button>`).join('')}</div>
     <div class="chips" role="group" aria-label="월">${Array.from({length:12},(_,i)=>i+1).map(m=>`<button class="chip ${F.sel.includes(m)?'on':''}" data-fmsel="${m}" aria-pressed="${F.sel.includes(m)}">${m}월</button>`).join('')}</div>`;
 }
