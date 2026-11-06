@@ -1438,7 +1438,10 @@ function apNorm(r){
   let s=+r.sub||0,t=+r.amount||0,v=hasIvaAmt(r)?+r.ivaAmt:null;const d=+r.disc||0,ri=+r.ivaRet||0,rs=+r.isrRet||0,k=ivaRt(r);
   if(s){if(v==null)v=r2((s-d)*k);t=r2(s-d+v-ri-rs)}else if(t){const b=v==null?(t+ri+rs)/(1+k):t+ri+rs-v;if(v==null)v=r2(b*k);s=r2(b+d)}else v=v||0;
   r.disc=d;r.ivaRet=ri;r.isrRet=rs;r.sub=s;r.ivaAmt=v;r.amount=t;r.folio=String(r.folio||'').trim();
-  if(!validD(r.date))r.date=TODAY;if(!validD(r.due))r.due=addDs(r.date,partyTerms('ap',r));
+  // 크레딧 텀(일)을 적으면 지급기일 = 거래일 + 텀, 비우면 공급사 결제조건(없으면 30일)
+  if(!validD(r.date))r.date=TODAY;const tm=String(r.terms??'').trim()===''?NaN:Math.round(+r.terms);
+  if(isFinite(tm)&&tm>=0){r.terms=tm;r.due=addDs(r.date,tm)}
+  else{if(!validD(r.due))r.due=addDs(r.date,partyTerms('ap',r));r.terms=Math.round((pd(r.due)-pd(r.date))/864e5)}
   const L=ACCOUNTS[r.cat]||[];if(!r.account||!L.includes(r.account)){const k=kgaapAcc((r.itemEs||r.item||'')+' '+(r.vendor||''),r.cat);r.account=k&&L.includes(k)?k:AP_DEF_ACC[r.cat]||L[0]||'기타'}
   return r}
 // BOM: 회사 BOM 양식(ASSY·SUB·Raw Material·Sub Part) → 계산용 제품·자재·구분·소요량·단위·통화·단가
@@ -1484,7 +1487,7 @@ const MODS={
   ap:{name:'외상매입',desc:'공급사 매입 채무와 지급 현황. 분류를 고르면 그 분류의 계정과목만 선택됩니다.',data:'ap',dated:true,tight:1,
     filters:[['vendor','공급사'],['folio','Factura','text'],['cat','분류'],['dept','부서'],['account','계정과목'],['item','품목','text'],['cur','통화'],['amount','합계','range'],['st','상태']],fsum:1,
     cols:[C('date','거래일','date',{opt:1}),C('vendor','공급사','text',{sug:'suppliers'}),C('folio','Factura #','text',{opt:1,view:r=>String(r.folio||'').trim()?esc(r.folio):'<span class="muted">–</span>'}),C('cat','분류','sel',{opts:CATS4,pill:1}),C('dept','부서','sel',{opts:['',...DEPTS],opt:1}),ACCT,C('item','품목','text',{wide:1}),CUR,
-      C('fx','환율 (US$ 건)','num',{noTable:1,opt:1,regHide:1}),SUB({sum:1}),C('disc','할인','money',{sum:1,opt:1}),C('ivaRet','부가세 Ret','money',{sum:1,opt:1}),C('isrRet','ISR Ret','money',{sum:1,opt:1}),Object.assign({},IVAF,{regHide:1,opt:1}),C('ivaAmt','부가세','money',{noTable:1,opt:1,keepBlank:1}),VATR({sum:1,l:'부가세'}),TOT({sum:1,form:1,keepBlank:1}),Object.assign({},FACTC,{noTable:1,regHide:1,opt:1}),Object.assign({},UUIDC,{regHide:1}),C('paid','지급액','money',{sum:1,regHide:1,opt:1}),C('due','지급기일','date',{opt:1}),
+      C('fx','환율 (US$ 건)','num',{noTable:1,opt:1,regHide:1}),SUB({sum:1}),C('disc','할인','money',{sum:1,opt:1}),C('ivaRet','부가세 Ret','money',{sum:1,opt:1}),C('isrRet','ISR Ret','money',{sum:1,opt:1}),Object.assign({},IVAF,{regHide:1,opt:1}),C('ivaAmt','부가세','money',{noTable:1,opt:1,keepBlank:1}),VATR({sum:1,l:'부가세'}),TOT({sum:1,form:1,keepBlank:1}),Object.assign({},FACTC,{noTable:1,regHide:1,opt:1}),Object.assign({},UUIDC,{regHide:1}),C('paid','지급액','money',{sum:1,regHide:1,opt:1}),C('terms','크레딧 텀(일)','num',{opt:1,keepBlank:1}),C('due','지급기일','date',{opt:1}),
       C('bal','잔액','money',{sum:1,calc:apBal}),C('st','상태','calc',{calc:r=>dueStatus(apBal(r),r.due),pill:1,act:{mod:'ap',label:'지급 완료',show:r=>apBal(r)>0.5}})],
     kpis:(rows,p)=>{const all=DB.ap.filter(r=>r.date<=p.end),od=all.filter(r=>dueStatus(apBal(r),r.due)==='연체');return[kv('기간 매입액',money(sumBy(rows,M('amount'))),rows.length+'건'),kv('기간분 미지급',money(sumBy(rows,apBal))),
       kv('전체 미지급 잔액',money(sumBy(all,apBal)),p.end+' 기준','warn'),kv('연체',od.length+'건',plain(sumBy(od,apBal)),od.length?'bad':'')]},
@@ -3203,7 +3206,7 @@ const TPL_EX={
     {customer:'ABC',project:'P100',ptype:'',lvl:'2',assyPn:'10000-AA000',assyName:'BRACKET ASSY',subPn:'10000-AB000',subName:'BOLT M8',us:2,spCond:'LP',spSupplier:'Fastener SA',spUnit:'MXN',spPrice:1.8}],
   ar:[{date:'2026-11-03',customer:'Autopartes Saltillo S.A. de C.V.',item:'브래킷 A-120 · 5,000개',cur:'MXN',fx:'',sub:310000,iva:'16%',factura:'발행',uuid:'',received:0,due:'2026-12-03'},
     {date:'2026-11-04',customer:'Línea Blanca Monterrey',item:'Ensamble de arnés eléctrico',cur:'USD',fx:18.4,sub:'',total:23200,iva:'16%',factura:'발행',uuid:'',received:0,due:''}]};
-const TPL_NOTE={date:'YYYY-MM-DD (예: 2026-11-03)',vendor:'Factura에 적힌 이름 그대로 (번역하지 않음)',customer:'Factura에 적힌 이름 그대로 (번역하지 않음)',
+const TPL_NOTE={date:'YYYY-MM-DD (예: 2026-11-03)',terms:'숫자(일). 적으면 지급기일 = 거래일 + 텀, 비우면 공급사 결제조건',vendor:'Factura에 적힌 이름 그대로 (번역하지 않음)',customer:'Factura에 적힌 이름 그대로 (번역하지 않음)',
   cat:'코드표의 분류 중 하나',account:'분류에 맞는 계정과목 (코드표). 비우면 품목으로 자동 분류',item:'스페인어로 적으면 한국어로 바꿔 저장 (원문 보관)',
   cur:'MXN 또는 USD',fx:'US$ 건만. 비우면 현재 환율',sub:'부가세 제외 금액. 비우면 합계에서 역산',total:'부가세 포함 금액. 금액을 적었으면 비워 둠',
   iva:'16% / 8% / 0% / 면세',factura:'코드표 참고',uuid:'CFDI UUID (선택). 이미 등록된 UUID는 건너뜀',paid:'이미 지급한 금액 (없으면 0)',received:'이미 받은 금액 (없으면 0)',
@@ -4151,6 +4154,11 @@ document.addEventListener('change',e=>{const f=e.target.closest&&e.target.closes
 });
 // 외상매입 입력: 금액을 적으면 부가세(16%)·합계, 부가세를 고치면 합계, 합계만 적으면 금액·부가세 역산
 document.addEventListener('input',e=>{const F=e.target.form,k=e.target.name;if(!F||(F.dataset.reg||F.dataset.edit)!=='ap')return;
+  if(['date','terms','due','vendor'].includes(k)){const g=n=>F.querySelector(`[name="${n}"]`),Dt=g('date'),Tm=g('terms'),Du=g('due');if(!Dt||!Tm||!Du)return;
+    if(k==='vendor'){const v=DB.vendors.find(x=>x.name===e.target.value.trim());if(v&&+v.terms>0&&Tm.value===''){Tm.value=+v.terms}else return}
+    if(!validD(Dt.value))return;
+    if(k==='due'){if(validD(Du.value))Tm.value=Math.round((pd(Du.value)-pd(Dt.value))/864e5);return}
+    if(Tm.value!==''&&isFinite(+Tm.value))Du.value=addDs(Dt.value,Math.round(+Tm.value));return}
   if(!['sub','disc','ivaRet','isrRet','ivaAmt','amount'].includes(k))return;const g=n=>F.querySelector(`[name="${n}"]`),S=g('sub'),V=g('ivaAmt'),T=g('amount');if(!S||!V||!T)return;
   const n=x=>parseFloat(x&&x.value)||0,f=x=>isFinite(x)?String(r2(x)):'',D=n(g('disc')),R=n(g('ivaRet'))+n(g('isrRet'));
   if(k==='sub'||k==='disc'){if(S.value===''){if(k==='sub'){V.value='';T.value=''}return}V.value=f((n(S)-D)*.16);T.value=f(n(S)-D+n(V)-R)}
