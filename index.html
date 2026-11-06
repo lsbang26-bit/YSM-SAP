@@ -1143,7 +1143,7 @@ let savedAt=null, flashId=null, resetAsk=false;
 function syncFromAR(D){
   if(!D||!D.ar||!D.outbound||!D.customers)return {c:0,o:0,u:0,d:0};
   const res={c:0,o:0,u:0,d:0}, nk=x=>String(x||'').trim().toLowerCase();
-  const src=D.ar.filter(r=>r.customer&&(r.pn||+r.qty>0||r.src==='엑셀'));
+  let src=D.ar.filter(r=>r.customer&&(r.pn||+r.qty>0||r.src==='엑셀'));
   // 고객사
   const have=new Set(D.customers.map(c=>nk(c.name)));
   let no=D.customers.reduce((a,c)=>Math.max(a,+(String(c.code||'').match(/(\d+)$/)||[0,0])[1]),0);
@@ -1154,6 +1154,9 @@ function syncFromAR(D){
     const terms=tms.length?tms.sort((a,b)=>tms.filter(x=>x===b).length-tms.filter(x=>x===a).length)[0]:30;
     D.customers.push({id:uid(),code:'C-'+pad3(++no),name,rfc:'',contact:'',phone:'',terms,cur,status:'거래중',src:'외상매출'});res.c++});
   // 출고현황
+  // 출고현황에서 직접 삭제한 외상매출 연동 행은 다시 만들지 않음 (DB.obSkip)
+  const arIds=new Set(D.ar.map(r=>r.id));D.obSkip=(D.obSkip||[]).filter(x=>arIds.has(x));const skip=new Set(D.obSkip);
+  src=src.filter(r=>!skip.has(r.id));
   const ids=new Set(src.map(r=>r.id)), cur=new Map(D.outbound.filter(o=>o.arId).map(o=>[o.arId,o]));
   const n0=D.outbound.length;D.outbound=D.outbound.filter(o=>!o.arId||ids.has(o.arId));res.d=n0-D.outbound.length;
   src.forEach(r=>{const q=+r.qty>0?+r.qty:1, sub=+r.sub>0?+r.sub:(+r.qty||0)*(+r.price||0)-(+r.disc||0);
@@ -3311,6 +3314,7 @@ function delRow(mod,id){
   const m=MODS[mod],arr=DB[m.data],i=arr.findIndex(r=>r.id===id),row=arr[i];if(i<0)return;
   if(row.link&&row.linkMod==='sever'){const L=DB.sever.find(x=>x.id===row.link);if(L){L.status='정산 대기';L.pdate=''}}
   else if(row.link&&DB[row.linkMod]){const L=DB[row.linkMod].find(x=>x.id===row.link),k=row.linkMod==='ar'?'received':'paid';if(L)L[k]=Math.max(0,Math.round(((+L[k]||0)-(+row.amount||0))*100)/100)}
+  if(mod==='outbound'&&row.arId){DB.obSkip=DB.obSkip||[];if(!DB.obSkip.includes(row.arId))DB.obSkip.push(row.arId)}
   arr.splice(i,1);
 }
 
