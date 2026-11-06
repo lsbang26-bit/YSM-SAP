@@ -3585,6 +3585,15 @@ const asOfL=d=>CL==='ko'?d+' 기준':`${L('기준')} ${d}`;
 const MON_EN=['january','february','march','april','may','june','july','august','september','october','november','december'], MON_ES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 const cap=s=>s.charAt(0).toUpperCase()+s.slice(1);
 // period words in any of the three languages (default: this month)
+// 자금 일정 기간: 이번 주(월~일)·다음 주·지난 주·오늘·내일·모레, 월 지정이면 그 달 전체(미래 포함)
+function cfPeriod(t){const T=TODAY_D, dow=(T.getDay()+6)%7, mon=addDs(TODAY,-dow), wk=(o,l)=>({start:addDs(mon,o*7),end:addDs(mon,o*7+6),label:l+` (${fmtDot(pd(addDs(mon,o*7)))} ~ ${addDs(mon,o*7+6).slice(5).replace('-','.')})`});
+  if(/다음\s*주|차주|내주|next week|pr[oó]xima semana/i.test(t))return wk(1,S('다음 주','Next week','Próxima semana'));
+  if(/지난\s*주|저번\s*주|last week|semana pasada/i.test(t))return wk(-1,S('지난 주','Last week','Semana pasada'));
+  if(/이번\s*주|금주|주간|this week|esta semana/i.test(t))return wk(0,S('이번 주','This week','Esta semana'));
+  if(/모레/.test(t)){const d=addDs(TODAY,2);return {start:d,end:d,label:S('모레','In 2 days','Pasado mañana')+` (${d})`}}
+  if(/내일|tomorrow|ma[ñn]ana/i.test(t)){const d=addDs(TODAY,1);return {start:d,end:d,label:S('내일','Tomorrow','Mañana')+` (${d})`}}
+  if(/오늘|today|hoy/i.test(t))return {start:TODAY,end:TODAY,label:S('오늘','Today','Hoy')};
+  const P=cmdPeriod(t), e=ds(new Date(+P.start.slice(0,4),+P.start.slice(5,7),0));return {start:P.start,end:e,label:P.label}}
 function cmdPeriod(t){
   const T=TODAY_D, y=T.getFullYear(), lt=t.toLowerCase();
   const mp=(yy,m)=>({start:ds(new Date(yy,m,1)),end:minS(ds(new Date(yy,m+1,0)),TODAY),label:S(`${yy}년 ${m+1}월`,`${cap(MON_EN[m])} ${yy}`,`${MON_ES[m]} ${yy}`)});
@@ -3604,7 +3613,7 @@ const AIQ=/왜|어떻게|분석|비교|추천|조언|의견|설명|요약|전망
 function runCmd(text,lang,noAI){
   const t=String(text||'').trim();if(!t)return;
   CL=lang||detectLang(t);engPing();CMD_PIN=false;
-  if(!noAI&&aiOn()&&AIQ.test(t)){askAI(t);return}
+  if(!noAI&&aiOn()&&AIQ.test(t)&&!(/입금|수금|지불|지급|줄\s*돈|낼\s*돈|cobr|pagar|pagos/i.test(t)&&!/왜|분석|비교|추천|조언|설명|전망|예측|원인|이유|why|analy|compare|recommend|explain/i.test(t))){askAI(t);return}
   if(/(자료|데이터|패널|창|data|panel|datos|informaci[oó]n).*(닫|숨|치워|내려|꺼|없애|close|hide|cierra|quita|oculta)|^(닫아|닫아줘|close|cierra)/i.test(t)){ansClose();speak(S('자료를 닫았습니다','Data panel closed','Cerré los datos'));return}
   const nt0=normK(t), ent=vals=>uniq(vals.filter(Boolean)).filter(v=>normK(v).length>1&&nt0.includes(normK(v))).sort((a,b)=>b.length-a.length)[0];
   const BYQ=/별|\bby\b|\bper\b|\bpor\b|\beach\b|\bcada\b/i.test(t), BYP=/제품|품목|품번|아이템|product|item|producto|art[ií]culo|material/i.test(t);
@@ -3630,7 +3639,29 @@ function runCmd(text,lang,noAI){
         say:brk?S(`부서별 인원은 ${list}. 총 ${E.length}명입니다`,`By department: ${list}. ${E.length} in total`,`Por departamento: ${list}. ${E.length} en total`)
           :S(`현재 재직 인원은 ${E.length}명입니다`,`There are ${E.length} active employees`,`Hay ${E.length} empleados activos`)};}
     answer(A);return}
-  if(has(/잔고|잔액|시재|통장|은행|bbva|base|달러|페소|balance|bank|cash|saldo|banco|efectivo/i)&&!has(/미수|미지급|외상|receivable|payable|cobrar|pagar/i)){
+  // 자금 일정: "이번주 입금액하고 지불해야 할 금액 얼마야" → 기간 안 입금(완료·예정)과 지급 예정(외상매입 지급기일)
+  const CFI=/입금|수금|들어올|들어오|받을\s*돈|받아야|cobr|ingres|incoming|inflow|receive/i, CFO=/지불|지급\s*(해야|할|예정|액|금액)|줄\s*돈|낼\s*돈|나갈|내야|갚아야|pagar|pagos?\b|outgoing|outflow|to pay|pay out/i;
+  const CFW=/이번\s*주|금주|다음\s*주|차주|내주|지난\s*주|저번\s*주|주간|내일|모레|예정|해야|this week|next week|last week|tomorrow|esta semana|pr[oó]xima semana|ma[ñn]ana/i;
+  if((has(CFI)&&has(CFO))||((has(CFI)||has(CFO))&&has(CFW))||has(/자금\s*(일정|계획|흐름)|cash\s*flow|flujo de (caja|efectivo)/i)){
+    const Q=cfPeriod(t), inP_=d=>d&&d>=Q.start&&d<=Q.end, arD=DB.ar.filter(r=>arBal(r)>0.5&&inP_(r.due)), apD=DB.ap.filter(r=>apBal(r)>0.5&&inP_(r.due));
+    const cin=DB.cash.filter(r=>r.type==='입금'&&inP_(r.date)&&!/차입금 입금/.test(r.account||'')), cout=DB.cash.filter(r=>r.type==='출금'&&inP_(r.date));
+    const arOv=DB.ar.filter(r=>arBal(r)>0.5&&r.due&&r.due<Q.start&&Q.start<=TODAY), apOv=DB.ap.filter(r=>apBal(r)>0.5&&r.due&&r.due<Q.start&&Q.start<=TODAY);
+    const inExp=sumBy(arD,arBal), inDone=sumBy(cin,M('amount')), outExp=sumBy(apD,apBal), outDone=sumBy(cout,M('amount')), ovI=sumBy(arOv,arBal), ovO=sumBy(apOv,apBal);
+    const wantI=has(CFI)||!has(CFO), wantO=has(CFO)||!has(CFI), dueBar=(rs,k,f)=>topBy(rs,k,f,6).map(([n,v])=>[n,v,money(v)]);
+    const big=[];if(wantI)big.push([S('입금 예정','Incoming (due)','Por cobrar'),money(inExp)],[S('입금 완료','Received','Cobrado'),money(inDone)]);
+    if(wantO)big.push([S('지급 예정','To pay (due)','Por pagar'),money(outExp)],[S('지급 완료','Paid','Pagado'),money(outDone)]);
+    if(wantI&&wantO)big.push([S('예정 차액','Net (due)','Neto'),money(inExp-outExp)]);
+    const secs=[];
+    if(wantI)secs.push({h:S(`입금 예정 · ${arD.length}건 (외상매출 수금기일)`,`Incoming · ${arD.length}`,`Por cobrar · ${arD.length}`),go:'ar',bars:dueBar(arD,'customer',arBal)});
+    if(wantO)secs.push({h:S(`지급 예정 · ${apD.length}건 (외상매입 지급기일)`,`To pay · ${apD.length}`,`Por pagar · ${apD.length}`),go:'ap',bars:dueBar(apD,'vendor',apBal)});
+    if(wantI&&ovI>0.5)secs.push({h:S(`기간 전 연체 미수 · ${arOv.length}건`,`Overdue receivables · ${arOv.length}`,`Cobros vencidos · ${arOv.length}`),go:'ar',bars:dueBar(arOv,'customer',arBal)});
+    if(wantO&&ovO>0.5)secs.push({h:S(`기간 전 연체 미지급 · ${apOv.length}건`,`Overdue payables · ${apOv.length}`,`Pagos vencidos · ${apOv.length}`),go:'ap',bars:dueBar(apOv,'vendor',apBal)});
+    const sI=S(`입금 예정은 ${plain(inExp)} 페소${inDone?`, 이미 입금된 금액은 ${plain(inDone)} 페소`:''}`,`incoming due ${plain(inExp)} pesos${inDone?`, already received ${plain(inDone)}`:''}`,`por cobrar ${plain(inExp)} pesos${inDone?`, ya cobrado ${plain(inDone)}`:''}`);
+    const sO=S(`지불해야 할 금액은 ${plain(outExp)} 페소`,`to pay ${plain(outExp)} pesos`,`por pagar ${plain(outExp)} pesos`);
+    const ov=(wantO&&ovO>0.5)?S(`. 연체된 미지급 ${plain(ovO)} 페소도 있습니다`,`. Plus ${plain(ovO)} pesos overdue`,`. Además ${plain(ovO)} pesos vencidos`):'';
+    A={title:S(wantI&&wantO?'입금 · 지급 일정':wantI?'입금 일정':'지급 일정',wantI&&wantO?'Cash in · out':wantI?'Cash in':'Cash out',wantI&&wantO?'Cobros y pagos':wantI?'Cobros':'Pagos'),period:Q.label,big,secs,go:wantO&&!wantI?'ap':wantI&&!wantO?'ar':'bank',
+      say:S(`${Q.label} `,`${Q.label}: `,`${Q.label}: `)+[wantI?sI:'',wantO?sO:''].filter(Boolean).join(S('이고, ',', and ',' y '))+S('입니다','','')+ov};
+  }else if(has(/잔고|잔액|시재|통장|은행|bbva|base|달러|페소|balance|bank|cash|saldo|banco|efectivo/i)&&!has(/미수|미지급|외상|receivable|payable|cobrar|pagar/i)){
     const st=bankStat(TODAY), nt=normK(t), tok=st.flatMap(x=>x.b.name.toLowerCase().split(/[\s$]+/).filter(w=>w.length>2).map(w=>[w,x])), uq=tok.filter(([w])=>tok.filter(([v])=>v===w).length===1);
     const pick=st.find(x=>nt.includes(normK(x.b.name)))||(uq.find(([w])=>nt.includes(w))||[])[1]||(has(/달러|\bus\b|dollar|d[oó]lar/i)?st.find(x=>x.b.cur==='USD'):null);
     const tot=sumBy(st,x=>x.cur), cur=b=>b.cur==='USD'?S('달러','dollars','dólares'):PESO();
