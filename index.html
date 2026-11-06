@@ -1563,14 +1563,15 @@ const MODS={
     charts:{trend:['생산 실적 (EA)',r=>+r.actual||0,0,'계획',r=>+r.plan||0],by:[['품목별 생산 실적 (EA)','product',r=>+r.actual||0,0,g=>'달성률 '+pct(sumBy(g,'actual')/(sumBy(g,'plan')||NaN))+' · 불량률 '+pct(sumBy(g,'defect')/(sumBy(g,'actual')||NaN))],['라인별 생산 실적 (EA)','line',r=>+r.actual||0,0,g=>'달성률 '+pct(sumBy(g,'actual')/(sumBy(g,'plan')||NaN))]]},
     blank:p=>({date:p.d,plant:'YSM',line:'',pn:'',item:'',spec:'',model:'',cat:'',actual:0,amount:0,plan:0,defect:0,cur:'MXN',product:''})},
   outbound:{name:'출고현황',desc:'고객사별 제품 출고와 출고 금액',data:'outbound',dated:true,
-    cols:[C('date','출고일','date'),C('customer','고객사','text',{sug:'customers',wide:1}),C('pn','품번','text',{sug:'pns'}),C('item','품명','text',{sug:'pitems',wide:1}),C('qty','수량','num',{sum:1}),CUR,C('price','단가','money2',{opt:1}),
-      C('amount','금액','money',{sum:1,calc:lineAmt}),C('status','상태','sel',{opts:['출고완료','출고예정'],pill:1}),C('note','송장번호','text')],
+    cols:[C('date','출하일자','date'),C('shipTo','납품처','text',{sug:'customers',opt:1}),C('customer','매출처','text',{sug:'customers'}),C('pn','품목코드','text',{sug:'pns'}),C('model','Model','text',{opt:1}),C('item','품목명','text',{sug:'pitems',wide:1}),
+      C('qty','출고량','num',{sum:1}),C('unit','출고단위','text',{opt:1}),C('price','출고단가','money2',{opt:1}),C('amount','출고금액','money',{sum:1,calc:lineAmt}),CUR,C('fx','환율','num',{opt:1}),
+      C('mkt','매출(시장)구분','sel',{opts:['내수','수출'],opt:1}),C('status','상태','sel',{opts:['출고완료','출고예정'],pill:1,opt:1}),C('note','송장번호','text',{opt:1})],
     kpis:rows=>[kv('출고 건수',rows.length+'건'),kv('출고 수량',nf0.format(sumBy(rows,'qty'))+' EA'),kv('출고 금액',money(sumBy(rows,lineAmt)),'','good'),kv('출고 고객사',uniq(rows.map(r=>r.customer)).length+'곳')],
     trend:{l:'기간별 출고 금액',fn:rows=>sumBy(rows,lineAmt),money:1},
     extra:rows=>groupSummary('고객사별 출고',rows,'customer',[['수량',r=>+r.qty,v=>nf0.format(v)],['금액',lineAmt,money]]),
-    filters:[['customer','고객사'],['pn','품번'],['item','품명']],
+    filters:[['shipTo','납품처'],['customer','매출처'],['pn','품목코드'],['model','Model'],['item','품목명'],['mkt','매출구분']],
     charts:{trend:['출고 금액',lineAmt,1],by:[['고객사별 출고 금액','customer',lineAmt,1],['품목별 출고 금액','product',lineAmt,1,g=>nf0.format(sumBy(g,'qty'))+' EA']]},
-    blank:p=>({date:p.d,customer:'',pn:'',item:'',product:'',qty:0,cur:'MXN',price:0,status:'출고예정',note:''})},
+    blank:p=>({date:p.d,shipTo:'',customer:'',pn:'',model:'',item:'',product:'',qty:0,unit:'EA',cur:'MXN',fx:'',price:0,mkt:'내수',status:'출고예정',note:''})},
   prices:{name:'판매단가',desc:'고객사·품번별 판매단가와 적용일. 출고 등록 때 단가를 비워 두면 출고일 기준 단가가 자동으로 들어갑니다',data:'prices',dated:false,sortDate:1,
     cols:[C('date','적용일','date'),C('customer','고객사','text',{sug:'customers',wide:1}),C('pn','품번','text',{sug:'pns'}),C('item','품명','text',{sug:'pitems',wide:1}),CUR,C('price','단가','money2'),
       C('prev','이전 단가','calc',{n:1,calc:()=>'',view:r=>{const x=priceAt(r.customer,r.pn,r.item,addDs(r.date,-1));return x?fmtCur(x.price,x.cur||'MXN',1)+` <span class="dim">(${esc(x.date)})</span>`:'<span class="dim">–</span>'}}),
@@ -3055,9 +3056,11 @@ function parseImport(file,id){
     const missing=id==='ap'?[]:cols.filter(c=>idx[c.k]==null&&!(c.k==='sub'&&totI>=0)&&!(id==='ap'&&c.k==='account')&&c.k!=='due'&&!c.opt).map(c=>c.l), base=m.blank(curPeriod()), rows=[], errs=[];
     aoa.slice(1).forEach((line,n)=>{
       if(!line.some(v=>v!==''&&v!=null))return;
+      if(id==='outbound'&&[idx.customer,idx.pn,idx.item].every(i=>i==null||!String(line[i]??'').trim()))return;
       const r=Object.assign({id:uid()},base), bad=[], got=new Set();
       cols.forEach(c=>{if(idx[c.k]==null)return;const v=line[idx[c.k]];if(v===''||v==null||(typeof v==='string'&&!v.trim())){if(isNum(c))r[c.k]=c.keepBlank?'':0;else if(c.t==='date'&&!c.opt&&c.k!=='due')bad.push(c.l);else if(c.t!=='sel')r[c.k]='';return}
         const x=convCell(c,v);if(x.err)bad.push(c.l);else{r[c.k]=x.v;got.add(c.k)}});
+      if(id==='outbound'){if(!got.has('status'))r.status='출고완료';if(!got.has('shipTo'))r.shipTo=r.customer}
       if(m.cols.some(c=>c.k==='due')&&!got.has('due')&&validD(r.date))r.due=addDs(r.date,partyTerms(id,r));
       if(id==='ap'||id==='ar')impArap(id,r,got,totI>=0?line[totI]:'',bad,seen);
       const ac=m.cols.find(c=>c.optsOf);if(ac&&!ac.optsOf(r).includes(r[ac.k]))bad.push(ac.l);
@@ -3187,6 +3190,7 @@ function arTpl(){
 }
 // 일괄등록 양식: 등록(빈 시트, 이 시트를 읽음) · 작성 예시 · 작성 방법 · 코드표
 const TPL_EX={
+  outbound:[{date:'2026-11-03',shipTo:'ABC Motors',customer:'ABC Motors',pn:'12345-AB000',model:'XY1',item:'BRACKET ASSY XY1 PACKING',qty:500,unit:'EA',price:1.25,cur:'USD',fx:20.45,mkt:'내수',status:'출고완료',note:''}],
   ap:[{date:'2026-11-03',vendor:'Aceros del Norte S.A. de C.V.',folio:'A-10234',cat:'제조비용',dept:'생산',account:'원재료비',item:'Lámina de acero rolada en frío',cur:'MXN',sub:125000,disc:0,ivaRet:0,isrRet:0,ivaAmt:20000,amount:145000,due:'2026-12-03'},
     {date:'2026-11-03',vendor:'Transportes Ramírez',folio:'T-512',cat:'제조비용',dept:'물류',account:'운반비',item:'Flete Saltillo - Monterrey',cur:'MXN',sub:10000,disc:500,ivaRet:380,isrRet:0,ivaAmt:'',amount:'',due:''},
     {date:'2026-11-04',vendor:'Montacargas Industriales del Bajío',folio:'F-881',cat:'제조비용',dept:'생기',account:'',item:'Servicio de mantenimiento de montacargas',cur:'MXN',sub:'',ivaAmt:'',amount:9860,due:''},
