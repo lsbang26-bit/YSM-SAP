@@ -423,7 +423,7 @@ table.tight .cell{height:30px}
 .bkdot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--h);margin-right:8px;vertical-align:1px}
 .bkgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:12px}
 .card.bk{border-top:3px solid var(--h)}
-.bkv{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;padding:14px 16px 6px}
+.bkv{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 16px;padding:14px 16px 6px}
 .bkv div{display:grid;gap:3px;min-width:0}
 .bkv span{font-size:11px;color:var(--muted)}
 .bkv b{font-size:15px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -769,10 +769,10 @@ const rate=cur=>cur==='USD'?FX():1;
 const mx=(r,k)=>(+r[k]||0)*rate(r.cur);
 const M=k=>r=>mx(r,k);
 const SYM={MXN:'',USD:'US$'};
-function fmtCur(v,cur,dec){v=+v||0;const s=dec?nf2.format(Math.abs(v)):nf0.format(Math.round(Math.abs(v)));return `${v<0?'−':''}${cur==='USD'?'<span class="cur-tag usd">US$</span>':''}${s}`}
+function fmtCur(v,cur,dec){v=+v||0;const s=nf2.format(Math.abs(v));return `${v<0?'−':''}${cur==='USD'?'<span class="cur-tag usd">US$</span>':''}${s}`}
 const money=v=>fmtCur(v,'MXN');
 const moneyD=v=>fmtCur(v,'MXN',1);
-const plain=v=>{const x=+v||0;return (x<0?'−':'')+nf0.format(Math.round(Math.abs(x)))};
+const plain=v=>{const x=+v||0;return (x<0?'−':'')+nf2.format(Math.abs(x))};
 function compact(v){const x=Math.round(+v||0),a=Math.abs(x),s=x<0?'−':'';return s+(a>=1e6?(a/1e6).toFixed(2)+'M':a>=1e4?(a/1e3).toFixed(0)+'K':nf0.format(a))}
 
 /* ---------- accounts ---------- */
@@ -1929,7 +1929,7 @@ function bankKpiHTML(d){
   const st=bankStat(d), n=ty=>st.reduce((a,x)=>a+x.rs.filter(r=>r.type===ty).length,0);
   const isU=x=>(x.b.cur||'MXN')==='USD', part=(k,u)=>sumBy(st.filter(x=>isU(x)===u),x=>x[k]/(u?rate('USD'):1)), tot=k=>sumBy(st,x=>x[k]);
   const box=(l,k,s,tone,ty)=>{const v=tot(k);return `<div class="kpi ccy ${tone||''}"${ty?` data-bktx="${ty}" data-bkd="${d}" tabindex="0" role="button" title="${l} 내역 보기"`:''}><span class="l">${esc(l)}</span>
-    <div class="cx"><i>Peso 계좌</i><b>${plain(part(k,false))}</b><i>US$ 계좌</i><b>${nf2.format(part(k,true))}</b><i class="t">합계 (MXN 환산)</i><b class="t">${money(v)}</b><i>원화 환산</i><b>₩${plain(v*KRW())}</b></div><span class="s">${esc(s)}</span></div>`};
+    <div class="cx"><i>Peso 계좌</i><b>${plain(part(k,false))}</b><i>US$ 계좌</i><b>${nf2.format(part(k,true))}</b><i class="t">합계 (MXN 환산)</i><b class="t">${money(v)}</b><i>원화 환산</i><b>₩${nf0.format(Math.round(v*KRW()))}</b></div><span class="s">${esc(s)}</span></div>`};
   const cv=tot('cur');
   return `<section class="kpis">${box('전일잔고','prev',addDs(d,-1)+' 마감')}${box('입금','i',n('입금')+'건 · 눌러서 내역','good','입금')}${box('지출','o',n('출금')+'건 · 눌러서 내역','bad','출금')}${box('현잔고','cur',d+' 기준',cv<0?'bad':'')}</section>
     <p class="hint" style="margin:-4px 2px 0;font-size:11px;color:var(--faint)">합계 = Peso 계좌 + US$ 계좌 × ${FX()} · 원화 = 합계 × ${KRW()} (왼쪽 아래에서 환율 변경)</p>`;
