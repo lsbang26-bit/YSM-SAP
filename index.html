@@ -198,6 +198,11 @@ h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.025em;line-height:1.
 .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
 
 .tw{overflow-x:auto}
+th[data-ck]{position:relative}
+.cres{position:absolute;top:0;right:-4px;width:9px;height:100%;cursor:col-resize;z-index:2;touch-action:none}
+.cres::after{content:'';position:absolute;top:25%;bottom:25%;left:4px;width:1px;background:var(--line-strong);opacity:.6}
+.cres:hover::after,body.cresing .cres::after{background:var(--accent,#0070F2);opacity:1;width:2px}
+body.cresing,body.cresing *{cursor:col-resize!important;user-select:none!important}
 /* 상세 내역: 제목 줄·합계 줄 고정, 표 안에서 상하·좌우 스크롤 */
 .tw.frz{max-height:calc(100vh - 150px);overflow:auto;scrollbar-gutter:stable}
 .tw.frz thead{position:sticky;top:0;z-index:3;box-shadow:0 1px 0 var(--line)}
@@ -1171,7 +1176,7 @@ function syncFromAR(D){
   return res;
 }
 function save(){VCACHE.clear();LS.set('ysm-sap-saved-at',Date.now());bkQueue();syncFromAR(DB);if(BANKS().length)DB.cash.forEach(r=>{if(!r.bank)r.bank=bankFor(r.cur)});if(LS.set(KEY,DB))savedAt=new Date();const el=$('#saved');if(el)el.textContent=savedText()}
-function saveUI(){LS.set(UKEY,{vlang:UI.vlang,lastBank:UI.lastBank,cons:UI.cons,mod:UI.mod,dtab:UI.dtab,flt:UI.flt,rs:UI.rs,re:UI.re,pf:UI.pf,fm:UI.fm,mq:UI.mq,open:UI.open,fs:UI.fs})}
+function saveUI(){LS.set(UKEY,{cw:UI.cw,vlang:UI.vlang,lastBank:UI.lastBank,cons:UI.cons,mod:UI.mod,dtab:UI.dtab,flt:UI.flt,rs:UI.rs,re:UI.re,pf:UI.pf,fm:UI.fm,mq:UI.mq,open:UI.open,fs:UI.fs})}
 const savedText=()=>savedAt?`저장됨 ${pad(savedAt.getHours())}:${pad(savedAt.getMinutes())}`:'이 브라우저에 자동 저장';
 
 /* ---------- domain calcs (all return MXN) ---------- */
@@ -1802,8 +1807,8 @@ function tableHTML(m,p,modId){
   const hasSum=cols.some(c=>c.sum);
   const al=c=>isNum(c)?'n':m.tight&&(c.pill||c.t==='date')?'c':m.tight&&c.sug?'clip':'';
   const S=selOf(modId), nOn=rows.filter(r=>S.has(r.id)).length;
-  return `<div class="tw frz"><table${m.tight?' class="tight"':''} data-seltbl="${modId}"><thead><tr><th class="ck"><input type="checkbox" data-selall="${modId}" aria-label="전체 선택"${nOn&&nOn===rows.length?' checked':''}></th>${cols.map(c=>`<th class="${al(c)}">${esc(c.l)}</th>`).join('')}<th class="n">관리</th></tr></thead><tbody>
-    ${rows.map(r=>`<tr data-row="${r.id}" class="${r.id===flashId?'flash':''}${S.has(r.id)?' sel':''}"><td class="ck"><input type="checkbox" data-selrow="${modId}" value="${r.id}" aria-label="선택"${S.has(r.id)?' checked':''}></td>${cols.map(c=>`<td class="${al(c)}${c.calc?' calc':''}${c.wide?' w':''}"${m.tight&&(c.wide||c.sug)?` title="${esc(r[c.k])}"`:''}>${cellView(c,r,p,m)}</td>`).join('')}
+  return `<div class="tw frz"><table${m.tight?' class="tight"':''} data-seltbl="${modId}"><thead><tr><th class="ck"><input type="checkbox" data-selall="${modId}" aria-label="전체 선택"${nOn&&nOn===rows.length?' checked':''}></th>${cols.map(c=>`<th class="${al(c)}" data-ck="${c.k}">${esc(c.l)}<span class="cres" data-cres="${modId}|${c.k}" title="끌어서 칸 폭 조절 · 두 번 클릭하면 원래대로"></span></th>`).join('')}<th class="n">관리</th></tr></thead><tbody>
+    ${rows.map(r=>`<tr data-row="${r.id}" class="${r.id===flashId?'flash':''}${S.has(r.id)?' sel':''}"><td class="ck"><input type="checkbox" data-selrow="${modId}" value="${r.id}" aria-label="선택"${S.has(r.id)?' checked':''}></td>${cols.map(c=>`<td data-ck="${c.k}" class="${al(c)}${c.calc?' calc':''}${c.wide?' w':''}"${m.tight&&(c.wide||c.sug)?` title="${esc(r[c.k])}"`:''}>${cellView(c,r,p,m)}</td>`).join('')}
       <td><div class="acts"><button class="act" data-editrow="${r.id}" data-m="${em}">수정</button><button class="act danger" data-delrow="${r.id}" data-m="${em}">삭제</button></div></td></tr>`).join('')}
     </tbody>${m.footSplit?splitFoot(m,p,rows,cols):hasSum?footRow(m,cols,`합계 · ${rows.length}건`,'',c=>c.sum?footVal(c,rows,p,m):''):''}</table></div>`;
 }
@@ -4169,6 +4174,18 @@ document.addEventListener('input',e=>{const F=e.target.form,k=e.target.name;if(!
   else if(k==='ivaAmt'||k==='ivaRet'||k==='isrRet'){if(S.value!=='')T.value=f(n(S)-D+n(V)-R)}
   else if(k==='amount'){if(T.value===''){S.value='';V.value='';return}const b=r2((n(T)+R)/1.16);S.value=f(b+D);V.value=f(n(T)+R-b)}
 });
+// 표 칸 폭: 제목 오른쪽 경계를 끌어서 조절 (화면·칸별로 이 브라우저에 저장), 두 번 클릭하면 원래 폭
+function cwCSS(){let el=document.getElementById('cwStyle');if(!el){el=document.createElement('style');el.id='cwStyle';document.head.appendChild(el)}
+  const out=[];Object.entries(UI.cw||{}).forEach(([mid,o])=>Object.entries(o||{}).forEach(([k,w])=>{if(!(w>0))return;const q=`table[data-seltbl="${CSS.escape(mid)}"] [data-ck="${CSS.escape(k)}"]`;
+    out.push(`${q}{width:${w}px;min-width:${w}px;max-width:${w}px;overflow:hidden;text-overflow:ellipsis;overflow-wrap:anywhere}`)}));el.textContent=out.join('\n')}
+let CRES=null;
+document.addEventListener('pointerdown',e=>{const h=e.target.closest&&e.target.closest('[data-cres]');if(!h)return;e.preventDefault();e.stopPropagation();
+  const [mid,k]=h.dataset.cres.split('|'),th=h.closest('th');CRES={mid,k,x:e.clientX,w:th.getBoundingClientRect().width};document.body.classList.add('cresing');try{h.setPointerCapture(e.pointerId)}catch(_){}});
+document.addEventListener('pointermove',e=>{if(!CRES)return;const w=Math.max(40,Math.round(CRES.w+e.clientX-CRES.x));UI.cw=UI.cw||{};(UI.cw[CRES.mid]=UI.cw[CRES.mid]||{})[CRES.k]=w;cwCSS()});
+document.addEventListener('pointerup',()=>{if(!CRES)return;CRES=null;document.body.classList.remove('cresing');saveUI()});
+document.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('[data-cres]')){e.stopPropagation();e.preventDefault()}},true);
+document.addEventListener('dblclick',e=>{const h=e.target.closest&&e.target.closest('[data-cres]');if(!h)return;const [mid,k]=h.dataset.cres.split('|');if(UI.cw&&UI.cw[mid]){delete UI.cw[mid][k];cwCSS();saveUI()}});
+cwCSS();
 document.addEventListener('focusout',e=>{const t=e.target;if(!t.dataset||!t.dataset.numin||t.value.trim()==='')return;const x=pnum(t.value);if(isFinite(x))t.value=t.dataset.numin==='money'?x.toFixed(2):String(x)});
 document.addEventListener('submit',e=>{
   const f=e.target;e.preventDefault();
