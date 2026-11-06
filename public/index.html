@@ -198,6 +198,12 @@ h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.025em;line-height:1.
 .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
 
 .tw{overflow-x:auto}
+.lnbox{grid-column:1/-1;border:1px dashed var(--line-strong);border-radius:10px;padding:10px 12px;display:grid;gap:6px}
+.lnhead{display:flex;align-items:center;gap:10px}.lnhead b{font-size:13px}.lnhead .dim{font-size:12px;flex:1}.lnhead .btn{margin-left:auto;padding:4px 10px;font-size:12px}
+.lncols,.lnrow{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.1fr) 28px;gap:8px;align-items:center}
+.lncols span{font-size:11px;color:var(--muted)}.lncols span:nth-child(n+2):nth-child(-n+4){text-align:right}
+.lnrow input:not([data-ln="item"]){text-align:right}.lnamt{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.lndel{border:0;background:none;color:var(--muted);cursor:pointer;font-size:14px}.lndel:hover{color:var(--bad)}
 th[data-ck]{position:relative}
 .cres{position:absolute;top:0;right:-4px;width:9px;height:100%;cursor:col-resize;z-index:2;touch-action:none}
 .cres::after{content:'';position:absolute;top:25%;bottom:25%;left:4px;width:1px;background:var(--line-strong);opacity:.6}
@@ -1444,6 +1450,8 @@ function priceAt(cust,pn,item,d){
 // 외상매입: 금액·부가세·합계 중 적은 것으로 나머지를 채움 (모두 비워도 등록, 거래일·지급기일 비우면 오늘·결제조건)
 function apNorm(r){
   // 합계(지급할 금액) = 금액 − 할인 + 부가세 − 부가세 Ret − ISR Ret, 부가세를 비우면 (금액 − 할인) × 세율
+  if(Array.isArray(r.lines)&&r.lines.length){r.sub=r2(r.lines.reduce((a,x)=>a+(+x.qty||0)*(+x.price||0),0));
+    if(!String(r.item||'').trim()||r.item===r.itemAuto){const nm=r.lines.map(x=>x.item).filter(Boolean);r.item=r.itemAuto=nm.length?nm[0]+(nm.length>1?` 외 ${nm.length-1}건`:''):''}}
   let s=+r.sub||0,t=+r.amount||0,v=hasIvaAmt(r)?+r.ivaAmt:null;const d=+r.disc||0,ri=+r.ivaRet||0,rs=+r.isrRet||0,k=ivaRt(r);
   if(s){if(v==null)v=r2((s-d)*k);t=r2(s-d+v-ri-rs)}else if(t){const b=v==null?(t+ri+rs)/(1+k):t+ri+rs-v;if(v==null)v=r2(b*k);s=r2(b+d)}else v=v||0;
   r.disc=d;r.ivaRet=ri;r.isrRet=rs;r.sub=s;r.ivaAmt=v;r.amount=t;r.folio=String(r.folio||'').trim();
@@ -2702,10 +2710,23 @@ function formFields(m,r,pre){
     else if(isNum(c))inp=`<input type="text" inputmode="decimal" autocomplete="off" data-numin="${c.t}" ${a} value="${v===''||(+v===0&&(!c.keepBlank||c.k==='amount'||!(+r.sub)))?'':esc(fmtIn(c,v))}" placeholder="${c.keepBlank?'자동':c.t==='money'?'0.00':'0'}">`;
     else inp=`<input type="text" ${a} value="${esc(v)}"${c.sug?` list="dl-${c.sug}"`:''}${c.k==='name'?' required':''}>`;
     const vc=c.k==='iva'&&m.cols.some(x=>x.k==='sub')?`<div class="vatcalc" data-vatcalc aria-live="polite">${vatCalcHTML(+r.sub||0,v,r.cur)}</div>`:'';
-    return `${sec}<label class="${c.wide?'wide':''}">${esc(c.l)}${inp}</label>${vc}`}).join('');
+    const ln=c.k==='item'&&m.data==='ap'?lnBox(r):'';
+    return `${sec}<label class="${c.wide?'wide':''}">${esc(c.l)}${inp}</label>${vc}${ln}`}).join('');
 }
+// 외상매입 품목 내역: 품목 · 수량 · 단가 여러 줄 → 금액(공급가액) = Σ 수량 × 단가
+const lnRow=(x={})=>`<div class="lnrow"><input type="text" data-ln="item" placeholder="품목" value="${esc(x.item||'')}"><input type="text" inputmode="decimal" data-ln="qty" placeholder="수량" value="${x.qty===''||x.qty==null?'':esc(x.qty)}"><input type="text" inputmode="decimal" data-ln="price" placeholder="단가" value="${x.price===''||x.price==null?'':esc(x.price)}"><span class="lnamt">${(+x.qty||0)*(+x.price||0)?nf2.format(r2((+x.qty||0)*(+x.price||0))):''}</span><button type="button" class="lndel" data-lndel="1" title="이 품목 삭제">✕</button></div>`;
+function lnBox(r){const L=r.lines||[];return `<div class="lnbox" data-lines><div class="lnhead"><b>품목 내역</b><span class="dim">${L.length?'':'여러 품목을 넣으면 금액이 자동 합산됩니다'}</span><button type="button" class="btn" data-lnadd="1">＋ 품목 추가</button></div>
+  <div class="lncols"${L.length?'':' hidden'}><span>품목</span><span>수량</span><span>단가</span><span>금액</span><span></span></div><div class="lnrows">${L.map(lnRow).join('')}</div></div>`}
+function lnRead(F){const B=F.querySelector('[data-lines]');if(!B)return null;return [...B.querySelectorAll('.lnrow')].map(x=>{const g=k=>x.querySelector(`[data-ln="${k}"]`).value.trim(),q=pnum(g('qty')),p=pnum(g('price'));return {item:g('item'),qty:isFinite(q)?q:'',price:isFinite(p)?p:''}}).filter(x=>x.item||x.qty!==''||x.price!=='')}
+function lnSync(F){const B=F.querySelector('[data-lines]');if(!B)return;const L=lnRead(F)||[];B.querySelector('.lncols').hidden=!B.querySelector('.lnrow');B.querySelector('.lnhead .dim').textContent=B.querySelector('.lnrow')?'':'여러 품목을 넣으면 금액이 자동 합산됩니다';
+  B.querySelectorAll('.lnrow').forEach(x=>{const q=pnum(x.querySelector('[data-ln="qty"]').value)||0,p=pnum(x.querySelector('[data-ln="price"]').value)||0;x.querySelector('.lnamt').textContent=q*p?nf2.format(r2(q*p)):''});
+  if(!L.length)return;const S=F.querySelector('[name="sub"]');if(!S)return;S.value=r2(L.reduce((a,x)=>a+(+x.qty||0)*(+x.price||0),0)).toFixed(2);S.dispatchEvent(new Event('input',{bubbles:true}))}
+document.addEventListener('click',e=>{const t=e.target;if(!t.closest)return;const add=t.closest('[data-lnadd]'),del=t.closest('[data-lndel]');if(!add&&!del)return;e.preventDefault();e.stopPropagation();
+  const B=t.closest('[data-lines]'),F=B.closest('form')||B.parentElement;if(add){B.querySelector('.lnrows').insertAdjacentHTML('beforeend',lnRow());const n=B.querySelectorAll('.lnrow');n[n.length-1].querySelector('input').focus()}else t.closest('.lnrow').remove();lnSync(F)},true);
+document.addEventListener('input',e=>{const t=e.target;if(t.dataset&&t.dataset.ln&&t.dataset.ln!=='item')lnSync(t.closest('form')||t.closest('[data-lines]').parentElement)});
 function readForm(form,m){
-  const o={};inCols(m).forEach(c=>{const el=form.querySelector(`[name="${c.k}"]`);if(!el)return;let v=el.value;if(isNum(c)){const x=pnum(v);v=String(v).trim()===''?(c.keepBlank?'':0):isFinite(x)?x:0}else v=String(v).trim();o[c.k]=v});return o;
+  const o={};inCols(m).forEach(c=>{const el=form.querySelector(`[name="${c.k}"]`);if(!el)return;let v=el.value;if(isNum(c)){const x=pnum(v);v=String(v).trim()===''?(c.keepBlank?'':0):isFinite(x)?x:0}else v=String(v).trim();o[c.k]=v});
+  const L=lnRead(form);if(L)o.lines=L;return o;
 }
 function registerCard(id,p,title){
   const m=MODS[id], blank=m.blank(p);
