@@ -713,6 +713,10 @@ const overlap=(s1,e1,s2,e2)=>{if(!validD(s1)||!validD(s2))return 0;e1=validD(e1)
 const uniq=a=>[...new Set(a.filter(Boolean))].sort((x,y)=>String(x).localeCompare(String(y)));
 const sumBy=(rows,f)=>rows.reduce((a,r)=>a+(+(typeof f==='function'?f(r):r[f])||0),0);
 const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:0;
+const pnum=v=>{let t=String(v??'').trim().replace(/\s/g,'');if(!t)return NaN;
+  if(t.includes(',')&&t.includes('.'))t=t.lastIndexOf(',')>t.lastIndexOf('.')?t.replace(/\./g,'').replace(',','.'):t.replace(/,/g,'');
+  else if(/,\d{1,2}$/.test(t)&&!/,\d{3}$/.test(t))t=t.replace(/\.(?=.*,)/g,'').replace(',','.');else t=t.replace(/,/g,'');return parseFloat(t)};
+const fmtIn=(c,v)=>c.t==='money'&&v!==''&&isFinite(+v)?(+v).toFixed(2):String(v);
 const nf0=new Intl.NumberFormat('ko-KR',{maximumFractionDigits:0});
 const nf2=new Intl.NumberFormat('ko-KR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const nfq=new Intl.NumberFormat('ko-KR',{maximumFractionDigits:2});
@@ -2690,13 +2694,13 @@ function formFields(m,r,pre){
     let inp;
     if(c.t==='sel'){let opts=c.optsOf?c.optsOf(r):c.opts;if(v&&!opts.includes(v))opts=[v,...opts];inp=`<select ${a}>${opts.map(o=>`<option${o===v?' selected':''}>${esc(o)}</option>`).join('')}</select>`}
     else if(c.t==='date')inp=`<input type="date" ${a} value="${esc(v)}"${c.opt?'':' required'}>`;
-    else if(isNum(c))inp=`<input type="number" step="any" inputmode="decimal" ${a} value="${v===''||(+v===0&&(!c.keepBlank||c.k==='amount'||!(+r.sub)))?'':esc(v)}" placeholder="${c.keepBlank?'자동':'0'}">`;
+    else if(isNum(c))inp=`<input type="text" inputmode="decimal" autocomplete="off" data-numin="${c.t}" ${a} value="${v===''||(+v===0&&(!c.keepBlank||c.k==='amount'||!(+r.sub)))?'':esc(fmtIn(c,v))}" placeholder="${c.keepBlank?'자동':c.t==='money'?'0.00':'0'}">`;
     else inp=`<input type="text" ${a} value="${esc(v)}"${c.sug?` list="dl-${c.sug}"`:''}${c.k==='name'?' required':''}>`;
     const vc=c.k==='iva'&&m.cols.some(x=>x.k==='sub')?`<div class="vatcalc" data-vatcalc aria-live="polite">${vatCalcHTML(+r.sub||0,v,r.cur)}</div>`:'';
     return `${sec}<label class="${c.wide?'wide':''}">${esc(c.l)}${inp}</label>${vc}`}).join('');
 }
 function readForm(form,m){
-  const o={};inCols(m).forEach(c=>{const el=form.querySelector(`[name="${c.k}"]`);if(!el)return;let v=el.value;if(isNum(c))v=v===''?(c.keepBlank?'':0):parseFloat(v);else v=String(v).trim();o[c.k]=v});return o;
+  const o={};inCols(m).forEach(c=>{const el=form.querySelector(`[name="${c.k}"]`);if(!el)return;let v=el.value;if(isNum(c)){const x=pnum(v);v=String(v).trim()===''?(c.keepBlank?'':0):isFinite(x)?x:0}else v=String(v).trim();o[c.k]=v});return o;
 }
 function registerCard(id,p,title){
   const m=MODS[id], blank=m.blank(p);
@@ -4135,7 +4139,7 @@ document.addEventListener('change',e=>{
 });
 document.addEventListener('input',e=>{
   const F=e.target.form, vb=F&&F.querySelector('[data-vatcalc]');
-  if(vb&&['sub','iva','cur'].includes(e.target.name)){const g=k=>F.querySelector(`[name="${k}"]`);vb.innerHTML=vatCalcHTML(parseFloat(g('sub').value)||0,g('iva').value,g('cur')&&g('cur').value);return}
+  if(vb&&['sub','iva','cur'].includes(e.target.name)){const g=k=>F.querySelector(`[name="${k}"]`);vb.innerHTML=vatCalcHTML(pnum(g('sub').value)||0,g('iva').value,g('cur')&&g('cur').value);return}
   // vacation form: days = calendar days between the dates, Sundays excluded
   if(F&&(F.dataset.reg==='vac'||F.dataset.edit==='vac')&&['date','to'].includes(e.target.name)){const a=F.querySelector('[name="date"]').value,b=F.querySelector('[name="to"]').value;if(validD(a)&&validD(b)&&a<=b)F.querySelector('[name="days"]').value=workDays(a,b);return}
   if(e.target.dataset&&e.target.dataset.fltin){const [fid,k]=e.target.dataset.fltin.split(':');UI.flt=UI.flt||{};(UI.flt[fid]=UI.flt[fid]||{})[k]=e.target.value;saveUI();e.target.classList.toggle('on',!!e.target.value);
@@ -4160,11 +4164,12 @@ document.addEventListener('input',e=>{const F=e.target.form,k=e.target.name;if(!
     if(k==='due'){if(validD(Du.value))Tm.value=Math.round((pd(Du.value)-pd(Dt.value))/864e5);return}
     if(Tm.value!==''&&isFinite(+Tm.value))Du.value=addDs(Dt.value,Math.round(+Tm.value));return}
   if(!['sub','disc','ivaRet','isrRet','ivaAmt','amount'].includes(k))return;const g=n=>F.querySelector(`[name="${n}"]`),S=g('sub'),V=g('ivaAmt'),T=g('amount');if(!S||!V||!T)return;
-  const n=x=>parseFloat(x&&x.value)||0,f=x=>isFinite(x)?String(r2(x)):'',D=n(g('disc')),R=n(g('ivaRet'))+n(g('isrRet'));
+  const n=x=>pnum(x&&x.value)||0,f=x=>isFinite(x)?r2(x).toFixed(2):'',D=n(g('disc')),R=n(g('ivaRet'))+n(g('isrRet'));
   if(k==='sub'||k==='disc'){if(S.value===''){if(k==='sub'){V.value='';T.value=''}return}V.value=f((n(S)-D)*.16);T.value=f(n(S)-D+n(V)-R)}
   else if(k==='ivaAmt'||k==='ivaRet'||k==='isrRet'){if(S.value!=='')T.value=f(n(S)-D+n(V)-R)}
   else if(k==='amount'){if(T.value===''){S.value='';V.value='';return}const b=r2((n(T)+R)/1.16);S.value=f(b+D);V.value=f(n(T)+R-b)}
 });
+document.addEventListener('focusout',e=>{const t=e.target;if(!t.dataset||!t.dataset.numin||t.value.trim()==='')return;const x=pnum(t.value);if(isFinite(x))t.value=t.dataset.numin==='money'?x.toFixed(2):String(x)});
 document.addEventListener('submit',e=>{
   const f=e.target;e.preventDefault();
   if(f.dataset.reg){
