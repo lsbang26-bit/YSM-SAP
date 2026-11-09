@@ -1511,6 +1511,9 @@ if(m.cols.some(c=>c.k==='folio')&&String(r.folio||'').trim())r.factura='발행';
 const PED_KINDS=['자산','원자재','부자재','소모품'];
 const pedTotal=r=>r2(['igi','piva','dta','prv','ivaprv'].reduce((a,k)=>a+(+r[k]||0),0));
 function pedNorm(r){const L=(r.lines||[]).filter(x=>x.item||+x.cost||+x.igi||+x.piva);if(L.length){r.lines=L;['cost','igi','piva'].forEach(k=>r[k]=r2(L.reduce((a,x)=>a+(+x[k]||0),0)));r.item=L[0].item+(L.length>1?` 외 ${L.length-1}건`:'')}else delete r.lines;return r}
+let BKED=-1; // 은행 설정: 수정 중인 은행 줄 (수정 버튼을 눌러야 은행명·통화를 고칠 수 있음)
+// 완료: 입력칸을 벗어나며 화면이 다시 그려져도 눌림이 사라지지 않도록 pointerdown에서 처리
+document.addEventListener('pointerdown',e=>{const b=e.target.closest&&e.target.closest('[data-bankdone]');if(!b)return;e.preventDefault();const el=document.querySelector(`[data-bankname="${b.dataset.bankdone}"]`),bk=BANKS()[+b.dataset.bankdone];BKED=-1;if(el&&bk&&el.value.trim()!==bk.name)el.dispatchEvent(new Event('change',{bubbles:true}));else renderMain()});
 const MODS={
   cash:{name:'경리자료',desc:'입금·출금 전표와 기간 현금 흐름. 분류를 고르면 그 분류의 계정과목만 선택됩니다.',data:'cash',dated:true,tight:1,
     cols:[C('date','일자','date'),BANKC,C('type','구분','sel',{opts:['입금','출금'],pill:1}),C('cat','분류','sel',{opts:[...CATS4,'매출수입','세금납부'],pill:1}),ACCT,
@@ -2031,8 +2034,8 @@ function bankPage(){
     <div class="card"><header><h2>최근 7일 잔고</h2></header><div class="tw"><table class="tight"><thead><tr><th>일자</th>${B.map((b,i)=>`<th class="n">${dot(i)}${esc(b.name)}</th>`).join('')}<th class="n">입금</th><th class="n">지출</th><th class="n">합계 잔고 (MXN)</th></tr></thead><tbody>
       ${hist.slice().reverse().map(h=>`<tr${h.d===d?' class="hl"':''}><td>${esc(h.d)}</td>${h.bal.map((v,i)=>`<td class="n${v<0?' neg':''}">${bankNat(B[i],v)}</td>`).join('')}<td class="n" data-bktx="입금" data-bkd="${h.d}" title="입금 내역 보기">${money(sumBy(h.rs.filter(r=>r.type==='입금'),M('amount')))}</td><td class="n" data-bktx="출금" data-bkd="${h.d}" title="지출 내역 보기">${money(sumBy(h.rs.filter(r=>r.type==='출금'),M('amount')))}</td><td class="n"><b>${money(sumBy(h.bal,v=>v))}</b></td></tr>`).join('')}</tbody></table></div></div>
     <div class="card"><header><h2>은행 설정</h2><button class="btn" data-bankadd="1">＋ 은행 추가</button></header><div class="tw"><table class="tight"><thead><tr><th>은행명</th><th class="c">통화</th><th class="n">기초시재</th><th class="c">기준일</th><th class="n">전표</th><th class="c">관리</th></tr></thead><tbody>
-      ${B.map((b,i)=>{const n=DB.cash.filter(r=>bankOf(r)===b.name).length;return `<tr><td>${dot(i)}<input class="cell" data-bankname="${i}" value="${esc(b.name)}" aria-label="은행명" style="width:220px"></td><td class="c"><select class="cell" data-bankcur="${i}" aria-label="통화" style="width:90px"${n?' disabled':''}>${['MXN','USD'].map(c=>`<option${(b.cur||'MXN')===c?' selected':''}>${c}</option>`).join('')}</select></td><td class="n">${fmtCur(+b.open||0,b.cur||'MXN')}</td><td class="c">${b.since?esc(b.since):'<span class="dim">–</span>'}</td><td class="n">${n?`<button class="bkcnt" data-bankgo="${esc(b.name)}" title="경리자료에서 이 은행 전표 보기">${n}건</button>`:'0건'}</td>
-        <td class="c">${B.length>1&&!n?`<button class="act danger" data-bankdel="${i}">삭제</button>`:'<span class="dim">–</span>'}</td></tr>`}).join('')}</tbody></table></div></div>
+      ${B.map((b,i)=>{const n=DB.cash.filter(r=>bankOf(r)===b.name).length;const ed=BKED===i;return `<tr${ed?' class="bked"':''}><td>${dot(i)}${ed?`<input class="cell" data-bankname="${i}" value="${esc(b.name)}" aria-label="은행명" style="width:220px">`:`<span class="bknm">${esc(b.name)}</span>`}</td><td class="c">${ed&&!n?`<select class="cell" data-bankcur="${i}" aria-label="통화" style="width:90px">${['MXN','USD'].map(c=>`<option${(b.cur||'MXN')===c?' selected':''}>${c}</option>`).join('')}</select>`:esc(b.cur||'MXN')}</td><td class="n">${fmtCur(+b.open||0,b.cur||'MXN')}</td><td class="c">${b.since?esc(b.since):'<span class="dim">–</span>'}</td><td class="n">${n?`<button class="bkcnt" data-bankgo="${esc(b.name)}" title="경리자료에서 이 은행 전표 보기">${n}건</button>`:'0건'}</td>
+        <td class="c"><div class="acts" style="justify-content:center">${ed?`<button class="act" data-bankdone="${i}">완료</button>`:`<button class="act" data-bankedit="${i}">수정</button>`}${B.length>1&&!n?`<button class="act danger" data-bankdel="${i}">삭제</button>`:''}</div></td></tr>`}).join('')}</tbody></table></div></div>
   </div>`;
 }
 
@@ -4266,7 +4269,8 @@ document.addEventListener('click',e=>{
   if(d.mod&&t.closest('#nav')){go(d.mod);return}
   if(d.preset){[UI.rs,UI.re]=presetRange(d.preset);saveUI();renderMain();return}
   if(d.bday){BDAY=d.bday==='0'?TODAY:addDs(BDAY,+d.bday);renderMain();return}
-  if(d.bankadd){const B=BANKS();let k=B.length+1;while(B.some(b=>b.name==='은행 '+k))k++;B.push({name:'은행 '+k,cur:'MXN',open:0});save();renderMain();return}
+  if(d.bankadd){const B=BANKS();let k=B.length+1;while(B.some(b=>b.name==='은행 '+k))k++;B.push({name:'은행 '+k,cur:'MXN',open:0});BKED=B.length-1;save();renderMain();const el=document.querySelector(`[data-bankname="${BKED}"]`);if(el){el.focus();el.select()}return}
+  if(d.bankedit!=null){BKED=+d.bankedit;renderMain();const el=document.querySelector(`[data-bankname="${BKED}"]`);if(el){el.focus();el.select()}return}
   if(d.bankdel){const i=+d.bankdel,b=BANKS()[i];if(b&&BANKS().length>1&&!DB.cash.some(r=>bankOf(r)===b.name)){BANKS().splice(i,1);syncOpenCash();save();renderMain()}return}
   if(d.fsunit){const F=UI.fs;if(F.unit!==d.fsunit){F.unit=d.fsunit;F.sel=d.fsunit==='year'?[THIS_YEAR]:d.fsunit==='quarter'?[Math.floor(TODAY_D.getMonth()/3)+1]:[TODAY_D.getMonth()+1];F.year=F.year||THIS_YEAR}saveUI();renderMain();return}
   if(d.mqv){const [k,v]=d.mqv.split(':');UI.mq[k]=v;saveUI();renderMain();return}
