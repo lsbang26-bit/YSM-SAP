@@ -3378,7 +3378,7 @@ function renderModal(){
     host.innerHTML=`<div class="modal-bg"><div class="modal${m.big?' lg':''}" role="dialog" aria-modal="true" aria-labelledby="mt"><form data-edit="${modal.mod}" data-iva-orig="${esc(String(r.ivaAmt??''))}">
       <header><h3 id="mt">${esc(m.editTitle||m.name)} 수정</h3><button type="button" class="x" data-close="1" aria-label="닫기">×</button></header>
       <div class="mbody"><div class="form">${formFields(m,r,'ed')}</div></div>
-      <footer><button type="button" class="btn" data-close="1">취소</button><button type="submit" class="btn primary">저장</button></footer></form></div></div>`;
+      <footer><button type="button" class="btn" data-close="1">취소</button>${['vendors','customers','employees','entities'].includes(m.data)?'':`<button type="submit" class="btn" name="saveas" value="1" title="원래 건은 그대로 두고 수정한 내용을 새 건으로 추가">다른 이름으로 저장 (새로 추가)</button>`}<button type="submit" class="btn primary">저장</button></footer></form></div></div>`;
     const f=host.querySelector('.mbody input,.mbody select');if(f)f.focus();
   }else{
     const p=curPeriod(), show=m.cols.filter(c=>!c.calc&&c.k!=='cur').slice(0,5);
@@ -4323,7 +4323,7 @@ document.addEventListener('input',e=>{const F=e.target.form,k=e.target.name;if(!
     if(k==='vendor'){const v=DB.vendors.find(x=>x.name===e.target.value.trim());if(v&&+v.terms>0&&Tm.value===''){Tm.value=+v.terms}else return}
     if(!validD(Dt.value))return;
     if(k==='due'){if(validD(Du.value))Tm.value=Math.round((pd(Du.value)-pd(Dt.value))/864e5);return}
-    if(Tm.value!==''&&isFinite(+Tm.value))Du.value=addDs(Dt.value,Math.round(+Tm.value));else if(k==='date'&&F.dataset.reg)Du.value=addDs(Dt.value,partyTerms('ap',{vendor:(g('vendor')||{}).value||''}));return}
+    if(Tm.value!==''&&isFinite(+Tm.value))Du.value=addDs(Dt.value,Math.round(+Tm.value));else if(k==='date'){if(F.dataset.reg)Du.value=addDs(Dt.value,partyTerms('ap',{vendor:(g('vendor')||{}).value||''}));else{if(!Du.dataset.gap&&validD(Du.defaultValue)&&validD(Dt.defaultValue))Du.dataset.gap=Math.round((pd(Du.defaultValue)-pd(Dt.defaultValue))/864e5);if(Du.dataset.gap)Du.value=addDs(Dt.value,+Du.dataset.gap)}}return}
   if(!['sub','disc','ivaRet','isrRet','ivaAmt','amount','iva'].includes(k))return;const g=n=>F.querySelector(`[name="${n}"]`),S=g('sub'),V=g('ivaAmt'),T=g('amount');if(!S||!V||!T)return;
   const n=x=>pnum(x&&x.value)||0,f=x=>isFinite(x)?r2(x).toFixed(2):'',D=n(g('disc')),R=n(g('ivaRet'))+n(g('isrRet')),I=g('iva'),RT=I?(IVA_RATES[I.value]??.16):.16;
   if(k==='sub'||k==='disc'||k==='iva'){if(S.value===''){if(k==='sub'){V.value='';T.value=''}return}V.value=f((n(S)-D)*RT);T.value=f(n(S)-D+n(V)-R)}
@@ -4384,6 +4384,13 @@ document.addEventListener('submit',e=>{
   if(f.dataset.edit){
     const m=MODS[f.dataset.edit], r=DB[m.data].find(x=>x.id===modal.id);if(!r)return;
     const v=readForm(f,m);
+    if(e.submitter&&e.submitter.name==='saveas'){
+      // 다른 이름으로 저장: 원래 건은 그대로 두고 수정한 내용으로 새 건을 추가 (지급·수금 내역과 연결은 복사하지 않음)
+      const base=JSON.parse(JSON.stringify(r));['id','link','linkMod','detail','paid','received','arId'].forEach(k=>delete base[k]);
+      if('paid' in r)base.paid=0;if('received' in r)base.received=0;
+      if(hasIvaAmt(r)&&v.ivaAmt!=null&&v.ivaAmt!==''&&r2(+v.ivaAmt)===r2(+f.dataset.ivaOrig||0)&&((v.sub!=null&&+v.sub!==+r.sub)||(v.iva!=null&&v.iva!==r.iva)||(v.disc!=null&&+v.disc!==+(r.disc||0)))){v.ivaAmt='';delete base.ivaAmt}
+      const row=Object.assign({id:uid()},base,v);if('paid' in r)row.paid=0;if('received' in r)row.received=0;fixRow(m,row);const i=DB[m.data].indexOf(r);DB[m.data].splice(i<0?0:i,0,row);
+      flashId=row.id;save();closeModal();renderMain();toast('새 건으로 추가했습니다. 원래 건은 그대로 있습니다');return}
     if(m===MODS.employees&&v.name!==r.name){[DB.paid,DB.payroll,DB.sever,DB.vac].forEach(a=>a.forEach(x=>{if(x.emp===r.name)x.emp=v.name}));DB.stock.forEach(x=>{if(x.checker===r.name)x.checker=v.name})}
     if(m===MODS.vendors&&v.name!==r.name)[DB.inbound,DB.ap].forEach(a=>a.forEach(x=>{if(x.vendor===r.name)x.vendor=v.name}));
     if(m===MODS.entities&&v.name!==r.name){DB.entfs.forEach(x=>{if(x.entity===r.name)x.entity=v.name});DB.ic.forEach(x=>{if(x.seller===r.name)x.seller=v.name;if(x.buyer===r.name)x.buyer=v.name})}
