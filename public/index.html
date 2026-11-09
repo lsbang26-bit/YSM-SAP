@@ -207,7 +207,8 @@ table[data-seltbl="ap"] tbody tr[data-row]{cursor:pointer}
 .lnhead{display:flex;align-items:center;gap:10px}.lnhead b{font-size:13px}.lnhead .dim{font-size:12px;flex:1}.lnhead .btn{margin-left:auto;padding:4px 10px;font-size:12px}
 .lncols,.lnrow{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.1fr) 28px;gap:8px;align-items:center}
 .lncols span{font-size:11px;color:var(--muted)}.lncols span:nth-child(n+2):nth-child(-n+4){text-align:right}
-.lnrow input:not([data-ln="item"]){text-align:right}.lnamt{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.lnrow input:not([data-ln="item"]){text-align:right}
+.pdcols,.pdrow{display:grid;grid-template-columns:minmax(0,3fr) repeat(3,minmax(0,1.1fr)) minmax(0,1.1fr) 28px;gap:8px;align-items:center}.pdcols{font-size:12px;color:var(--muted,#6b7280);margin-top:8px}.pdcols span:not(:first-child){text-align:right}.pdrow{margin-top:6px}.pdrow input:not([data-pd="item"]){text-align:right}.lnamt{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
 .lndel{border:0;background:none;color:var(--muted);cursor:pointer;font-size:14px}.lndel:hover{color:var(--bad)}
 th[data-ck]{position:relative}
 .cres{position:absolute;top:0;right:-4px;width:9px;height:100%;cursor:col-resize;z-index:2;touch-action:none}
@@ -855,7 +856,7 @@ function rng(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15
 function seed(){
   const r=rng(20261029), rint=(a,b)=>Math.floor(a+r()*(b-a+1)), pick=a=>a[Math.floor(r()*a.length)];
   const T=TODAY_D, weekStart=ds(addD(T,-((T.getDay()+6)%7))), fx=18.5;
-  const D={ver:12,prices:[],cash:[],ap:[],ar:[],assets:[],loans:[],cost:[],inbound:[],production:[],outbound:[],customers:[],bom:[],employees:[],paid:[],
+  const D={ver:12,ped:[],prices:[],cash:[],ap:[],ar:[],assets:[],loans:[],cost:[],inbound:[],production:[],outbound:[],customers:[],bom:[],employees:[],paid:[],
     settings:{openCash:1850000,openRM:2500000,agDays:15,vacPrem:25,sfRate:13,fx}};
   D.customers=[
     {id:uid(),code:'C-001',name:'Autopartes Saltillo S.A. de C.V.',rfc:'ASA150312KJ4',contact:'Laura Méndez',phone:'844 410 2231',terms:30,status:'거래중',cur:'MXN'},
@@ -1145,7 +1146,7 @@ function seedGroup(D,r,withParentAP){
     D.ic.push({id:uid(),date:s25,seller:QRO,buyer:USA,item:'AB-100 반제품 수출',cur:'USD',amount:a2,settled:old?a2:0});
   }
 }
-function migrate(D){if((D.ver||1)<3)D=migrate3(D);if(D.ver<4){upgradeV4(D,rng(11));D.ver=4}if(D.ver<5){upgradeV5(D,rng(13),false);D.ver=5}if(D.ver<6){upgradeV6(D);D.ver=6}if(D.ver<7){upgradeV7(D,rng(17));D.ver=7}if(D.ver<8){upgradeV8(D,rng(19));D.ver=8}if(D.ver<9){upgradeV9(D);D.ver=9}if(D.ver<10){upgradeV10(D);D.ver=10}if(D.ver<11){upgradeV11(D);D.ver=11}if(D.ver<12){upgradeV12(D);D.ver=12}if(D.ver<13){upgradeV13(D);D.ver=13}if(D.ver<14){upgradeV14(D);D.ver=14}if(D.ver<15){upgradeV15(D);D.ver=15}if(D.ver<16){upgradeV16(D);D.ver=16}if(D.ver<17){(D.production||[]).forEach(x=>{if(x.pn!=null)return;const[pn,it]=splitProd(x.product);Object.assign(x,{plant:'YSM',pn,item:it,spec:'',model:'',cat:'',amount:0})});D.ver=17}(D.ap||[]).forEach(r=>{if((r.iva==='0%'||r.iva==='면세')&&+r.ivaAmt&&+r.sub){r.ivaAmt=0;r.amount=Math.round(((+r.sub||0)-(+r.disc||0)-(+r.ivaRet||0)-(+r.isrRet||0))*100)/100}});return D}
+function migrate(D){if((D.ver||1)<3)D=migrate3(D);if(D.ver<4){upgradeV4(D,rng(11));D.ver=4}if(D.ver<5){upgradeV5(D,rng(13),false);D.ver=5}if(D.ver<6){upgradeV6(D);D.ver=6}if(D.ver<7){upgradeV7(D,rng(17));D.ver=7}if(D.ver<8){upgradeV8(D,rng(19));D.ver=8}if(D.ver<9){upgradeV9(D);D.ver=9}if(D.ver<10){upgradeV10(D);D.ver=10}if(D.ver<11){upgradeV11(D);D.ver=11}if(D.ver<12){upgradeV12(D);D.ver=12}if(D.ver<13){upgradeV13(D);D.ver=13}if(D.ver<14){upgradeV14(D);D.ver=14}if(D.ver<15){upgradeV15(D);D.ver=15}if(D.ver<16){upgradeV16(D);D.ver=16}if(D.ver<17){(D.production||[]).forEach(x=>{if(x.pn!=null)return;const[pn,it]=splitProd(x.product);Object.assign(x,{plant:'YSM',pn,item:it,spec:'',model:'',cat:'',amount:0})});D.ver=17}(D.ap||[]).forEach(r=>{if((r.iva==='0%'||r.iva==='면세')&&+r.ivaAmt&&+r.sub){r.ivaAmt=0;r.amount=Math.round(((+r.sub||0)-(+r.disc||0)-(+r.ivaRet||0)-(+r.isrRet||0))*100)/100}});if(!Array.isArray(D.ped))D.ped=[];return D}
 function migrate3(D){
   if(D.ver>=3)return D;
   if(D.ver===2){D.settings.openRM=D.settings.openRM||2500000;seedGroup(D,rng(7),false);D.ver=3;return D}
@@ -1441,7 +1442,7 @@ const kv=(l,v,s,tone,go)=>({l,v,s,tone,go});
 /* ---------- modules ---------- */
 const GROUPS=[
   {id:'dash',name:'대쉬보드',items:['dash-all']},
-  {id:'fin',name:'재무회계',items:['bank','cash','fs','fscons','hq','ap','ar','assets','loans','stock','mfg','cost']},
+  {id:'fin',name:'재무회계',items:['bank','cash','fs','fscons','hq','ap','ar','assets','loans','stock','mfg','cost','ped']},
   {id:'tax',name:'세금',items:['cit','vat']},
   {id:'in',name:'입고관리',items:['vendors','inbound']},
   {id:'prod',name:'생산관리',items:['production']},
@@ -1495,9 +1496,12 @@ function bomNorm(r){
 function prodNorm(r){r.pn=String(r.pn||'').trim();r.item=String(r.item||'').trim();
   const B=DB&&DB.bom||[],hit=k=>{const b=k&&B.find(x=>x.assyPn===k);return b&&b.product};
   r.product=hit(r.pn)||hit(r.pn.replace(/-[A-Z]{1,4}$/,''))||[r.pn,r.item].filter(Boolean).join(' ')||r.product||'';return r}
-function fixRow(m,r){if(m===MODS.bom)return bomNorm(r);if(m===MODS.production)return prodNorm(r);if(m===MODS.outbound||m===MODS.prices){r.pn=String(r.pn||'').trim();r.item=String(r.item||'').trim()}
+function fixRow(m,r){if(m===MODS.bom)return bomNorm(r);if(m===MODS.ped)return pedNorm(r);if(m===MODS.production)return prodNorm(r);if(m===MODS.outbound||m===MODS.prices){r.pn=String(r.pn||'').trim();r.item=String(r.item||'').trim()}
   if(m===MODS.outbound){const pr=priceAt(r.customer,r.pn,r.item,r.date);if(pr){if(!(+r.price>0)){r.price=+pr.price;r.cur=pr.cur||r.cur}if(!r.item)r.item=pr.item||'';if(!r.pn)r.pn=pr.pn||''}r.product=[r.pn,r.item].filter(Boolean).join(' ')||r.product||''}
 if(m.cols.some(c=>c.k==='folio')&&String(r.folio||'').trim())r.factura='발행';if(m.cols.some(c=>c.bank)){const b=BANKS().find(x=>x.name===r.bank);if(!b||(b.cur||'MXN')!==(r.cur||'MXN'))r.bank=bankFor(r.cur)}if(m===MODS.ap)apNorm(r);else if(m.cols.some(c=>c.k==='sub'))r.amount=hasIvaAmt(r)?r2((+r.sub||0)+(+r.ivaAmt)):r2((+r.sub||0)*(1+ivaRt(r)));if(m.cols.some(c=>c.k==='fx')){if(r.cur==='USD'){if(!(+r.fx>0))r.fx=FX()}else r.fx=''}return r}
+const PED_KINDS=['자산','원자재','부자재','소모품'];
+const pedTotal=r=>r2(['cost','igi','piva','dta','prv','ivaprv'].reduce((a,k)=>a+(+r[k]||0),0));
+function pedNorm(r){const L=(r.lines||[]).filter(x=>x.item||+x.cost||+x.igi||+x.piva);if(L.length){r.lines=L;['cost','igi','piva'].forEach(k=>r[k]=r2(L.reduce((a,x)=>a+(+x[k]||0),0)));r.item=L[0].item+(L.length>1?` 외 ${L.length-1}건`:'')}else delete r.lines;return r}
 const MODS={
   cash:{name:'경리자료',desc:'입금·출금 전표와 기간 현금 흐름. 분류를 고르면 그 분류의 계정과목만 선택됩니다.',data:'cash',dated:true,tight:1,
     cols:[C('date','일자','date'),BANKC,C('type','구분','sel',{opts:['입금','출금'],pill:1}),C('cat','분류','sel',{opts:[...CATS4,'매출수입','세금납부'],pill:1}),ACCT,
@@ -1579,6 +1583,13 @@ const MODS={
     trend:{l:'기간별 총 제조원가',fn:rows=>sumBy(rows,costTotal),money:1},
     extra:rows=>groupSummary('품목별 원가',rows,'product',[['수량',r=>+r.qty,v=>nf0.format(v)],['총원가',costTotal,money],['단위원가',null,null,g=>{const q=sumBy(g,'qty');return q?moneyD(sumBy(g,costTotal)/q):'–'}]]),
     blank:p=>({date:TODAY,product:'',qty:0,cur:'MXN',mat:0,labor:0,oh:0})},
+  ped:{name:'수입면장',desc:'수입면장(Pedimento)별 취득원가·관세·부가세·통관 수수료',data:'ped',dated:true,
+    cols:[C('ped','면장#','text'),C('date','날짜','date'),C('vendor','공급처','text',{sug:'vendors',wide:1}),C('kind','구분','sel',{opts:PED_KINDS,pill:1}),C('item','항목','text',{wide:1}),
+      C('cost','취득원가','money',{sum:1}),C('igi','관세(IGI)','money',{sum:1}),C('piva','부가세(IVA)','money',{sum:1}),C('dta','통관수수료(DTA)','money',{sum:1}),C('prv','사전검증 수수료(PRV)','money',{sum:1}),C('ivaprv','IVA/PRV','money',{sum:1}),
+      C('total','합계','money',{sum:1,calc:pedTotal})],
+    kpis:rows=>[kv('면장',uniq(rows.map(r=>r.ped||r.id)).length+'건'),kv('취득원가',money(sumBy(rows,'cost'))),kv('관세(IGI)',money(sumBy(rows,'igi'))),kv('부가세(IVA)',money(sumBy(rows,'piva'))),kv('합계',money(sumBy(rows,pedTotal)),'','good')],
+    extra:rows=>groupSummary('구분별 합계',rows,'kind',[['취득원가',r=>+r.cost||0,money],['관세',r=>+r.igi||0,money],['합계',pedTotal,money]]),
+    blank:p=>({ped:'',date:TODAY,vendor:'',kind:'원자재',item:'',cur:'MXN',cost:0,igi:0,piva:0,dta:0,prv:0,ivaprv:0})},
   inbound:{name:'원/부자재 입고현황',desc:'원자재·부자재 입고와 검수 상태',data:'inbound',dated:true,
     cols:[C('date','입고일','date'),C('kind','구분','sel',{opts:['원자재','부자재'],pill:1}),C('vendor','공급사','text',{sug:'suppliers'}),C('item','품목','text',{sug:'materials',wide:1}),C('qty','수량','num',{sum:1}),
       C('unit','단위','sel',{opts:['kg','EA','m','L','롤']}),CUR,C('price','단가','money2'),C('amount','금액','money',{sum:1,calc:lineAmt}),C('check','검수','sel',{opts:['검수완료','검수대기','반품'],pill:1}),C('origin','원산지','sel',{opts:['국내','수입'],pill:1}),
@@ -2726,14 +2737,14 @@ const inCols=m=>m.cols.filter(c=>!c.calc||c.form);
 function formFields(m,r,pre){
   return inCols(m).filter(c=>pre==='ed'||!c.regHide).map(c=>{
     const sec=c.sec?`<div class="fsec">${esc(c.sec)}</div>`:'';
-    const v=r[c.k]??'', a=`id="${pre}-${c.k}" name="${c.k}" data-fk="${c.k}"`;
+    const v=r[c.k]??'', a=`id="${pre}-${c.k}" name="${c.k}" data-fk="${c.k}"${m.data==='ped'&&['cost','igi','piva','item'].includes(c.k)?' readonly tabindex="-1" title="아래 항목 내역에서 자동 합산"':''}`;
     let inp;
     if(c.t==='sel'){let opts=c.optsOf?c.optsOf(r):c.opts;if(v&&!opts.includes(v))opts=[v,...opts];inp=`<select ${a}>${opts.map(o=>`<option${o===v?' selected':''}>${esc(o)}</option>`).join('')}</select>`}
     else if(c.t==='date')inp=`<input type="date" ${a} value="${esc(v)}"${c.opt?'':' required'}>`;
     else if(isNum(c))inp=`<input type="text" inputmode="decimal" autocomplete="off" data-numin="${c.t}" ${a} value="${v===''||(+v===0&&(!c.keepBlank||c.k==='amount'||!(+r.sub)))?'':esc(fmtIn(c,v))}" placeholder="${c.keepBlank?'자동':c.t==='money'?'0.00':'0'}">`;
     else inp=`<input type="text" ${a} value="${esc(v)}"${c.sug?` list="dl-${c.sug}"`:''}${c.k==='name'?' required':''}>`;
     const vc=c.k==='iva'&&m.cols.some(x=>x.k==='sub')?`<div class="vatcalc" data-vatcalc aria-live="polite">${vatCalcHTML(+r.sub||0,v,r.cur)}</div>`:'';
-    const ln=c.k==='price'&&m.data==='ap'?lnBox(r):'';
+    const ln=c.k==='price'&&m.data==='ap'?lnBox(r):c.k==='item'&&m.data==='ped'?pdBox(r):c.k==='ivaprv'&&m.data==='ped'?`<div class="vatcalc"><span>합계</span><b data-pedtot>${nf2.format(pedTotal(r))}</b></div>`:'';
     return `${sec}<label class="${c.wide?'wide':''}">${esc(c.l)}${inp}</label>${vc}${ln}`}).join('');
 }
 // 외상매입 품목 내역: 품목 · 수량 · 단가 여러 줄 → 금액(공급가액) = Σ 수량 × 단가
@@ -2756,11 +2767,23 @@ function apDetailHTML(id){const r=DB.ap.find(x=>x.id===id);if(!r)return '';const
     </tbody><tfoot><tr><td></td><td>합계 · ${L.length}품목${src?` <span class="dim small">(${src})</span>`:''}</td><td class="n">${nfq.format(L.reduce((a,l)=>a+(+l.qty||0),0))}</td><td></td><td class="n">${F(tot)}</td></tr></tfoot></table></div>
     <div class="apds">${kv('금액',F(S('sub')))}${kv('할인',F(S('disc')))}${kv('부가세',F(S('ivaAmt')))}${kv('부가세 Ret',F(S('ivaRet')))}${kv('ISR Ret',F(S('isrRet')))}${kv('합계',F(S('amount')))}${kv('지급액',F(S('paid')))}${kv('잔액',F(S('amount')-S('paid')))}</div></div>
     <footer><button type="button" class="btn" data-close="1">닫기</button><button type="button" class="btn primary" data-editrow="${r.id}" data-m="ap">수정</button></footer></div></div>`}
+// 수입면장 항목 내역: 항목 · 취득원가 · 관세 · 부가세는 항목별, 수수료(DTA·PRV·IVA/PRV)는 면장별
+const pdRow=(x={})=>{const f=k=>x[k]===''||x[k]==null||(+x[k]===0&&k!=='item')?'':esc(k==='item'?x[k]:(+x[k]).toFixed(2));return `<div class="pdrow"><input type="text" data-pd="item" placeholder="항목" value="${f('item')}"><input type="text" inputmode="decimal" data-numin="money" data-pd="cost" placeholder="취득원가" value="${f('cost')}"><input type="text" inputmode="decimal" data-numin="money" data-pd="igi" placeholder="관세(IGI)" value="${f('igi')}"><input type="text" inputmode="decimal" data-numin="money" data-pd="piva" placeholder="부가세(IVA)" value="${f('piva')}"><span class="lnamt"></span><button type="button" class="lndel" data-pddel="1" title="이 항목 삭제">✕</button></div>`};
+function pdBox(r){const L=r.lines&&r.lines.length?r.lines:[{item:r.item,cost:r.cost,igi:r.igi,piva:r.piva}];return `<div class="lnbox" data-pdlines><div class="lnhead"><b>항목 내역</b><span class="dim">한 면장에 여러 항목을 넣으면 취득원가·관세·부가세가 자동 합산됩니다</span><button type="button" class="btn" data-pdadd="1">＋ 항목 추가</button></div>
+  <div class="pdcols"><span>항목</span><span>취득원가</span><span>관세(IGI)</span><span>부가세(IVA)</span><span>소계</span><span></span></div><div class="lnrows">${L.map(pdRow).join('')}</div></div>`}
+function pdRead(F){const B=F.querySelector('[data-pdlines]');if(!B)return null;return [...B.querySelectorAll('.pdrow')].map(x=>{const g=k=>x.querySelector(`[data-pd="${k}"]`).value.trim(),n=k=>{const v=pnum(g(k));return isFinite(v)?r2(v):0};return {item:g('item'),cost:n('cost'),igi:n('igi'),piva:n('piva')}}).filter(x=>x.item||x.cost||x.igi||x.piva)}
+function pdSync(F){const B=F.querySelector('[data-pdlines]');if(!B)return;B.querySelectorAll('.pdrow').forEach(x=>{const s=['cost','igi','piva'].reduce((a,k)=>a+(pnum(x.querySelector(`[data-pd="${k}"]`).value)||0),0);x.querySelector('.lnamt').textContent=s?nf2.format(r2(s)):''});
+  const L=pdRead(F)||[];['cost','igi','piva'].forEach(k=>{const el=F.querySelector(`[name="${k}"]`);if(el)el.value=r2(L.reduce((a,x)=>a+(+x[k]||0),0)).toFixed(2)});const it=F.querySelector('[name="item"]');if(it&&L.length)it.value=L[0].item+(L.length>1?` 외 ${L.length-1}건`:'');pedTot(F)}
+function pedTot(F){const o=F.querySelector('[data-pedtot]');if(!o)return;const v=k=>pnum((F.querySelector(`[name="${k}"]`)||{}).value)||0;o.textContent=nf2.format(r2(['cost','igi','piva','dta','prv','ivaprv'].reduce((a,k)=>a+v(k),0)))}
+document.addEventListener('click',e=>{const t=e.target;if(!t.closest)return;const add=t.closest('[data-pdadd]'),del=t.closest('[data-pddel]');if(!add&&!del)return;e.preventDefault();e.stopPropagation();
+  const B=t.closest('[data-pdlines]'),F=B.closest('form');if(add){B.querySelector('.lnrows').insertAdjacentHTML('beforeend',pdRow());const n=B.querySelectorAll('.pdrow');n[n.length-1].querySelector('input').focus()}else{t.closest('.pdrow').remove();if(!B.querySelector('.pdrow'))B.querySelector('.lnrows').insertAdjacentHTML('beforeend',pdRow())}pdSync(F)},true);
+document.addEventListener('input',e=>{const t=e.target;if(t.dataset&&t.dataset.pd&&t.form){pdSync(t.form);return}const F=t.form;if(F&&(F.dataset.reg||F.dataset.edit)==='ped')pedTot(F)});
 function lnRead(F){const B=F.querySelector('[data-lines]');if(!B)return null;return [...B.querySelectorAll('.lnrow')].map(x=>{const g=k=>x.querySelector(`[data-ln="${k}"]`).value.trim(),q=pnum(g('qty')),p=pnum(g('price'));return {item:g('item'),qty:isFinite(q)?q:'',price:isFinite(p)?p:''}}).filter(x=>x.item||x.qty!==''||x.price!=='')}
 function lnSync(F){const B=F.querySelector('[data-lines]');if(!B)return;const L=lnRead(F)||[];B.querySelector('.lncols').hidden=!B.querySelector('.lnrow');B.querySelector('.lnhead .dim').textContent=B.querySelector('.lnrow')?'':'여러 품목을 넣으면 금액이 자동 합산됩니다';
   B.querySelectorAll('.lnrow').forEach(x=>{const q=pnum(x.querySelector('[data-ln="qty"]').value)||0,p=pnum(x.querySelector('[data-ln="price"]').value)||0;x.querySelector('.lnamt').textContent=q*p?nf2.format(r2(q*p)):''});
   if(!L.length)return;const S=F.querySelector('[name="sub"]');if(!S)return;const sm=r2(L.reduce((a,x)=>a+(+x.qty||0)*(+x.price||0),0)),tq=L.reduce((a,x)=>a+(+x.qty||0),0),Q=F.querySelector('[name="qty"]'),P=F.querySelector('[name="price"]');
   if(Q)Q.value=tq||'';if(P)P.value=tq?Math.round(sm/tq*10000)/10000:'';S.value=sm.toFixed(2);S.dispatchEvent(new Event('input',{bubbles:true}))}
+document.addEventListener('click',e=>{const t=e.target;if(!t.closest||modal)return;const tp=t.closest('table[data-seltbl="ped"] tbody tr[data-row]');if(tp&&!t.closest('input,button,a,select,label,.cres')){modal={type:'edit',mod:'ped',id:tp.dataset.row};renderModal();return}});
 document.addEventListener('click',e=>{const t=e.target;if(!t.closest||modal)return;const tr=t.closest('table[data-seltbl="ap"] tbody tr[data-row]');if(!tr||t.closest('input,button,a,select,label,.cres'))return;
   modal={type:'apdetail',id:tr.dataset.row};renderModal()});
 document.addEventListener('click',e=>{const t=e.target;if(!t.closest)return;const add=t.closest('[data-lnadd]'),del=t.closest('[data-lndel]');if(!add&&!del)return;e.preventDefault();e.stopPropagation();
@@ -2770,7 +2793,7 @@ document.addEventListener('input',e=>{const t=e.target,F=t.form;if(!F||(F.datase
 document.addEventListener('input',e=>{const t=e.target;if(t.dataset&&t.dataset.ln&&t.dataset.ln!=='item')lnSync(t.closest('form')||t.closest('[data-lines]').parentElement)});
 function readForm(form,m){
   const o={};inCols(m).forEach(c=>{const el=form.querySelector(`[name="${c.k}"]`);if(!el)return;let v=el.value;if(isNum(c)){const x=pnum(v);v=String(v).trim()===''?(c.keepBlank?'':0):isFinite(x)?x:0}else v=String(v).trim();o[c.k]=v});
-  const L=lnRead(form);if(L)o.lines=L;return o;
+  const L=lnRead(form);if(L)o.lines=L;const P=pdRead(form);if(P)o.lines=P;return o;
 }
 function registerCard(id,p,title){
   const m=MODS[id], blank=m.blank(p);
