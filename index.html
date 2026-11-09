@@ -1229,6 +1229,8 @@ const assetDep=(r,p)=>assetPerDay(r)*overlap(r.acq,assetEnd(r),p.start,p.end);
 const assetAccum=(r,e)=>validD(r.acq)&&r.acq<=e?Math.min(mx(r,'cost'),assetPerDay(r)*(diffD(r.acq,e)+1)):0;
 const loanBal=r=>mx(r,'principal')-mx(r,'repaid');
 const loanInt=(r,p)=>loanBal(r)*(+r.rate||0)/100/365*overlap(r.date,r.due,p.start,p.end);
+// 미지급 이자: 마지막 이자 지급일(없으면 차입일) 다음 날부터 오늘까지 잔액 × 이자율 ÷ 365 (통화는 차입 통화 기준)
+const loanAccInt=r=>{const bal=(+r.principal||0)-(+r.repaid||0);if(!(bal>0)||!(+r.rate>0))return 0;const I=(r.pays||[]).filter(x=>x.kind==='이자'&&validD(x.date)).map(x=>x.date).sort(),from=I.length?I[I.length-1]:r.date;if(!validD(from))return 0;const end=validD(r.due)&&r.due<TODAY?r.due:TODAY,d=diffD(from,end);return d>0?r2(bal*(+r.rate)/100/365*d):0};
 const loanStatus=r=>loanBal(r)<=0?'상환완료':(validD(r.due)&&r.due<TODAY?'연체':(validD(r.due)&&diffD(TODAY,r.due)<=90?'만기임박':'상환중'));
 const costTotal=r=>mx(r,'mat')+mx(r,'labor')+mx(r,'oh');
 const lineAmt=r=>(+r.qty||0)*mx(r,'price');
@@ -1554,7 +1556,7 @@ const MODS={
     blank:p=>({acq:TODAY,name:'',cat:'기계장치',cur:'MXN',cost:0,life:5})},
   loans:{name:'차입금현황',desc:'금융기관 차입금 잔액과 기간 이자',data:'loans',dated:false,
     cols:[C('date','차입일','date'),C('bank','금융기관','text',{sug:'banks'}),C('type','구분','sel',{opts:['운전자금','시설자금','기타']}),CUR,C('fx','환율 (US$ 건)','num',{noTable:1,opt:1}),C('principal','차입금액','money',{sum:1}),C('rate','이자율(%)','num'),
-      C('due','만기일','date'),C('repaid','상환액','money',{sum:1}),C('bal','잔액','money',{sum:1,calc:loanBal}),C('intPaid','지급 이자 누계','money',{sum:1,calc:r=>(r.pays||[]).filter(x=>x.kind==='이자').reduce((a,x)=>a+(+x.amount||0),0)*rate(r.cur)}),C('lastPay','최근 지급일','calc',{calc:r=>(r.pays||[]).reduce((a,x)=>x.date>a?x.date:a,'')||'–'}),C('int','기간 이자','money',{sum:1,calc:(r,p)=>loanInt(r,p)}),C('st','상태','calc',{calc:loanStatus,pill:1})],
+      C('due','만기일','date'),C('repaid','상환액','money',{sum:1}),C('bal','잔액','money',{sum:1,calc:loanBal}),C('intPaid','지급 이자 누계','money',{sum:1,calc:r=>(r.pays||[]).filter(x=>x.kind==='이자').reduce((a,x)=>a+(+x.amount||0),0)*rate(r.cur)}),C('accInt','미지급 이자','money',{sum:1,calc:r=>loanAccInt(r)*rate(r.cur)}),C('lastPay','최근 지급일','calc',{calc:r=>(r.pays||[]).reduce((a,x)=>x.date>a?x.date:a,'')||'–'}),C('int','기간 이자','money',{sum:1,calc:(r,p)=>loanInt(r,p)}),C('st','상태','calc',{calc:loanStatus,pill:1})],
     kpis:(rows,p)=>{const bal=sumBy(rows,loanBal),w=bal?sumBy(rows,r=>loanBal(r)*r.rate)/bal:0,soon=rows.filter(r=>loanStatus(r)==='만기임박');
       return[kv('차입금 잔액',money(bal),rows.length+'건'),kv('기간 이자',money(sumBy(rows,r=>loanInt(r,p))),p.days+'일분','warn'),kv('가중평균 이자율',w.toFixed(2)+'%'),kv('만기 90일 이내',soon.length+'건',plain(sumBy(soon,loanBal)),soon.length?'warn':'')]},
     trend:{l:'기간별 이자',fn:(rows,p)=>sumBy(rows,r=>loanInt(r,p)),money:1},
