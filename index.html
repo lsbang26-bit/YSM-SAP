@@ -1229,8 +1229,14 @@ const assetDep=(r,p)=>assetPerDay(r)*overlap(r.acq,assetEnd(r),p.start,p.end);
 const assetAccum=(r,e)=>validD(r.acq)&&r.acq<=e?Math.min(mx(r,'cost'),assetPerDay(r)*(diffD(r.acq,e)+1)):0;
 const loanBal=r=>mx(r,'principal')-mx(r,'repaid');
 const loanInt=(r,p)=>loanBal(r)*(+r.rate||0)/100/365*overlap(r.date,r.due,p.start,p.end);
-// 미지급 이자: 마지막 이자 지급일(없으면 차입일) 다음 날부터 오늘까지 잔액 × 이자율 ÷ 365 (통화는 차입 통화 기준)
-const loanAccInt=r=>{const bal=(+r.principal||0)-(+r.repaid||0);if(!(bal>0)||!(+r.rate>0))return 0;const I=(r.pays||[]).filter(x=>x.kind==='이자'&&validD(x.date)).map(x=>x.date).sort(),from=I.length?I[I.length-1]:r.date;if(!validD(from))return 0;const end=validD(r.due)&&r.due<TODAY?r.due:TODAY,d=diffD(from,end);return d>0?r2(bal*(+r.rate)/100/365*d):0};
+// 미지급 이자: 남은 잔액을 만기까지 갚는 동안 낼 이자 총액. 마지막 이자 지급일부터 매월 같은 날 원금을 (최근 원금 상환액만큼) 갚는다고 보고,
+// 기간마다 그때 잔액 × 이자율 ÷ 365 × 일수를 더함. 원금 분할 상환 내역이 없으면 만기 일시 상환으로 계산 (통화는 차입 통화 기준)
+const loanAccInt=r=>{let bal=r2((+r.principal||0)-(+r.repaid||0));if(!(bal>0)||!(+r.rate>0))return 0;const R=(+r.rate)/100/365,P=(r.pays||[]).filter(x=>validD(x.date)),I=P.filter(x=>x.kind==='이자').map(x=>x.date).sort(),Pr=P.filter(x=>x.kind==='원금').sort((a,b)=>a.date<b.date?-1:1);
+  let from=I.length?I[I.length-1]:r.date;if(!validD(from))return 0;const inst=Pr.length?+Pr[Pr.length-1].amount:0,due=validD(r.due)?r.due:'';
+  if(!(inst>0)){const end=due&&due>from?due:from;return r2(bal*R*diffD(from,end))}
+  let tot=0,k=1,d0=pd(from);while(bal>0.005&&k<600){const d=new Date(d0);d.setMonth(d0.getMonth()+k);let nx=ds(d);if(due&&nx>due)nx=due;if(nx<=from){k++;continue}
+    tot+=bal*R*diffD(from,nx);bal=r2(bal-Math.min(bal,inst));if(due&&nx>=due&&bal>0){bal=0}from=nx;k++}
+  return r2(tot)};
 const loanStatus=r=>loanBal(r)<=0?'상환완료':(validD(r.due)&&r.due<TODAY?'연체':(validD(r.due)&&diffD(TODAY,r.due)<=90?'만기임박':'상환중'));
 const costTotal=r=>mx(r,'mat')+mx(r,'labor')+mx(r,'oh');
 const lineAmt=r=>(+r.qty||0)*mx(r,'price');
