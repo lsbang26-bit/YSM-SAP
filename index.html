@@ -3374,7 +3374,7 @@ function renderModal(){
   const m=modal&&MODS[modal.mod], r=m&&DB[m.data].find(x=>x.id===modal.id);
   if(!r){modal=null;host.innerHTML='';return}
   if(modal.type==='edit'){
-    host.innerHTML=`<div class="modal-bg"><div class="modal${m.big?' lg':''}" role="dialog" aria-modal="true" aria-labelledby="mt"><form data-edit="${modal.mod}">
+    host.innerHTML=`<div class="modal-bg"><div class="modal${m.big?' lg':''}" role="dialog" aria-modal="true" aria-labelledby="mt"><form data-edit="${modal.mod}" data-iva-orig="${esc(String(r.ivaAmt??''))}">
       <header><h3 id="mt">${esc(m.editTitle||m.name)} 수정</h3><button type="button" class="x" data-close="1" aria-label="닫기">×</button></header>
       <div class="mbody"><div class="form">${formFields(m,r,'ed')}</div></div>
       <footer><button type="button" class="btn" data-close="1">취소</button><button type="submit" class="btn primary">저장</button></footer></form></div></div>`;
@@ -4323,11 +4323,11 @@ document.addEventListener('input',e=>{const F=e.target.form,k=e.target.name;if(!
     if(!validD(Dt.value))return;
     if(k==='due'){if(validD(Du.value))Tm.value=Math.round((pd(Du.value)-pd(Dt.value))/864e5);return}
     if(Tm.value!==''&&isFinite(+Tm.value))Du.value=addDs(Dt.value,Math.round(+Tm.value));return}
-  if(!['sub','disc','ivaRet','isrRet','ivaAmt','amount'].includes(k))return;const g=n=>F.querySelector(`[name="${n}"]`),S=g('sub'),V=g('ivaAmt'),T=g('amount');if(!S||!V||!T)return;
-  const n=x=>pnum(x&&x.value)||0,f=x=>isFinite(x)?r2(x).toFixed(2):'',D=n(g('disc')),R=n(g('ivaRet'))+n(g('isrRet'));
-  if(k==='sub'||k==='disc'){if(S.value===''){if(k==='sub'){V.value='';T.value=''}return}V.value=f((n(S)-D)*.16);T.value=f(n(S)-D+n(V)-R)}
+  if(!['sub','disc','ivaRet','isrRet','ivaAmt','amount','iva'].includes(k))return;const g=n=>F.querySelector(`[name="${n}"]`),S=g('sub'),V=g('ivaAmt'),T=g('amount');if(!S||!V||!T)return;
+  const n=x=>pnum(x&&x.value)||0,f=x=>isFinite(x)?r2(x).toFixed(2):'',D=n(g('disc')),R=n(g('ivaRet'))+n(g('isrRet')),I=g('iva'),RT=I?(IVA_RATES[I.value]??.16):.16;
+  if(k==='sub'||k==='disc'||k==='iva'){if(S.value===''){if(k==='sub'){V.value='';T.value=''}return}V.value=f((n(S)-D)*RT);T.value=f(n(S)-D+n(V)-R)}
   else if(k==='ivaAmt'||k==='ivaRet'||k==='isrRet'){if(S.value!=='')T.value=f(n(S)-D+n(V)-R)}
-  else if(k==='amount'){if(T.value===''){S.value='';V.value='';return}const b=r2((n(T)+R)/1.16);S.value=f(b+D);V.value=f(n(T)+R-b)}
+  else if(k==='amount'){if(T.value===''){S.value='';V.value='';return}const b=r2((n(T)+R)/(1+RT));S.value=f(b+D);V.value=f(n(T)+R-b)}
 });
 // 표 칸 폭: 제목 오른쪽 경계를 끌어서 조절 (화면·칸별로 이 브라우저에 저장), 두 번 클릭하면 원래 폭
 function cwCSS(){let el=document.getElementById('cwStyle');if(!el){el=document.createElement('style');el.id='cwStyle';document.head.appendChild(el)}
@@ -4387,7 +4387,9 @@ document.addEventListener('submit',e=>{
     if(m===MODS.vendors&&v.name!==r.name)[DB.inbound,DB.ap].forEach(a=>a.forEach(x=>{if(x.vendor===r.name)x.vendor=v.name}));
     if(m===MODS.entities&&v.name!==r.name){DB.entfs.forEach(x=>{if(x.entity===r.name)x.entity=v.name});DB.ic.forEach(x=>{if(x.seller===r.name)x.seller=v.name;if(x.buyer===r.name)x.buyer=v.name})}
     if(m===MODS.customers&&v.name!==r.name)[DB.outbound,DB.ar].forEach(a=>a.forEach(x=>{if(x.customer===r.name)x.customer=v.name}));
-    if(hasIvaAmt(r)&&((v.sub!=null&&+v.sub!==+r.sub)||(v.iva!=null&&v.iva!==r.iva)||(v.cur!=null&&v.cur!==r.cur)))delete r.ivaAmt;
+    if(hasIvaAmt(r)&&((v.sub!=null&&+v.sub!==+r.sub)||(v.iva!=null&&v.iva!==r.iva)||(v.cur!=null&&v.cur!==r.cur)||(v.disc!=null&&+v.disc!==+(r.disc||0)))){delete r.ivaAmt;
+      // 부가세 칸을 직접 고치지 않았으면 새 금액·세율로 다시 계산 (화면에 남은 예전 부가세로 덮어쓰지 않음)
+      if(v.ivaAmt!=null&&v.ivaAmt!==''&&r2(+v.ivaAmt)===r2(+f.dataset.ivaOrig||0))v.ivaAmt=''}
     const oldAmt=+r.amount||0;
     Object.assign(r,v);fixRow(m,r);
     // 입금·지급 완료로 만든 경리자료 전표를 고치면 연결된 외상매출 수금액·외상매입 지급액도 같은 차이만큼 바뀜 (대쉬보드·잔액 자동 반영)
