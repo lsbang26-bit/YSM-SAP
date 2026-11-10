@@ -209,6 +209,7 @@ table[data-seltbl="ap"] tbody tr[data-row]{cursor:pointer}
 .lncols span{font-size:11px;color:var(--muted)}.lncols span:nth-child(n+2):nth-child(-n+4){text-align:right}
 .lnrow input:not([data-ln="item"]){text-align:right}
 .fparty{min-width:240px}
+.selwrap{display:flex;flex-direction:column;align-items:flex-end;gap:6px;margin-left:auto}.selsum{display:flex;flex-direction:column;align-items:flex-end;font-size:12px;line-height:1.5;font-variant-numeric:tabular-nums;color:var(--muted,#6b7280)}.selsum b{color:var(--text,#111827);font-weight:700}.selsum:empty{display:none}
 .pycols,.pyrow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr) minmax(0,1.3fr) 28px;gap:8px;align-items:center}.pycols{font-size:12px;color:var(--muted,#6b7280);margin-top:8px}.pyrow{margin-top:6px}.pyrow input[data-py=amount]{text-align:right}.pyrows{max-height:320px;overflow:auto}
 .pdcols,.pdrow{display:grid;grid-template-columns:minmax(0,3fr) repeat(3,minmax(0,1.1fr)) minmax(0,1.1fr) 28px;gap:8px;align-items:center}.pdcols{font-size:12px;color:var(--muted,#6b7280);margin-top:8px}.pdcols span:not(:first-child){text-align:right}.pdrow{margin-top:6px}.pdrow input:not([data-pd="item"]){text-align:right}.lnamt{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
 .lndel{border:0;background:none;color:var(--muted);cursor:pointer;font-size:14px}.lndel:hover{color:var(--bad)}
@@ -1887,12 +1888,16 @@ const selBtn=id=>`<button class="btn danger selbtn" data-delsel="${id}" disabled
 function selVisible(id){const m=MODS[id];if(!m||!m.cols)return [];const S=selOf(id);return viewRows(m,curPeriod(),id).filter(r=>S.has(r.id))}
 function syncSel(){
   document.querySelectorAll('[data-delsel]').forEach(b=>{const n=selVisible(b.dataset.delsel).length;b.disabled=!n;b.textContent=n?`선택삭제 (${n})`:'선택삭제'});
+  // 외상매입·매출: 체크한 줄의 합계·잔액 (MXN 환산)
+  document.querySelectorAll('[data-selsum]').forEach(el=>{const id=el.dataset.selsum,rs=selVisible(id),isAP=id==='ap';if(!rs.length){el.innerHTML='';return}
+    const tot=sumBy(rs,M('amount')),bal=sumBy(rs,isAP?apBal:arBal),cs=uniq(rs.map(r=>r.cur||'MXN'));
+    el.innerHTML=`<span>선택 ${rs.length}건</span><span>합계 <b>${money(tot)}</b></span><span>잔액 <b>${money(bal)}</b></span>${cs.length===1&&cs[0]==='USD'?`<span class="dim">${fmtCur(sumBy(rs,r=>+r.amount||0),'USD',1)}</span>`:''}`});
   document.querySelectorAll('table[data-seltbl]').forEach(t=>{const all=[...t.querySelectorAll('[data-selrow]')],on=all.filter(x=>x.checked).length,h=t.querySelector('[data-selall]');
     if(h){h.checked=!!all.length&&on===all.length;h.indeterminate=on>0&&on<all.length}all.forEach(x=>x.closest('tr').classList.toggle('sel',x.checked))});
 }
 function tableCard(m,p,modId,title){
   const note=hasCur(m)?`<span class="meta">· US$ 금액은 환율로 환산해 합계</span>`:'';
-  if(m.filters)return `<div class="card"><header class="fhead"><h2>${esc(title||'상세 내역')}</h2>${filterBar(m,p,modId)}${(()=>{const all=rowsFor(m,p).length,vis=viewRows(m,p,modId).length;return all>vis?`<span class="meta" style="color:var(--warn)">필터로 숨긴 ${all-vis}건</span>`:''})()}${selBtn(modId)}</header>
+  if(m.filters)return `<div class="card"><header class="fhead"><h2>${esc(title||'상세 내역')}</h2>${filterBar(m,p,modId)}${(()=>{const all=rowsFor(m,p).length,vis=viewRows(m,p,modId).length;return all>vis?`<span class="meta" style="color:var(--warn)">필터로 숨긴 ${all-vis}건</span>`:''})()}${m===MODS.ap||m===MODS.ar?`<div class="selwrap">${selBtn(modId)}<div class="selsum" data-selsum="${modId}" aria-live="polite"></div></div>`:selBtn(modId)}</header>
     ${m.fsum?`<div id="fsum-${modId}">${fsumHTML(m,p,modId)}</div>`:''}
     <div id="tbl-${modId}">${tableHTML(m,p,modId)}</div></div>`;
   return `<div class="card"><header><h2>${esc(title||'상세 내역')}</h2>${m.monthNav?`<span class="monthbadge">${esc(p.label)}</span>`:`<span class="meta">${m.dated?esc(p.label):'전체 등록 자료'}</span>`}${note}
