@@ -208,6 +208,7 @@ table[data-seltbl="ap"] tbody tr[data-row]{cursor:pointer}
 .lncols,.lnrow{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.1fr) 28px;gap:8px;align-items:center}
 .lncols span{font-size:11px;color:var(--muted)}.lncols span:nth-child(n+2):nth-child(-n+4){text-align:right}
 .lnrow input:not([data-ln="item"]){text-align:right}
+.fparty{min-width:240px}
 .pycols,.pyrow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr) minmax(0,1.3fr) 28px;gap:8px;align-items:center}.pycols{font-size:12px;color:var(--muted,#6b7280);margin-top:8px}.pyrow{margin-top:6px}.pyrow input[data-py=amount]{text-align:right}.pyrows{max-height:320px;overflow:auto}
 .pdcols,.pdrow{display:grid;grid-template-columns:minmax(0,3fr) repeat(3,minmax(0,1.1fr)) minmax(0,1.1fr) 28px;gap:8px;align-items:center}.pdcols{font-size:12px;color:var(--muted,#6b7280);margin-top:8px}.pdcols span:not(:first-child){text-align:right}.pdrow{margin-top:6px}.pdrow input:not([data-pd="item"]){text-align:right}.lnamt{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
 .lndel{border:0;background:none;color:var(--muted);cursor:pointer;font-size:14px}.lndel:hover{color:var(--bad)}
@@ -1802,8 +1803,10 @@ function footVal(c,rows,p,m){
 const fltOf=id=>(UI.flt&&UI.flt[id])||{};
 const fltOn=(m,id)=>{const f=fltOf(id);return (m.filters||[]).filter(([k,,t])=>t==='range'?(f[k+'Min']||'')!==''||(f[k+'Max']||'')!=='':!!f[k])};
 const fval=(m,r,k)=>{const c=m.cols.find(x=>x.k===k);return c&&c.calc&&r[k]==null?c.calc(r,curPeriod()):r[k]};
+// 거래처(공급사·고객사 등) 필터: 목록에서 고르거나 일부만 입력해도 이름 중간에 들어 있으면 걸러짐
+const FPARTY=['vendor','customer','party','shipTo','spSupplier'];
 const matchF=(m,id)=>{const f=fltOf(id),act=fltOn(m,id);return r=>act.every(([k,,t])=>{const v=fval(m,r,k);
-  if(t==='text')return String(v??'').toLowerCase().includes(String(f[k]).trim().toLowerCase());
+  if(t==='text'||FPARTY.includes(k))return String(v??'').toLowerCase().includes(String(f[k]).trim().toLowerCase());
   if(t==='range'){const x=+v||0,a=parseFloat(f[k+'Min']),b=parseFloat(f[k+'Max']);return (isNaN(a)||x>=a)&&(isNaN(b)||x<=b)}
   return String(v??'')===f[k]})};
 const viewRows=(m,p,id)=>m.filters?rowsFor(m,p).filter(matchF(m,id)):rowsFor(m,p).filter(matchQ);
@@ -1825,7 +1828,9 @@ function filterBar(m,p,id){
     ${m.filters.map(([k,l,t])=>{
     if(t==='text')return `<input type="search" class="fsel ftext${f[k]?' on':''}" data-fltin="${id}:${k}" value="${esc(f[k]||'')}" placeholder="${esc(l)} 검색" aria-label="${esc(l)}">`;
     if(t==='range')return `<span class="frange${(f[k+'Min']||f[k+'Max'])?' on':''}"><span>${esc(l)}</span><input type="number" inputmode="decimal" data-fltin="${id}:${k}Min" value="${esc(f[k+'Min']||'')}" placeholder="최소" aria-label="${esc(l)} 최소"><span class="tilde">~</span><input type="number" inputmode="decimal" data-fltin="${id}:${k}Max" value="${esc(f[k+'Max']||'')}" placeholder="최대" aria-label="${esc(l)} 최대"></span>`;
-    const o=uniq(all.map(r=>String(fval(m,r,k)??''))).filter(v=>v!=='');if(f[k]&&!o.includes(f[k]))o.unshift(f[k]);
+    const o=uniq(all.map(r=>String(fval(m,r,k)??''))).filter(v=>v!=='');
+    if(FPARTY.includes(k))return `<input type="search" class="fsel ftext fparty${f[k]?' on':''}" list="fl-${id}-${k}" data-fltin="${id}:${k}" value="${esc(f[k]||'')}" placeholder="${esc(l)} 전체 (검색)" aria-label="${esc(l)}" autocomplete="off"><datalist id="fl-${id}-${k}">${o.sort((a,b)=>a.localeCompare(b)).map(v=>`<option value="${esc(v)}">`).join('')}</datalist>`;
+    if(f[k]&&!o.includes(f[k]))o.unshift(f[k]);
     return `<select class="fsel${f[k]?' on':''}" data-flt="${id}:${k}" aria-label="${esc(l)}"><option value="">${esc(l)} 전체</option>${o.map(v=>`<option${v===f[k]?' selected':''}>${esc(v)}</option>`).join('')}</select>`}).join('')}
     ${on||m.filters.some(x=>x[2])?`<button class="btn" data-fclear="${id}">필터 해제</button>`:''}</div>`;
 }
