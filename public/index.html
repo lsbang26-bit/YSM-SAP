@@ -2755,7 +2755,9 @@ function severPage(p){
 MODS.sever.dash=p=>kpiHTML(MODS.sever.kpis(DB.sever.filter(r=>inP(r,p)),p));
 
 /* ---------- forms ---------- */
-function vatCalcHTML(sub,iva,cur){const t=IVA_RATES[iva]||0;cur=cur||'MXN';return `<span>부가세 ${esc(iva||'')}</span><b>${fmtCur(sub*t,cur,1)}</b><span>합계</span><b>${fmtCur(sub*(1+t),cur,1)}</b>`}
+function vatCalcHTML(sub,iva,cur,va,tot){const t=IVA_RATES[iva]||0;cur=cur||'MXN';const v=isFinite(va)&&va!==null?va:sub*t,T=isFinite(tot)&&tot!==null?tot:sub+v;return `<span>부가세 ${esc(iva||'')}</span><b>${fmtCur(v,cur,1)}</b><span>합계</span><b>${fmtCur(T,cur,1)}</b>`}
+// 폼 안의 부가세 미리보기: 부가세·합계 칸이 있으면 그 값(직접 고친 값 포함)을 그대로 보여줌
+function vatBoxSync(F){const vb=F&&F.querySelector('[data-vatcalc]');if(!vb)return;const g=k=>F.querySelector(`[name="${k}"]`),n=k=>{const el=g(k);if(!el||String(el.value).trim()==='')return null;const x=pnum(el.value);return isFinite(x)?x:null};vb.innerHTML=vatCalcHTML(n('sub')||0,g('iva').value,g('cur')&&g('cur').value,...((F.dataset.reg||F.dataset.edit)==='ap'?[n('ivaAmt'),n('amount')]:[]))}
 const inCols=m=>m.cols.filter(c=>!c.calc||c.form);
 function formFields(m,r,pre){
   return inCols(m).filter(c=>pre==='ed'||!c.regHide).map(c=>{
@@ -2766,7 +2768,7 @@ function formFields(m,r,pre){
     else if(c.t==='date')inp=`<input type="date" ${a} value="${esc(v)}"${c.opt?'':' required'}>`;
     else if(isNum(c))inp=`<input type="text" inputmode="decimal" autocomplete="off" data-numin="${c.t}" ${a} value="${v===''||(+v===0&&(!c.keepBlank||c.k==='amount'||!(+r.sub)))?'':esc(fmtIn(c,v))}" placeholder="${c.keepBlank?'자동':c.t==='money'?'0.00':'0'}">`;
     else inp=`<input type="text" ${a} value="${esc(v)}"${c.sug?` list="dl-${c.sug}"`:''}${c.k==='name'?' required':''}>`;
-    const vc=c.k==='iva'&&m.cols.some(x=>x.k==='sub')?`<div class="vatcalc" data-vatcalc aria-live="polite">${vatCalcHTML(+r.sub||0,v,r.cur)}</div>`:'';
+    const vc=c.k==='iva'&&m.cols.some(x=>x.k==='sub')?`<div class="vatcalc" data-vatcalc aria-live="polite">${vatCalcHTML(+r.sub||0,v,r.cur,hasIvaAmt(r)?+r.ivaAmt:null,m.data==='ap'&&+r.amount?+r.amount:null)}</div>`:'';
     const ln=c.k==='price'&&m.data==='ap'?lnBox(r):c.k==='item'&&m.data==='ped'?pdBox(r):c.k==='repaid'&&m.data==='loans'?pyBox(r):c.k==='ivaprv'&&m.data==='ped'?`<div class="vatcalc"><span>합계</span><b data-pedtot>${nf2.format(pedTotal(r))}</b></div>`:'';
     return `${sec}<label class="${c.wide?'wide':''}">${esc(c.l)}${inp}</label>${vc}${ln}`}).join('');
 }
@@ -4371,7 +4373,7 @@ document.addEventListener('change',e=>{
 });
 document.addEventListener('input',e=>{
   const F=e.target.form, vb=F&&F.querySelector('[data-vatcalc]');
-  if(vb&&['sub','iva','cur'].includes(e.target.name)){const g=k=>F.querySelector(`[name="${k}"]`);vb.innerHTML=vatCalcHTML(pnum(g('sub').value)||0,g('iva').value,g('cur')&&g('cur').value);return}
+  if(vb&&['sub','iva','cur'].includes(e.target.name)){vatBoxSync(F);return}
   // vacation form: days = calendar days between the dates, Sundays excluded
   if(F&&(F.dataset.reg==='vac'||F.dataset.edit==='vac')&&['date','to'].includes(e.target.name)){const a=F.querySelector('[name="date"]').value,b=F.querySelector('[name="to"]').value;if(validD(a)&&validD(b)&&a<=b)F.querySelector('[name="days"]').value=workDays(a,b);return}
   if(e.target.dataset&&e.target.dataset.fltin){const [fid,k]=e.target.dataset.fltin.split(':');UI.flt=UI.flt||{};(UI.flt[fid]=UI.flt[fid]||{})[k]=e.target.value;saveUI();e.target.classList.toggle('on',!!e.target.value);
@@ -4699,6 +4701,8 @@ document.addEventListener('keydown',e=>{if(!coverOn()||e.ctrlKey||e.metaKey||e.a
 cv.addEventListener('focusout',e=>{if(e.target.id==='mmQ')setTimeout(()=>{const q=$('#mmQ');if(q&&!q.value&&document.activeElement!==q&&!(document.activeElement||{closest(){}}).closest('.eng-cmd'))engCmd(false)},200)});
 cv.addEventListener('keydown',e=>{if(e.target.closest('[data-eng]')&&(e.key==='Enter'||e.key===' ')){e.preventDefault();engTap();return}const n=e.target.closest('[data-cgo]');if(n&&(e.key==='Enter'||e.key===' ')&&n.tagName!=='BUTTON'){e.preventDefault();hideCover();go(n.dataset.cgo)}});
 document.querySelector('.brand').addEventListener('keydown',e=>{if(e.key==='Enter')showCover()});
+document.addEventListener('input',e=>{const F=e.target.form;if(F&&F.querySelector('[data-vatcalc]')&&['sub','iva','cur','ivaAmt','amount','disc','ivaRet','isrRet','qty','price'].includes(e.target.name))vatBoxSync(F)});
+document.addEventListener('change',e=>{const F=e.target.form;if(F&&F.querySelector('[data-vatcalc]')&&['iva','cur'].includes(e.target.name))vatBoxSync(F)});
 })();
 </script>
 </body>
