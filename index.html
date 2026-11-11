@@ -2785,21 +2785,21 @@ const lnRow=(x={})=>`<div class="lnrow"><input type="text" data-ln="item" placeh
 function lnBox(r){const L=r.lines||[];return `<div class="lnbox" data-lines><div class="lnhead"><b>품목 내역</b><span class="dim">${L.length?'':'여러 품목을 넣으면 금액이 자동 합산됩니다'}</span><button type="button" class="btn" data-lnadd="1">＋ 품목 추가</button></div>
   <div class="lncols"${L.length?'':' hidden'}><span>품목</span><span>수량</span><span>단가</span><span>금액</span><span></span></div><div class="lnrows">${L.map(lnRow).join('')}</div></div>`}
 // 외상매입 상세: 행을 누르면 Factura 정보와 품목별 수량·단가·금액을 팝업으로
-function apDetailHTML(id){const r=DB.ap.find(x=>x.id===id);if(!r)return '';const cur=r.cur||'MXN',F=v=>fmtCur(v,cur,1);
-  const sib=r.folio?DB.ap.filter(x=>x.vendor===r.vendor&&String(x.folio||'')===String(r.folio)):[r];
+function apDetailHTML(id,md){md=md==='ar'?'ar':'ap';const ar=md==='ar',pk=ar?'customer':'vendor',D=DB[md],r=D.find(x=>x.id===id);if(!r)return '';const cur=r.cur||'MXN',F=v=>fmtCur(v,cur,1);
+  const sib=r.folio?D.filter(x=>x[pk]===r[pk]&&String(x.folio||'')===String(r.folio)):[r];
   let L,src;if(r.lines&&r.lines.length){L=r.lines.map(l=>({item:l.item,es:l.itemEs,qty:l.qty,price:l.price,amt:(+l.qty||0)*(+l.price||0)}));src=''}
   else if(r.detail&&r.detail.length){L=r.detail.map(l=>({item:l.item,es:l.itemEs,qty:l.qty,price:l.price,amt:l.amt}));src='Factura(XML) 품목'}
   else{L=sib.map(x=>({item:x.item,es:x.itemEs,qty:x.qty,price:x.price,amt:+x.sub||0,id:x.id}));src=sib.length>1?`같은 Factura로 등록된 ${sib.length}건`:''}
-  const tot=L.reduce((a,l)=>a+(+l.amt||0),0), all=sib.length>1&&!(r.lines&&r.lines.length)&&!(r.detail&&r.detail.length)?sib:[r], S=k=>all.reduce((a,x)=>a+(+x[k]||0),0);
+  const tot=L.reduce((a,l)=>a+(+l.amt||0),0), all=sib.length>1&&!(r.lines&&r.lines.length)&&!(r.detail&&r.detail.length)?sib:[r], S=k=>all.reduce((a,x)=>a+(k==='vat'?(+x.amount||0)-(+x.sub||0)+(+x.ivaRet||0):(+x[k]||0)),0);
   const kv=(k,v)=>`<div><span>${k}</span><b>${v}</b></div>`;
   return `<div class="modal-bg"><div class="modal lg" role="dialog" aria-modal="true" aria-labelledby="mt">
-    <header><h3 id="mt">${esc(r.vendor)} · Factura ${esc(r.folio||'–')}</h3><button type="button" class="x" data-close="1" aria-label="닫기">×</button></header>
-    <div class="mbody"><div class="apdk">${kv('거래일',esc(r.date))}${kv('분류',esc(r.cat||''))}${kv('계정과목',esc(r.account||''))}${kv('부서',esc(r.dept||'–'))}${kv('통화',cur)}${kv('지급기일',esc(r.due||''))}</div>
+    <header><h3 id="mt">${esc(r[pk])} · Factura ${esc(r.folio||'–')}</h3><button type="button" class="x" data-close="1" aria-label="닫기">×</button></header>
+    <div class="mbody"><div class="apdk">${ar?`${kv('발행일',esc(r.date))}${kv('Factura',esc(r.factura||''))}${kv('통화',cur)}${kv('크레딧 텀(일)',validD(r.due)&&validD(r.date)?diffD(r.date,r.due):'–')}${kv('수금기일',esc(r.due||''))}${kv('CFDI UUID',`<span class="small">${esc(r.uuid||'–')}</span>`)}`:`${kv('거래일',esc(r.date))}${kv('분류',esc(r.cat||''))}${kv('계정과목',esc(r.account||''))}${kv('부서',esc(r.dept||'–'))}${kv('통화',cur)}${kv('지급기일',esc(r.due||''))}`}</div>
     <div class="apdt"><table><thead><tr><th>#</th><th>품목</th><th class="n">수량</th><th class="n">단가</th><th class="n">금액</th></tr></thead><tbody>
     ${L.map((l,i)=>`<tr${l.id?` data-apd="${l.id}"`:''}><td class="dim">${i+1}</td><td>${esc(l.item||'–')}${l.es?`<div class="dim small">${esc(l.es)}</div>`:''}</td><td class="n">${l.qty===''||l.qty==null?'–':nfq.format(+l.qty)}</td><td class="n">${l.price===''||l.price==null?'–':F(l.price)}</td><td class="n">${F(l.amt)}</td></tr>`).join('')}
     </tbody><tfoot><tr><td></td><td>합계 · ${L.length}품목${src?` <span class="dim small">(${src})</span>`:''}</td><td class="n">${nfq.format(L.reduce((a,l)=>a+(+l.qty||0),0))}</td><td></td><td class="n">${F(tot)}</td></tr></tfoot></table></div>
-    <div class="apds">${kv('금액',F(S('sub')))}${kv('할인',F(S('disc')))}${kv('부가세',F(S('ivaAmt')))}${kv('부가세 Ret',F(S('ivaRet')))}${kv('ISR Ret',F(S('isrRet')))}${kv('합계',F(S('amount')))}${kv('지급액',F(S('paid')))}${kv('잔액',F(S('amount')-S('paid')))}</div></div>
-    <footer><button type="button" class="btn" data-close="1">닫기</button><button type="button" class="btn primary" data-editrow="${r.id}" data-m="ap">수정</button></footer></div></div>`}
+    <div class="apds">${ar?`${kv('금액',F(S('sub')))}${kv('부가세',F(S('vat')))}${kv('부가세 Ret',F(S('ivaRet')))}${kv('합계',F(S('amount')))}${kv('수금액',F(S('received')))}${kv('잔액',F(S('amount')-S('received')))}`:`${kv('금액',F(S('sub')))}${kv('할인',F(S('disc')))}${kv('부가세',F(S('ivaAmt')))}${kv('부가세 Ret',F(S('ivaRet')))}${kv('ISR Ret',F(S('isrRet')))}${kv('합계',F(S('amount')))}${kv('지급액',F(S('paid')))}${kv('잔액',F(S('amount')-S('paid')))}`}</div></div>
+    <footer><button type="button" class="btn" data-close="1">닫기</button><button type="button" class="btn primary" data-editrow="${r.id}" data-m="${md}">수정</button></footer></div></div>`}
 // 수입면장 항목 내역: 항목 · 취득원가 · 관세 · 부가세는 항목별, 수수료(DTA·PRV·IVA/PRV)는 면장별
 const pdRow=(x={})=>{const f=k=>x[k]===''||x[k]==null||(+x[k]===0&&k!=='item')?'':esc(k==='item'?x[k]:(+x[k]).toFixed(2));return `<div class="pdrow"><input type="text" data-pd="item" placeholder="항목" value="${f('item')}"><input type="text" inputmode="decimal" data-numin="money" data-pd="cost" placeholder="취득원가" value="${f('cost')}"><input type="text" inputmode="decimal" data-numin="money" data-pd="igi" placeholder="관세(IGI)" value="${f('igi')}"><input type="text" inputmode="decimal" data-numin="money" data-pd="piva" placeholder="부가세(IVA)" value="${f('piva')}"><span class="lnamt"></span><button type="button" class="lndel" data-pddel="1" title="이 항목 삭제">✕</button></div>`};
 function pdBox(r){const L=r.lines&&r.lines.length?r.lines:[{item:r.item,cost:r.cost,igi:r.igi,piva:r.piva}];return `<div class="lnbox" data-pdlines><div class="lnhead"><b>항목 내역</b><span class="dim">한 면장에 여러 항목을 넣으면 취득원가·관세·부가세가 자동 합산됩니다</span><button type="button" class="btn" data-pdadd="1">＋ 항목 추가</button></div>
@@ -2840,8 +2840,8 @@ function lnSync(F){const B=F.querySelector('[data-lines]');if(!B)return;const L=
   if(!L.length)return;const S=F.querySelector('[name="sub"]');if(!S)return;const sm=r2(L.reduce((a,x)=>a+(+x.qty||0)*(+x.price||0),0)),tq=L.reduce((a,x)=>a+(+x.qty||0),0),Q=F.querySelector('[name="qty"]'),P=F.querySelector('[name="price"]');
   if(Q)Q.value=tq||'';if(P)P.value=tq?Math.round(sm/tq*10000)/10000:'';S.value=sm.toFixed(2);S.dispatchEvent(new Event('input',{bubbles:true}))}
 document.addEventListener('click',e=>{const t=e.target;if(!t.closest||modal)return;const tp=t.closest('table[data-seltbl="ped"] tbody tr[data-row]');if(tp&&!t.closest('input,button,a,select,label,.cres')){modal={type:'edit',mod:'ped',id:tp.dataset.row};renderModal();return}});
-document.addEventListener('click',e=>{const t=e.target;if(!t.closest||modal)return;const tr=t.closest('table[data-seltbl="ap"] tbody tr[data-row]');if(!tr||t.closest('input,button,a,select,label,.cres'))return;
-  modal={type:'apdetail',id:tr.dataset.row};renderModal()});
+document.addEventListener('click',e=>{const t=e.target;if(!t.closest||modal)return;const tr=t.closest('table[data-seltbl="ap"] tbody tr[data-row],table[data-seltbl="ar"] tbody tr[data-row]');if(!tr||t.closest('input,button,a,select,label,.cres'))return;
+  modal={type:'apdetail',id:tr.dataset.row,md:tr.closest('table').dataset.seltbl};renderModal()});
 document.addEventListener('click',e=>{const t=e.target;if(!t.closest)return;const add=t.closest('[data-lnadd]'),del=t.closest('[data-lndel]');if(!add&&!del)return;e.preventDefault();e.stopPropagation();
   const B=t.closest('[data-lines]'),F=B.closest('form')||B.parentElement;if(add){B.querySelector('.lnrows').insertAdjacentHTML('beforeend',lnRow());const n=B.querySelectorAll('.lnrow');n[n.length-1].querySelector('input').focus()}else t.closest('.lnrow').remove();lnSync(F)},true);
 document.addEventListener('input',e=>{const t=e.target,F=t.form;if(!F||!['ap','ar'].includes(F.dataset.reg||F.dataset.edit)||!['qty','price'].includes(t.name)||F.querySelector('.lnrow'))return;
@@ -3399,7 +3399,7 @@ function renderModal(){
   if(modal&&modal.type==='import'){host.innerHTML=importModal(modal.mod);imp=null;return}
   if(modal&&modal.type==='raya'){host.innerHTML=rayaModal();raya=null;return}
   if(modal&&modal.type==='cfdi'){host.innerHTML=cfdiModal();cfdi=null;return}
-  if(modal&&modal.type==='apdetail'){host.innerHTML=apDetailHTML(modal.id);return}
+  if(modal&&modal.type==='apdetail'){host.innerHTML=apDetailHTML(modal.id,modal.md);return}
   if(modal&&modal.type==='add'){const m=MODS[modal.mod];
     host.innerHTML=`<div class="modal-bg"><div class="modal${m.big?' lg':''}" role="dialog" aria-modal="true" aria-labelledby="mt"><form data-reg="${modal.mod}">
       <header><h3 id="mt">${modal.mod==='employees'?'직원 추가':esc(m.name)+' 등록'}</h3><button type="button" class="x" data-close="1" aria-label="닫기">×</button></header>
