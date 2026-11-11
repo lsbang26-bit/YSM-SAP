@@ -203,6 +203,7 @@ table[data-seltbl="ap"] tbody tr[data-row]{cursor:pointer}
 .apdk div,.apds div{display:grid;gap:2px}.apdk span,.apds span{font-size:11px;color:var(--muted)}.apdk b,.apds b{font-size:14px}
 .apds{margin:14px 0 0;padding-top:12px;border-top:1px solid var(--line)}
 .apdt{overflow:auto;max-height:50vh;border:1px solid var(--line);border-radius:10px}.apdt table{width:100%}.apdt td,.apdt th{padding:8px 10px}.apdt tfoot td{font-weight:700;border-top:1px solid var(--line-strong)}.small{font-size:11px}
+.cft td:first-child{min-width:200px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cft td:first-child,.cft th:first-child{position:sticky;left:0;background:var(--surface);z-index:1}.cft .cfhd td{background:var(--bg);font-weight:700;font-size:12px;color:var(--muted)}.cft .cfsub td:first-child{padding-left:22px;color:var(--muted)}.cft .cfsec td{border-top:1px solid var(--line)}.cft .cftot td,.cft .cfnet td{border-top:2px solid var(--line-strong);font-weight:600}.cft .cfbal td{background:var(--bg);font-weight:700}.cft td.neg{color:var(--bad,#c0392b)}
 .lnbox{grid-column:1/-1;border:1px dashed var(--line-strong);border-radius:10px;padding:10px 12px;display:grid;gap:6px}
 .lnhead{display:flex;align-items:center;gap:10px}.lnhead b{font-size:13px}.lnhead .dim{font-size:12px;flex:1}.lnhead .btn{margin-left:auto;padding:4px 10px;font-size:12px}
 .lncols,.lnrow{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.1fr) 28px;gap:8px;align-items:center}
@@ -1206,7 +1207,7 @@ function syncFromAR(D){
   return res;
 }
 function save(){VCACHE.clear();LS.set('ysm-sap-saved-at',Date.now());bkQueue();syncFromAR(DB);if(BANKS().length)DB.cash.forEach(r=>{if(!r.bank)r.bank=bankFor(r.cur)});if(LS.set(KEY,DB))savedAt=new Date();const el=$('#saved');if(el)el.textContent=savedText()}
-function saveUI(){LS.set(UKEY,{cw:UI.cw,vlang:UI.vlang,lastBank:UI.lastBank,cons:UI.cons,mod:UI.mod,dtab:UI.dtab,flt:UI.flt,rs:UI.rs,re:UI.re,pf:UI.pf,fm:UI.fm,mq:UI.mq,open:UI.open,fs:UI.fs})}
+function saveUI(){LS.set(UKEY,{cfu:UI.cfu,cw:UI.cw,vlang:UI.vlang,lastBank:UI.lastBank,cons:UI.cons,mod:UI.mod,dtab:UI.dtab,flt:UI.flt,rs:UI.rs,re:UI.re,pf:UI.pf,fm:UI.fm,mq:UI.mq,open:UI.open,fs:UI.fs})}
 const savedText=()=>savedAt?`저장됨 ${pad(savedAt.getHours())}:${pad(savedAt.getMinutes())}`:'이 브라우저에 자동 저장';
 
 /* ---------- domain calcs (all return MXN) ---------- */
@@ -1460,7 +1461,7 @@ const kv=(l,v,s,tone,go)=>({l,v,s,tone,go});
 /* ---------- modules ---------- */
 const GROUPS=[
   {id:'dash',name:'대쉬보드',items:['dash-all']},
-  {id:'fin',name:'재무회계',items:['bank','cash','fs','fscons','hq','ap','ar','assets','loans','stock','mfg','cost','ped']},
+  {id:'fin',name:'재무회계',items:['bank','cf','cash','fs','fscons','hq','ap','ar','assets','loans','stock','mfg','cost','ped']},
   {id:'tax',name:'세금',items:['cit','vat']},
   {id:'in',name:'입고관리',items:['vendors','inbound']},
   {id:'prod',name:'생산관리',items:['production']},
@@ -1536,6 +1537,7 @@ const MODS={
     trend:{l:'기간별 출금',fn:rows=>sumBy(rows.filter(r=>r.type==='출금'),M('amount')),money:1},
     extra:rows=>groupSummary('분류별 출금',rows.filter(r=>r.type==='출금'),'cat',[['금액',M('amount'),money]],r=>r.account),
     blank:p=>({date:TODAY,bank:bankFor('MXN'),type:'출금',cat:'판관비용',account:'기타',party:'',memo:'',cur:'MXN',sub:0,amount:0,iva:'16%',factura:'발행',uuid:''})},
+  cf:{name:'Cash Flow',desc:'현재 은행 잔고에서 외상매출 수금기일·외상매입 지급기일과 경리자료의 반복 입출금을 반영한 자금 계획',page:()=>cfPage(),toolbar:()=>cfToolbar(),dash:()=>kpiHTML(cfKpis(cfData())),tight:1},
   bank:{name:'Bank Statement',page:()=>bankPage(),toolbar:()=>bankToolbar(),dash:p=>kpiHTML(bankKpis(minS(p.end,TODAY))),tight:1},
   fs:{name:'재무제표',desc:'다른 화면의 데이터로 자동 계산되는 손익계산서와 재무상태표',page:fsPage,toolbar:fsToolbar},
   hq:{name:'본사관리비용',desc:'본사가 청구하는 관리비(경영지원·IT·로열티 등)를 등록하고 배부율에 따라 제조원가와 판관비로 나눠 재무제표에 반영합니다',data:'hq',dated:true,
@@ -1991,6 +1993,63 @@ function arFacturaCard(p,id){
       <td class="n">${fmtCur(g.sub,g.cur,1)}</td><td class="n">${fmtCur(g.iva,g.cur,1)}</td><td class="n"><b>${fmtCur(g.amt,g.cur,1)}</b></td><td class="n">${fmtCur(g.rec,g.cur,1)}</td><td class="n">${fmtCur(g.bal,g.cur,1)}</td><td class="c">${esc(g.due)}</td><td class="c">${st(g)}</td></tr>`).join('')}
     </tbody><tfoot><tr><td colspan="6">합계 (MXN 환산) · ${gs.length}건</td><td class="n">${money(gs.reduce((a,g)=>a+g.mxAmt,0))}</td><td></td><td class="n">${money(gs.reduce((a,g)=>a+g.mx,0))}</td><td></td><td></td></tr></tfoot></table></div></div>`;
 }
+/* ---------- Cash Flow: 은행 잔고 + 외상매출(수금기일) − 외상매입(지급기일) ± 경리자료 반복 입출금, 주간/월간 ---------- */
+const CF_SKIP_ACC=['외상매입금 지급','매출대금 수금','차입금 입금','계좌 이체','예금 입금','예금 인출'];
+// 경리자료에서 반복되는 입출금 찾기: 같은 구분·계정과목·거래처가 최근 6개월 중 2개월 이상, 최근 2개월 안에 있으면 반복으로 봄
+function cfRecurring(){const from=ds(new Date(pd(TODAY).getFullYear(),pd(TODAY).getMonth()-6,1)),recent=ds(new Date(pd(TODAY).getFullYear(),pd(TODAY).getMonth()-1,1)),G=new Map();
+  DB.cash.forEach(r=>{if(!validD(r.date)||r.date<from||r.date>TODAY||r.link||r.cat==='보통예금'||CF_SKIP_ACC.includes(r.account)||!(+r.amount))return;
+    const key=[r.type,r.account||'',String(r.party||'').trim()].join('|');if(!G.has(key))G.set(key,[]);G.get(key).push(r)});
+  const out=[];G.forEach((rs,key)=>{rs.sort((a,b)=>a.date<b.date?-1:1);const months=[...new Set(rs.map(r=>r.date.slice(0,7)))];if(months.length<2||rs[rs.length-1].date<recent)return;
+    const [type,account,party]=key.split('|'),perM=rs.length/months.length,weekly=perM>=3;
+    if(weekly){const last=rs.slice(-4),amt=sumBy(last,M('amount'))/last.length,wd=[0,1,2,3,4,5,6].map(i=>rs.filter(r=>pd(r.date).getDay()===i).length),dow=wd.indexOf(Math.max(...wd));
+      out.push({type,account,party,weekly:1,amt,dow,last:rs[rs.length-1].date,n:rs.length,months:months.length})}
+    else{const lm=months.slice(-3),amt=lm.reduce((a,m)=>a+sumBy(rs.filter(r=>r.date.slice(0,7)===m),M('amount')),0)/lm.length,days=rs.map(r=>+r.date.slice(8)).sort((a,b)=>a-b),dom=days[Math.floor(days.length/2)];
+      out.push({type,account,party,weekly:0,amt,dom,last:rs[rs.length-1].date,n:rs.length,months:months.length})}});
+  return out}
+function cfPeriods(u){const t=pd(TODAY),P=[];
+  if(u==='week'){const m=addD(t,-((t.getDay()+6)%7));for(let i=0;i<13;i++){const a=addD(m,i*7),b=addD(a,6);P.push({start:ds(a),end:ds(b),label:`${pad(a.getMonth()+1)}/${pad(a.getDate())}~${pad(b.getMonth()+1)}/${pad(b.getDate())}`})}}
+  else for(let i=0;i<6;i++){const a=new Date(t.getFullYear(),t.getMonth()+i,1),b=new Date(t.getFullYear(),t.getMonth()+i+1,0);P.push({start:ds(a),end:ds(b),label:`${a.getFullYear()}-${pad(a.getMonth()+1)}`})}
+  return P}
+function cfData(){const u=UI.cfu==='month'?'month':'week',P=cfPeriods(u),end=P[P.length-1].end,items=[];
+  const open=sumBy(BANKS(),b=>bankBefore(b,addDs(TODAY,1)));
+  const dueOf=(r,md)=>validD(r.due)?r.due:addDs(validD(r.date)?r.date:TODAY,partyTerms(md,r));
+  DB.ar.forEach(r=>{const v=arBal(r);if(v<=0.5)return;const d=dueOf(r,'ar');items.push({sec:'ar',kind:'입금',date:d,od:d<TODAY,party:r.customer||'',memo:[r.folio?'Factura '+r.folio:'',r.item||''].filter(Boolean).join(' · '),amt:v,src:'외상매출 수금기일'})});
+  DB.ap.forEach(r=>{const v=apBal(r);if(v<=0.5)return;const d=dueOf(r,'ap');items.push({sec:'ap',kind:'출금',date:d,od:d<TODAY,party:r.vendor||'',memo:[r.folio?'Factura '+r.folio:'',r.item||''].filter(Boolean).join(' · '),amt:v,src:'외상매입 지급기일'})});
+  const rec=cfRecurring();rec.forEach(x=>{const sec=x.type==='입금'?'rin':'rout',nm=x.account+(x.party?' · '+x.party:'');
+    if(x.weekly){let d=addD(pd(TODAY),(x.dow-pd(TODAY).getDay()+7)%7);if(diffD(x.last,ds(d))<4)d=addD(d,7);for(;ds(d)<=end;d=addD(d,7))items.push({sec,kind:x.type,date:ds(d),party:x.party,name:nm,memo:x.account,amt:x.amt,src:`반복 (매주, 최근 ${Math.min(4,x.n)}회 평균)`})}
+    else{const t=pd(TODAY);for(let i=0;i<7;i++){const y=t.getFullYear(),mo=t.getMonth()+i,ld=new Date(y,mo+1,0).getDate(),d=ds(new Date(y,mo,Math.min(x.dom,ld)));if(d>end)break;
+      const ym=d.slice(0,7);if(ym===TODAY.slice(0,7)&&x.last.slice(0,7)===ym)continue;if(d<TODAY&&ym!==TODAY.slice(0,7))continue;items.push({sec,kind:x.type,date:d<TODAY?TODAY:d,party:x.party,name:nm,memo:x.account,amt:x.amt,src:`반복 (매월 ${x.dom}일경, 최근 ${Math.min(3,x.months)}개월 평균)`})}}});
+  const pi=d=>{if(d<P[0].start)return 0;const i=P.findIndex(p=>d>=p.start&&d<=p.end);return i};
+  items.forEach(x=>x.p=pi(x.date<TODAY?TODAY:x.date));
+  const inH=items.filter(x=>x.p>=0),later=items.filter(x=>x.p<0);
+  let bal=open;const per=P.map((p,i)=>{const I=inH.filter(x=>x.p===i&&x.kind==='입금'),O=inH.filter(x=>x.p===i&&x.kind==='출금'),inn=sumBy(I,x=>x.amt),out=sumBy(O,x=>x.amt),o=bal;bal=o+inn-out;return Object.assign({},p,{open:o,inn,out,net:inn-out,close:bal})});
+  return {u,P:per,items:inH,later,open,rec}}
+function cfKpis(D){const inn=sumBy(D.P,p=>p.inn),out=sumBy(D.P,p=>p.out),last=D.P[D.P.length-1],low=D.P.reduce((a,p)=>p.close<a.close?p:a,D.P[0]);
+  return [kv('현재 은행 잔고',money(D.open),TODAY+' 기준'),kv('예상 입금',money(inn),D.items.filter(x=>x.kind==='입금').length+'건','good'),kv('예상 출금',money(out),D.items.filter(x=>x.kind==='출금').length+'건','bad'),
+    kv('기말 예상 잔고',money(last.close),last.end+' 기준',last.close<0?'bad':''),kv('최저 잔고',money(low.close),low.label,low.close<0?'bad':'warn')]}
+function cfToolbar(){const u=UI.cfu==='month'?'month':'week';return `<div class="seg"><button data-cfu="week" class="${u==='week'?'on':''}">주간</button><button data-cfu="month" class="${u==='month'?'on':''}">월간</button></div>`}
+function cfPage(){const D=cfData(),P=D.P,n=P.length,od=D.items.filter(x=>x.od);
+  const cell=v=>`<td class="n${v<0?' neg':''}">${Math.abs(v)>0.004?plain(v):'<span class="muted">–</span>'}</td>`;
+  const sec=(k,l)=>{const L=D.items.filter(x=>x.sec===k);if(!L.length)return '';const keys=[...new Set(L.map(x=>x.name||x.party||'(거래처 없음)'))];
+    const tot=P.map((p,i)=>sumBy(L.filter(x=>x.p===i),x=>x.amt));
+    return `<tr class="cfsec"><td><b>${esc(l)}</b> <span class="muted small">${keys.length}곳 · ${L.length}건</span></td>${tot.map(cell).join('')}<td class="n"><b>${plain(sumBy(tot,x=>x))}</b></td></tr>`+
+      keys.map(nm=>{const v=P.map((p,i)=>sumBy(L.filter(x=>(x.name||x.party||'(거래처 없음)')===nm&&x.p===i),x=>x.amt));return `<tr class="cfsub"><td title="${esc(nm)}">${esc(nm)}</td>${v.map(cell).join('')}<td class="n">${plain(sumBy(v,x=>x))}</td></tr>`}).join('')};
+  const line=(l,f,cls)=>`<tr class="${cls||''}"><td><b>${l}</b></td>${P.map(p=>cell(f(p))).join('')}<td class="n">${cls==='cfnet'||cls==='cftot'?`<b>${plain(sumBy(P,f))}</b>`:''}</td></tr>`;
+  const list=D.items.slice().sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
+  return `<div class="content">${kpiHTML(cfKpis(D))}
+    <div class="card"><header><h2>${D.u==='week'?'주간':'월간'} 자금 계획</h2><span class="meta">MXN 환산 · ${esc(P[0].start)} ~ ${esc(P[n-1].end)}${od.length?` · 연체 ${od.length}건은 첫 ${D.u==='week'?'주':'달'}에 포함`:''}</span></header>
+      <div class="tw cfw"><table class="tight cft"><thead><tr><th>항목</th>${P.map(p=>`<th class="n">${esc(p.label)}</th>`).join('')}<th class="n">합계</th></tr></thead><tbody>
+      ${line('기초 잔고',p=>p.open,'cfbal')}
+      <tr class="cfhd"><td colspan="${n+2}">입금</td></tr>${sec('ar','외상매출 수금')}${sec('rin','반복 입금 (경리자료)')}${line('입금 합계',p=>p.inn,'cftot')}
+      <tr class="cfhd"><td colspan="${n+2}">출금</td></tr>${sec('ap','외상매입 지급')}${sec('rout','반복 지급 (경리자료)')}${line('출금 합계',p=>p.out,'cftot')}
+      ${line('순현금흐름',p=>p.net,'cfnet')}${line('기말 잔고',p=>p.close,'cfbal')}</tbody></table></div></div>
+    <div class="card"><header><h2>반복 입출금 (경리자료에서 자동 인식)</h2><span class="meta">최근 6개월 중 2개월 이상 · 최근 2개월 안에 있었던 같은 계정과목·거래처</span></header>
+      ${D.rec.length?`<div class="tw"><table class="tight"><thead><tr><th class="c">구분</th><th>계정과목</th><th>거래처</th><th class="c">주기</th><th class="n">예상 금액</th><th class="c">마지막</th><th class="n">횟수</th></tr></thead><tbody>
+      ${D.rec.map(x=>`<tr><td class="c">${pill(x.type)}</td><td>${esc(x.account)}</td><td>${esc(x.party||'–')}</td><td class="c">${x.weekly?'매주 '+'일월화수목금토'[x.dow]+'요일':'매월 '+x.dom+'일경'}</td><td class="n">${money(x.amt)}</td><td class="c">${esc(x.last)}</td><td class="n">${x.n}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">반복되는 입출금이 아직 없습니다. 경리자료가 2개월 이상 쌓이면 자동으로 잡힙니다.</div>'}</div>
+    <div class="card"><header><h2>예정 내역</h2><span class="meta">${list.length}건${D.later.length?` · 기간 이후 ${D.later.length}건 제외`:''}</span></header>
+      ${list.length?`<div class="tw" style="max-height:480px;overflow:auto"><table class="tight"><thead><tr><th class="c">예정일</th><th class="c">구분</th><th>거래처 · 항목</th><th>내용</th><th>근거</th><th class="n">입금</th><th class="n">출금</th></tr></thead><tbody>
+      ${list.map(x=>`<tr><td class="c">${esc(x.date)}${x.od?' <span class="pill bad">연체</span>':''}</td><td class="c">${pill(x.kind)}</td><td>${esc(x.name||x.party||'–')}</td><td class="w" title="${esc(x.memo||'')}">${esc(x.memo||'')}</td><td class="muted small">${esc(x.src)}</td><td class="n">${x.kind==='입금'?money(x.amt):''}</td><td class="n">${x.kind==='출금'?money(x.amt):''}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">예정된 입출금이 없습니다.</div>'}</div>
+  </div>`}
 /* ---------- Bank Statement: one day per bank — 전일잔고 + 입금 − 지출 = 현잔고 ---------- */
 let BDAY=TODAY, BF='';
 const BANK_HUE=['#2F6FED','#0E9F6E','#C2410C','#7C3AED','#0891B2','#DB2777','#CA8A04','#4B5563'];
@@ -4297,6 +4356,7 @@ document.addEventListener('click',e=>{
   if(d.allgroups){GROUPS.forEach(g=>UI.open[g.id]=d.allgroups==='open');saveUI();renderNav();return}
   if(d.mod&&t.closest('#nav')){go(d.mod);return}
   if(d.preset){[UI.rs,UI.re]=presetRange(d.preset);saveUI();renderMain();return}
+  if(d.cfu){UI.cfu=d.cfu;saveUI();renderMain();return}
   if(d.bday){BDAY=d.bday==='0'?TODAY:addDs(BDAY,+d.bday);renderMain();return}
   if(d.bankadd){const B=BANKS();let k=B.length+1;while(B.some(b=>b.name==='은행 '+k))k++;B.push({name:'은행 '+k,cur:'MXN',open:0});BKED=B.length-1;save();renderMain();const el=document.querySelector(`[data-bankname="${BKED}"]`);if(el){el.focus();el.select()}return}
   if(d.bankedit!=null){BKED=+d.bankedit;renderMain();const el=document.querySelector(`[data-bankname="${BKED}"]`);if(el){el.focus();el.select()}return}
