@@ -820,7 +820,8 @@ const ACCOUNTS={
   '매출수입':['매출대금 수금','이자수익','기타수입'],
   '세금납부':['부가세 납부','법인세 납부','원천세 납부'],
   '보통예금':['계좌 이체','예금 입금','예금 인출'],
-  '영업외수익':['이자수익','외환차익','임대료수익','유형자산처분이익','잡이익']};
+  '영업외수익':['이자수익','외환차익','임대료수익','유형자산처분이익','잡이익'],
+  '영업외비용':['외환차손','유형자산처분손실','기부금','잡손실']};
 const CATS4=['자산매입','제조비용','판관비용','차입금'];
 const DEPTS=['법인장','생산','품질','생기','생관','구매/영업','금형 보전','물류','영업','관리'], DEPT_HUE={법인장:'#1F2937',생산:'#0070F2',품질:'#7858FF',생기:'#0891B2',생관:'#CA8A04','구매/영업':'#188918','금형 보전':'#DB2777',물류:'#C35500',영업:'#188918',관리:'#0F828F'};
 const VAC_TYPES=['연차휴가','반차','특별휴가 (유급)','무급휴가'];
@@ -1382,8 +1383,10 @@ function income(p){
   const intInc=sumBy(DB.cash.filter(r=>r.type==='입금'&&r.account==='이자수익'&&inP(r,p)),r=>mx(r,'amount')-ivaPart(r));
   // 경리자료 '영업외수익' 분류의 이자수익 외 계정 (외환차익·임대료수익·유형자산처분이익·잡이익)
   const othInc=sumBy(DB.cash.filter(r=>r.type==='입금'&&r.cat==='영업외수익'&&r.account!=='이자수익'&&inP(r,p)),r=>mx(r,'amount')-ivaPart(r));
-  const X=fxRealized(p), V=fxReval(p), finInc=intInc+othInc+X.gain+V.gain, finExp=interest+X.loss+V.loss;
-  return {sales,cogs,gross,sga,wage,social,allow,other,dep,hq,op,intInc,othInc,fxGain:X.gain,fxtGain:V.gain,finInc,interest,fxLoss:X.loss,fxtLoss:V.loss,finExp,pre:op+finInc-finExp};
+  // 경리자료 '영업외비용' 분류 (이자비용은 차입금현황에서 계산하므로 여기 없음)
+  const othExp=sumBy(DB.cash.filter(r=>r.type==='출금'&&r.cat==='영업외비용'&&inP(r,p)),r=>mx(r,'amount')-ivaPart(r));
+  const X=fxRealized(p), V=fxReval(p), finInc=intInc+othInc+X.gain+V.gain, finExp=interest+othExp+X.loss+V.loss;
+  return {sales,cogs,gross,sga,wage,social,allow,other,dep,hq,op,intInc,othInc,othExp,fxGain:X.gain,fxtGain:V.gain,finInc,interest,fxLoss:X.loss,fxtLoss:V.loss,finExp,pre:op+finInc-finExp};
 }
 // IVA on a cash basis (LIVA art. 1-B, 5): output IVA when collected, input IVA when paid with a CFDI, plus IVA paid on Pedimentos
 function vatCalc(p){
@@ -1450,7 +1453,7 @@ const SUG={
 };
 const TONE={'입금':'good','출금':'bad','완료':'good','진행':'info','연체':'bad','검수완료':'good','검수대기':'warn','반품':'bad','출고완료':'good','출고예정':'info',
   '거래중':'good','중지':'','발행':'good','미발행':'warn','정산 대기':'warn','지급 완료':'good','승인':'good','신청':'info','반려':'bad','연차휴가':'acc','반차':'acc','무급휴가':'','해고 · 부당 (사유 없음)':'bad','해고 · 정당한 사유':'warn','수입(Pedimento)':'info','수입':'info','국내':'','세금납부':'warn','재직':'good','휴직':'warn','퇴사':'','일치':'good','과잉':'warn','부족':'bad','기초':'info','외주가공':'acc','입사예정':'info','상환중':'info','상환완료':'good','만기임박':'warn','원자재':'info','부자재':'',
-  '지배기업':'acc','종속기업':'info','자산매입':'info','제조비용':'warn','판관비용':'acc','차입금':'bad','매출수입':'good','보통예금':'info','영업외수익':'good'};
+  '지배기업':'acc','종속기업':'info','자산매입':'info','제조비용':'warn','판관비용':'acc','차입금':'bad','매출수입':'good','보통예금':'info','영업외수익':'good','영업외비용':'warn'};
 const pill=v=>`<span class="pill ${TONE[v]||''}">${esc(v)}</span>`;
 const kv=(l,v,s,tone,go)=>({l,v,s,tone,go});
 
@@ -1522,7 +1525,7 @@ let BKED=-1; // 은행 설정: 수정 중인 은행 줄 (수정 버튼을 눌러
 document.addEventListener('pointerdown',e=>{const b=e.target.closest&&e.target.closest('[data-bankdone]');if(!b)return;e.preventDefault();const el=document.querySelector(`[data-bankname="${b.dataset.bankdone}"]`),bk=BANKS()[+b.dataset.bankdone];BKED=-1;if(el&&bk&&el.value.trim()!==bk.name)el.dispatchEvent(new Event('change',{bubbles:true}));else renderMain()});
 const MODS={
   cash:{name:'경리자료',desc:'입금·출금 전표와 기간 현금 흐름. 분류를 고르면 그 분류의 계정과목만 선택됩니다.',data:'cash',dated:true,tight:1,
-    cols:[C('date','일자','date'),BANKC,C('type','구분','sel',{opts:['입금','출금'],pill:1}),C('cat','분류','sel',{opts:[...CATS4,'매출수입','영업외수익','세금납부','보통예금'],pill:1}),ACCT,
+    cols:[C('date','일자','date'),BANKC,C('type','구분','sel',{opts:['입금','출금'],pill:1}),C('cat','분류','sel',{opts:[...CATS4,'매출수입','영업외수익','영업외비용','세금납부','보통예금'],pill:1}),ACCT,
       C('party','거래처','text',{sug:'parties'}),C('memo','적요','text',{wide:1}),CUR,C('fx','환율 (US$ 건)','num',{noTable:1,opt:1}),SUB(),IVAF,VATR(),TOT(),FACTC,UUIDC],
     filters:[['bank','은행'],['type','구분'],['cat','분류'],['account','계정과목'],['party','거래처'],['memo','적요','text'],['amount','금액','range']],
     footSplit:{k:'type',plus:'입금',minus:'출금'},
@@ -2086,7 +2089,7 @@ function fsPage(){
       ${plRow('판매비와관리비','sga','sub')}${plRow('급상여 (영업·관리 · 급여지급내역)','wage','ind')}${plRow('법정복리비 (IMSS·RCV·Infonavit·ISN)','social','ind')}${plRow('본사관리비 (판관 배부분)','hq','ind')}${plRow('제수당 (Aguinaldo·휴가수당·저축기금)','allow','ind')}${plRow('감가상각비 (차량·비품)','dep','ind')}${plRow('기타 판관비 (경리자료·외상매입)','other','ind')}${plRow('영업이익','op','sub')}
       ${plRow('금융수익','finInc','sub')}${plRow('이자수익 (경리자료)','intInc','ind')}${plRow('기타 영업외수익 (경리자료)','othInc','ind')}${plRow('외환차익 (US$ 외상 결제)','fxGain','ind')}${plRow('외화환산이익 (기말 환율 평가)','fxtGain','ind')}
       ${plRow('금융비용','finExp','sub')}
-      ${plRow('이자비용 (차입금현황)','interest','ind')}${plRow('외환차손 (US$ 외상 결제)','fxLoss','ind')}${plRow('외화환산손실 (기말 환율 평가)','fxtLoss','ind')}${plRow('법인세차감전이익','pre','sub')}${plRow('법인세비용 (ISR 30%, 법인세 화면)','tax','ind')}${plRow('당기순이익','ni','total')}</tbody></table></div></div>
+      ${plRow('이자비용 (차입금현황)','interest','ind')}${plRow('외환차손 (US$ 외상 결제)','fxLoss','ind')}${plRow('외화환산손실 (기말 환율 평가)','fxtLoss','ind')}${plRow('기타 영업외비용 (경리자료)','othExp','ind')}${plRow('법인세차감전이익','pre','sub')}${plRow('법인세비용 (ISR 30%, 법인세 화면)','tax','ind')}${plRow('당기순이익','ni','total')}</tbody></table></div></div>
     <div class="card"><header><h2>재무상태표</h2><span class="meta">각 기간 말일 기준 (진행 중인 기간은 오늘 기준)</span></header><div class="tw"><table class="stmt">
       ${head(P.map(p=>p.label+' 말'),false)}<tbody>
       ${bsRow('자산 총계','assets','sub')}${bsRow('현금및현금성자산','cashBal','ind')}${bsRow('매출채권 (외상매출)','ar','ind')}${bsRow('재고자산 (원·부자재·제품, 재고조사 평가)','inv','ind')}${bsRow('유형자산 장부가액','fixed','ind')}${bsRow('부가세 대급금 (미지급 매입분 IVA)','vatRec','ind')}
