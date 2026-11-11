@@ -203,7 +203,7 @@ table[data-seltbl="ap"] tbody tr[data-row]{cursor:pointer}
 .apdk div,.apds div{display:grid;gap:2px}.apdk span,.apds span{font-size:11px;color:var(--muted)}.apdk b,.apds b{font-size:14px}
 .apds{margin:14px 0 0;padding-top:12px;border-top:1px solid var(--line)}
 .apdt{overflow:auto;max-height:50vh;border:1px solid var(--line);border-radius:10px}.apdt table{width:100%}.apdt td,.apdt th{padding:8px 10px}.apdt tfoot td{font-weight:700;border-top:1px solid var(--line-strong)}.small{font-size:11px}
-.cft td:first-child{min-width:200px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cft td:first-child,.cft th:first-child{position:sticky;left:0;background:var(--surface);z-index:1}.cft .cfhd td{background:var(--bg);font-weight:700;font-size:12px;color:var(--muted)}.cft .cfsub td:first-child{padding-left:22px;color:var(--muted)}.cft .cfsec td{border-top:1px solid var(--line)}.cft .cftot td,.cft .cfnet td{border-top:2px solid var(--line-strong);font-weight:600}.cft .cfbal td{background:var(--bg);font-weight:700}.cft td.neg{color:var(--bad,#c0392b)}
+.cft td:first-child{min-width:200px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cft td:first-child,.cft th:first-child{position:sticky;left:0;background:var(--surface);z-index:1}.cft .cfx{width:18px;height:18px;margin-right:6px;padding:0;border:1px solid var(--line-strong);border-radius:4px;background:var(--surface);color:var(--muted);font-weight:700;line-height:15px;font-size:13px;cursor:pointer;vertical-align:middle}.cft .cfx:hover{color:inherit;border-color:currentColor}.cft .cfhd td{background:var(--bg);font-weight:700;font-size:12px;color:var(--muted)}.cft .cfsub td:first-child{padding-left:22px;color:var(--muted)}.cft .cfsec td{border-top:1px solid var(--line)}.cft .cftot td,.cft .cfnet td{border-top:2px solid var(--line-strong);font-weight:600}.cft .cfbal td{background:var(--bg);font-weight:700}.cft td.neg{color:var(--bad,#c0392b)}
 .lnbox{grid-column:1/-1;border:1px dashed var(--line-strong);border-radius:10px;padding:10px 12px;display:grid;gap:6px}
 .lnhead{display:flex;align-items:center;gap:10px}.lnhead b{font-size:13px}.lnhead .dim{font-size:12px;flex:1}.lnhead .btn{margin-left:auto;padding:4px 10px;font-size:12px}
 .lncols,.lnrow{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.1fr) 28px;gap:8px;align-items:center}
@@ -1207,7 +1207,7 @@ function syncFromAR(D){
   return res;
 }
 function save(){VCACHE.clear();LS.set('ysm-sap-saved-at',Date.now());bkQueue();syncFromAR(DB);if(BANKS().length)DB.cash.forEach(r=>{if(!r.bank)r.bank=bankFor(r.cur)});if(LS.set(KEY,DB))savedAt=new Date();const el=$('#saved');if(el)el.textContent=savedText()}
-function saveUI(){LS.set(UKEY,{cfu:UI.cfu,cw:UI.cw,vlang:UI.vlang,lastBank:UI.lastBank,cons:UI.cons,mod:UI.mod,dtab:UI.dtab,flt:UI.flt,rs:UI.rs,re:UI.re,pf:UI.pf,fm:UI.fm,mq:UI.mq,open:UI.open,fs:UI.fs})}
+function saveUI(){LS.set(UKEY,{cfu:UI.cfu,cfx:UI.cfx,cw:UI.cw,vlang:UI.vlang,lastBank:UI.lastBank,cons:UI.cons,mod:UI.mod,dtab:UI.dtab,flt:UI.flt,rs:UI.rs,re:UI.re,pf:UI.pf,fm:UI.fm,mq:UI.mq,open:UI.open,fs:UI.fs})}
 const savedText=()=>savedAt?`저장됨 ${pad(savedAt.getHours())}:${pad(savedAt.getMinutes())}`:'이 브라우저에 자동 저장';
 
 /* ---------- domain calcs (all return MXN) ---------- */
@@ -2028,20 +2028,20 @@ function cfKpis(D){const inn=sumBy(D.P,p=>p.inn),out=sumBy(D.P,p=>p.out),last=D.
   return [kv('현재 은행 잔고',money(D.open),TODAY+' 기준'),kv('예상 입금',money(inn),D.items.filter(x=>x.kind==='입금').length+'건','good'),kv('예상 출금',money(out),D.items.filter(x=>x.kind==='출금').length+'건','bad'),
     kv('기말 예상 잔고',money(last.close),last.end+' 기준',last.close<0?'bad':''),kv('최저 잔고',money(low.close),low.label,low.close<0?'bad':'warn')]}
 function cfToolbar(){const u=UI.cfu==='month'?'month':'week';return `<div class="seg"><button data-cfu="week" class="${u==='week'?'on':''}">주간</button><button data-cfu="month" class="${u==='month'?'on':''}">월간</button></div>`}
-function cfPage(){const D=cfData(),P=D.P,n=P.length,od=D.items.filter(x=>x.od);
+function cfPage(){const D=cfData(),P=D.P,n=P.length,od=D.items.filter(x=>x.od);UI.cfx=UI.cfx||{};const cx=k=>!!UI.cfx[k],tg=(k,l)=>`<button type="button" class="cfx" data-cfx="${k}" aria-expanded="${!cx(k)}" title="${cx(k)?'펼치기':'접기'}">${cx(k)?'+':'−'}</button>`;
   const cell=v=>`<td class="n${v<0?' neg':''}">${Math.abs(v)>0.004?plain(v):'<span class="muted">–</span>'}</td>`;
   const sec=(k,l)=>{const L=D.items.filter(x=>x.sec===k);if(!L.length)return '';const keys=[...new Set(L.map(x=>x.name||x.party||'(거래처 없음)'))];
     const tot=P.map((p,i)=>sumBy(L.filter(x=>x.p===i),x=>x.amt));
-    return `<tr class="cfsec"><td><b>${esc(l)}</b> <span class="muted small">${keys.length}곳 · ${L.length}건</span></td>${tot.map(cell).join('')}<td class="n"><b>${plain(sumBy(tot,x=>x))}</b></td></tr>`+
-      keys.map(nm=>{const v=P.map((p,i)=>sumBy(L.filter(x=>(x.name||x.party||'(거래처 없음)')===nm&&x.p===i),x=>x.amt));return `<tr class="cfsub"><td title="${esc(nm)}">${esc(nm)}</td>${v.map(cell).join('')}<td class="n">${plain(sumBy(v,x=>x))}</td></tr>`}).join('')};
+    return `<tr class="cfsec"><td>${tg(k)}<b>${esc(l)}</b> <span class="muted small">${keys.length}곳 · ${L.length}건</span></td>${tot.map(cell).join('')}<td class="n"><b>${plain(sumBy(tot,x=>x))}</b></td></tr>`+
+      (cx(k)?'':keys.map(nm=>{const v=P.map((p,i)=>sumBy(L.filter(x=>(x.name||x.party||'(거래처 없음)')===nm&&x.p===i),x=>x.amt));return `<tr class="cfsub"><td title="${esc(nm)}">${esc(nm)}</td>${v.map(cell).join('')}<td class="n">${plain(sumBy(v,x=>x))}</td></tr>`}).join(''))};
   const line=(l,f,cls)=>`<tr class="${cls||''}"><td><b>${l}</b></td>${P.map(p=>cell(f(p))).join('')}<td class="n">${cls==='cfnet'||cls==='cftot'?`<b>${plain(sumBy(P,f))}</b>`:''}</td></tr>`;
   const list=D.items.slice().sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
   return `<div class="content">${kpiHTML(cfKpis(D))}
     <div class="card"><header><h2>${D.u==='week'?'주간':'월간'} 자금 계획</h2><span class="meta">MXN 환산 · ${esc(P[0].start)} ~ ${esc(P[n-1].end)}${od.length?` · 연체 ${od.length}건은 첫 ${D.u==='week'?'주':'달'}에 포함`:''}</span></header>
       <div class="tw cfw"><table class="tight cft"><thead><tr><th>항목</th>${P.map(p=>`<th class="n">${esc(p.label)}</th>`).join('')}<th class="n">합계</th></tr></thead><tbody>
       ${line('기초 잔고',p=>p.open,'cfbal')}
-      <tr class="cfhd"><td colspan="${n+2}">입금</td></tr>${sec('ar','외상매출 수금')}${sec('rin','반복 입금 (경리자료)')}${line('입금 합계',p=>p.inn,'cftot')}
-      <tr class="cfhd"><td colspan="${n+2}">출금</td></tr>${sec('ap','외상매입 지급')}${sec('rout','반복 지급 (경리자료)')}${line('출금 합계',p=>p.out,'cftot')}
+      <tr class="cfhd"><td colspan="${n+2}">${tg('in')}입금</td></tr>${cx('in')?'':sec('ar','외상매출 수금')+sec('rin','반복 입금 (경리자료)')}${line('입금 합계',p=>p.inn,'cftot')}
+      <tr class="cfhd"><td colspan="${n+2}">${tg('out')}출금</td></tr>${cx('out')?'':sec('ap','외상매입 지급')+sec('rout','반복 지급 (경리자료)')}${line('출금 합계',p=>p.out,'cftot')}
       ${line('순현금흐름',p=>p.net,'cfnet')}${line('기말 잔고',p=>p.close,'cfbal')}</tbody></table></div></div>
     <div class="card"><header><h2>반복 입출금 (경리자료에서 자동 인식)</h2><span class="meta">최근 6개월 중 2개월 이상 · 최근 2개월 안에 있었던 같은 계정과목·거래처</span></header>
       ${D.rec.length?`<div class="tw"><table class="tight"><thead><tr><th class="c">구분</th><th>계정과목</th><th>거래처</th><th class="c">주기</th><th class="n">예상 금액</th><th class="c">마지막</th><th class="n">횟수</th></tr></thead><tbody>
@@ -4356,6 +4356,7 @@ document.addEventListener('click',e=>{
   if(d.allgroups){GROUPS.forEach(g=>UI.open[g.id]=d.allgroups==='open');saveUI();renderNav();return}
   if(d.mod&&t.closest('#nav')){go(d.mod);return}
   if(d.preset){[UI.rs,UI.re]=presetRange(d.preset);saveUI();renderMain();return}
+  if(d.cfx){UI.cfx=UI.cfx||{};UI.cfx[d.cfx]=!UI.cfx[d.cfx];saveUI();renderMain();return}
   if(d.cfu){UI.cfu=d.cfu;saveUI();renderMain();return}
   if(d.bday){BDAY=d.bday==='0'?TODAY:addDs(BDAY,+d.bday);renderMain();return}
   if(d.bankadd){const B=BANKS();let k=B.length+1;while(B.some(b=>b.name==='은행 '+k))k++;B.push({name:'은행 '+k,cur:'MXN',open:0});BKED=B.length-1;save();renderMain();const el=document.querySelector(`[data-bankname="${BKED}"]`);if(el){el.focus();el.select()}return}
