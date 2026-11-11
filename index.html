@@ -2847,6 +2847,14 @@ document.addEventListener('click',e=>{const t=e.target;if(!t.closest)return;cons
 document.addEventListener('input',e=>{const t=e.target,F=t.form;if(!F||!['ap','ar'].includes(F.dataset.reg||F.dataset.edit)||!['qty','price'].includes(t.name)||F.querySelector('.lnrow'))return;
   const q=pnum(F.querySelector('[name="qty"]').value),p=pnum(F.querySelector('[name="price"]').value),S=F.querySelector('[name="sub"]');if(S&&q>0&&p>0){S.value=r2(q*p).toFixed(2);S.dispatchEvent(new Event('input',{bubbles:true}))}});
 document.addEventListener('input',e=>{const t=e.target;if(t.dataset&&t.dataset.ln&&t.dataset.ln!=='item')lnSync(t.closest('form')||t.closest('[data-lines]').parentElement)});
+// 품목·항목 내역에 엑셀 범위를 붙여넣으면 (탭=칸, 줄바꿈=줄) 커서가 있는 칸부터 맞춰 채우고 모자란 줄은 자동 추가
+document.addEventListener('paste',e=>{const t=e.target;if(!t.dataset||!(t.dataset.ln||t.dataset.pd))return;const txt=(e.clipboardData||window.clipboardData).getData('text');if(!/[\t\n]/.test(txt.replace(/\r?\n$/,'')))return;
+  const isL=!!t.dataset.ln,at=isL?'ln':'pd',keys=isL?['item','qty','price']:['item','cost','igi','piva'],rc=isL?'.lnrow':'.pdrow',B=t.closest(isL?'[data-lines]':'[data-pdlines]'),F=B.closest('form')||B.parentElement,mk=isL?lnRow:pdRow;
+  const rows=txt.replace(/\r/g,'').replace(/\n+$/,'').split('\n').map(l=>l.split('\t'));e.preventDefault();
+  const c0=keys.indexOf(t.dataset[at]);let R=[...B.querySelectorAll(rc)],r0=R.indexOf(t.closest(rc));
+  rows.forEach((cells,i)=>{let row=R[r0+i];if(!row){B.querySelector('.lnrows').insertAdjacentHTML('beforeend',mk());R=[...B.querySelectorAll(rc)];row=R[r0+i]}
+    cells.forEach((v,j)=>{const k=keys[c0+j];if(!k)return;const el=row.querySelector(`[data-${at}="${k}"]`);if(!el)return;v=v.trim();if(k!=='item'){const x=pnum(v.replace(/[$\s]/g,''));v=isFinite(x)&&v!==''?String(x):v}el.value=v})});
+  if(isL)lnSync(F);else pdSync(F)});
 function readForm(form,m){
   const o={};inCols(m).forEach(c=>{const el=form.querySelector(`[name="${c.k}"]`);if(!el)return;let v=el.value;if(isNum(c)){const x=pnum(v);v=String(v).trim()===''?(c.keepBlank?'':0):isFinite(x)?x:0}else v=String(v).trim();o[c.k]=v});
   const L=lnRead(form);if(L)o.lines=L;const P=pdRead(form);if(P)o.lines=P;const Y=pyRead(form);if(Y)o.pays=Y;return o;
