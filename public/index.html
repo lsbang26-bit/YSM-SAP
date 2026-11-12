@@ -2305,24 +2305,33 @@ function payMonToolbar(){const S=pmState();return `<div class="seg"><button data
   <select class="fsel${S.ptype?' on':''}" data-pmf="ptype" aria-label="구분"><option value="">구분 전체</option>${PTYPES.map(o=>`<option${o===S.ptype?' selected':''}>${o}</option>`).join('')}</select>
   <select class="fsel" data-pmf="m" aria-label="금액 기준">${Object.entries(PM_MET).map(([k,[l]])=>`<option value="${k}"${k===S.m?' selected':''}>${l}</option>`).join('')}</select>
   ${S.view==='emp'?`<input type="search" class="fsel" data-pmf="q" placeholder="직원 검색" value="${esc(S.q)}" style="width:150px">`:''}<button class="btn primary" data-raya="1">⇪ lista de raya 등록</button>`}
-function payMonPage(){const S=pmState(),[ml,fn]=PM_MET[S.m]||PM_MET.cost,q=normName(S.q);
-  const all=DB.payroll.filter(r=>payYear(r)===S.Y),rows=all.filter(r=>(!S.ptype||(r.ptype||'주급')===S.ptype)&&(S.view!=='emp'||!q||normName(r.emp).includes(q)));
+function payMonPage(){const S=pmState(),[ml,fn]=PM_MET[S.m]||PM_MET.cost,q=normName(S.q),PT=r=>r.ptype||'주급',EK=r=>r.emp+'#'+(r.code||'');
+  const all=DB.payroll.filter(r=>payYear(r)===S.Y),rows=all.filter(r=>(!S.ptype||PT(r)===S.ptype)&&(S.view!=='emp'||!q||normName(r.emp).includes(q)));
   const byPer=S.col!=='month',PERS=byPer?uniq(rows.map(r=>r.per||'(기간 없음)')).sort((a,b)=>{const x=perKey(a),y=perKey(b);return x[0]<y[0]?-1:x[0]>y[0]?1:x[1]-y[1]}):null;
-  const mi=byPer?(r=>PERS.indexOf(r.per||'(기간 없음)')):(r=>+String(r.date).slice(5,7)-1),M12=byPer?[...PERS.keys()]:[...Array(12).keys()],vec=L=>M12.map(i=>sumBy(L.filter(r=>mi(r)===i),fn)),tot=v=>v.reduce((a,x)=>a+x,0);
-  const cell=v=>`<td class="n">${Math.abs(v)>0.004?plain(v):'<span class="muted">–</span>'}</td>`,used=M12.filter(i=>rows.some(r=>mi(r)===i));
-  const byType=PTYPES.map(t=>({t,v:sumBy(all.filter(r=>(r.ptype||'주급')===t),fn),n:uniq(all.filter(r=>(r.ptype||'주급')===t).map(r=>r.emp+'#'+(r.code||''))).length})).filter(x=>x.v||['주급','14 급여','월급'].includes(x.t));
-  const kp=kpiHTML([kv(S.Y+'년 '+ml,money(sumBy(all.filter(r=>!S.ptype||(r.ptype||'주급')===S.ptype),fn)),uniq(all.map(r=>r.emp+'#'+(r.code||''))).length+'명 · '+all.length+'건'),...byType.map(x=>kv(x.t,money(x.v),x.n+'명',x.t===S.ptype?'good':''))]);
-  const depts=uniq(rows.map(payDeptOf)).sort((a,b)=>a==='부서 없음'?1:b==='부서 없음'?-1:a.localeCompare(b));UI.pmx=UI.pmx||{};
-  const tg=k=>`<button type="button" class="cfx" data-pmx="${esc(k)}" title="${UI.pmx[k]?'펼치기':'접기'}">${UI.pmx[k]?'+':'−'}</button>`;
-  const head=`<thead><tr><th>${S.view==='emp'?'부서 · 직원':'부서'}</th><th class="c">구분</th><th class="n">인원</th>${M12.map(i=>`<th class="n">${byPer?esc(PERS[i]):(i+1)+'월'}</th>`).join('')}<th class="n">합계</th></tr></thead>`;
-  const tline=(L,label,cls,extra)=>{const v=vec(L);return `<tr class="${cls||''}"><td>${label}</td><td class="c">${uniq(L.map(r=>r.ptype||'주급')).map(t=>`<span class="pill">${esc(t)}</span>`).join(' ')}</td><td class="n">${uniq(L.map(r=>r.emp+'#'+(r.code||''))).length}</td>${v.map(cell).join('')}<td class="n"><b>${plain(tot(v))}</b></td></tr>${extra||''}`};
-  const body=depts.map(d=>{const L=rows.filter(r=>payDeptOf(r)===d),open=S.view==='emp'&&!UI.pmx[d];
-    const ad=uniq(L.map(r=>r.dept).filter(Boolean)),lab=`${S.view==='emp'?tg(d):''}<b>${esc(d)}</b>${ad.length&&!(ad.length===1&&ad[0]===d)?' '+ad.map(deptTag).join(' '):''}`;
-    const ek=r=>r.emp+'#'+(r.code||''),emps=open?uniq(L.map(ek)).sort((a,b)=>a.localeCompare(b)).map(k=>{const E=L.filter(r=>ek(r)===k),r0=E[0];return tline(E,`<span title="${esc(r0.emp)}">${esc(r0.emp)}</span>${r0.code?` <span class="muted small">#${esc(r0.code)}</span>`:''}`,'cfsub')}).join(''):'';
-    return tline(L,lab,S.view==='emp'?'cfsec':'',emps)}).join('');
+  const NC=byPer?PERS.length:12,PI=byPer?new Map(PERS.map((p,i)=>[p,i])):null;
+  // 한 번만 계산: 행마다 열 번호와 금액
+  const val=new Map();all.forEach(r=>val.set(r,fn(r)));
+  const agg=()=>({v:new Array(NC).fill(0),t:0,emps:new Set(),types:new Set()}),add=(g,r,c,x)=>{g.v[c]+=x;g.t+=x;g.emps.add(EK(r));g.types.add(PT(r))};
+  const T=agg(),D=new Map(),E=new Map();
+  rows.forEach(r=>{const c=byPer?PI.get(r.per||'(기간 없음)'):(+String(r.date).slice(5,7)-1);if(!(c>=0&&c<NC))return;const x=val.get(r),d=payDeptOf(r);
+    add(T,r,c,x);if(!D.has(d))D.set(d,Object.assign(agg(),{ad:new Set(),keys:new Set()}));const g=D.get(d);add(g,r,c,x);if(r.dept)g.ad.add(r.dept);
+    if(S.view==='emp'){const k=d+'|'+EK(r);g.keys.add(k);if(!E.has(k))E.set(k,Object.assign(agg(),{r0:r}));add(E.get(k),r,c,x)}});
+  const tsum=t=>sumBy(all.filter(r=>!t||PT(r)===t),r=>val.get(r)),tn=t=>new Set(all.filter(r=>!t||PT(r)===t).map(EK)).size;
+  const byType=PTYPES.map(t=>({t,v:tsum(t),n:tn(t)})).filter(x=>x.v||['주급','14 급여','월급'].includes(x.t));
+  const kp=kpiHTML([kv(S.Y+'년 '+ml,money(tsum(S.ptype)),tn('')+'명 · '+all.length+'건'),...byType.map(x=>kv(x.t,money(x.v),x.n+'명',x.t===S.ptype?'good':''))]);
+  const depts=[...D.keys()].sort((a,b)=>a==='부서 없음'?1:b==='부서 없음'?-1:a.localeCompare(b));UI.pmo=UI.pmo||{};const isOpen=k=>!!q||(k==='*'?depts.every(d=>UI.pmo[d]):!!UI.pmo[k]);
+  const tg=k=>`<button type="button" class="cfx" data-pmx="${esc(k)}" title="${isOpen(k)?'접기':'펼치기'}">${isOpen(k)?'−':'+'}</button>`;
+  const cell=v=>Math.abs(v)>0.004?`<td class="n">${plain(v)}</td>`:'<td class="n"><span class="muted">–</span></td>';
+  const head=`<thead><tr><th>${S.view==='emp'?`${depts.length?tg('*'):''}부서 · 직원`:'부서'}</th><th class="c">구분</th><th class="n">인원</th>${(byPer?PERS:[...Array(12).keys()].map(i=>(i+1)+'월')).map(h=>`<th class="n">${esc(h)}</th>`).join('')}<th class="n">합계</th></tr></thead>`;
+  const tline=(g,label,cls)=>`<tr class="${cls||''}"><td>${label}</td><td class="c">${[...g.types].map(t=>`<span class="pill">${esc(t)}</span>`).join(' ')}</td><td class="n">${g.emps.size}</td>${g.v.map(cell).join('')}<td class="n"><b>${plain(g.t)}</b></td></tr>`;
+  const body=depts.map(d=>{const g=D.get(d),open=S.view==='emp'&&isOpen(d),ad=[...g.ad];
+    const lab=`${S.view==='emp'?tg(d):''}<b>${esc(d)}</b>${ad.length&&!(ad.length===1&&ad[0]===d)?' '+ad.map(deptTag).join(' '):''}`;
+    let h=tline(g,lab,S.view==='emp'?'cfsec':'');
+    if(open)h+=[...g.keys].sort((a,b)=>a.localeCompare(b)).map(k=>{const e=E.get(k),r0=e.r0;return tline(e,`<span title="${esc(r0.emp)}">${esc(r0.emp)}</span>${r0.code?` <span class="muted small">#${esc(r0.code)}</span>`:''}`,'cfsub')}).join('');
+    return h}).join('');
   return `<div class="content">${kp}
     <div class="card"><header><h2>${S.Y}년 ${byPer?'기간별':'월별'} ${esc(ml)} · ${S.view==='emp'?'직원별':'부서별'}</h2><span class="meta">${S.ptype?esc(S.ptype)+' · ':''}${byPer?'Contpaq 기간 (W=주급 · C=14 급여 · M=월급)':'지급일 기준'} · MXN${S.view==='emp'?' · 부서는 Contpaq 부서명 (없으면 인원관리 부서)':''}</span></header>
-      ${rows.length?`<div class="tw cfw"><table class="tight cft">${head}<tbody>${body}</tbody><tfoot>${tline(rows,'<b>합계</b>','cftot')}</tfoot></table></div>`
+      ${rows.length?`<div class="tw cfw"><table class="tight cft">${head}<tbody>${body}</tbody><tfoot>${tline(T,'<b>합계</b>','cftot')}</tfoot></table></div>`
       :`<div class="empty">${S.Y}년 급여지급내역이 없습니다. <button class="link" data-go="payroll">급여지급내역</button>에서 Contpaq lista de raya 엑셀을 등록하세요.</div>`}</div>
   </div>`}
 /* ---------- 급여지급내역 ---------- */
@@ -4416,7 +4425,7 @@ document.addEventListener('click',e=>{
   if(d.cfx){UI.cfx=UI.cfx||{};UI.cfx[d.cfx]=!UI.cfx[d.cfx];saveUI();renderMain();return}
   if(d.pmc){UI.pm=Object.assign(UI.pm||{},{col:d.pmc});saveUI();renderMain();return}
   if(d.pmv){UI.pm=Object.assign(UI.pm||{},{view:d.pmv});saveUI();renderMain();return}
-  if(d.pmx){UI.pmx=UI.pmx||{};UI.pmx[d.pmx]=!UI.pmx[d.pmx];renderMain();return}
+  if(d.pmx){UI.pmo=UI.pmo||{};if(d.pmx==='*'){const ks=uniq(DB.payroll.map(payDeptOf)),on=!ks.every(k=>UI.pmo[k]);ks.forEach(k=>UI.pmo[k]=on)}else UI.pmo[d.pmx]=!UI.pmo[d.pmx];renderMain();return}
   if(d.cfu){UI.cfu=d.cfu;saveUI();renderMain();return}
   if(d.bday){BDAY=d.bday==='0'?TODAY:addDs(BDAY,+d.bday);renderMain();return}
   if(d.bankadd){const B=BANKS();let k=B.length+1;while(B.some(b=>b.name==='은행 '+k))k++;B.push({name:'은행 '+k,cur:'MXN',open:0});BKED=B.length-1;save();renderMain();const el=document.querySelector(`[data-bankname="${BKED}"]`);if(el){el.focus();el.select()}return}
