@@ -215,7 +215,7 @@ table[data-seltbl="ap"] tbody tr[data-row]{cursor:pointer}
 input.kdate.kdate{font-variant-numeric:tabular-nums;padding-right:30px!important;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round'%3E%3Crect x='3' y='5' width='18' height='16' rx='2'/%3E%3Cpath d='M3 10h18M8 3v4M16 3v4'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;background-size:15px 15px}
 .range input.kdate.kdate{flex:0 1 124px;width:124px;padding-left:2px}
 #kdpick{position:fixed;left:-9999px;top:-9999px;opacity:0;pointer-events:none;border:0;padding:0;margin:0;z-index:10000;cursor:pointer;background:none}#kdpick::-webkit-calendar-picker-indicator{position:absolute;inset:0;width:100%;height:100%;cursor:pointer}
-.xferbox .xfgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.xferbox label{display:grid;gap:4px;font-size:12px;color:var(--muted)}.xferbox label[hidden]{display:none}@media(max-width:700px){.xferbox .xfgrid{grid-template-columns:1fr}}
+.xferbox[hidden]{display:none!important}.xferbox .xfgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.xferbox label{display:grid;gap:4px;font-size:12px;color:var(--muted)}.xferbox label[hidden]{display:none}@media(max-width:700px){.xferbox .xfgrid{grid-template-columns:1fr}}
 .armform{grid-template-columns:2fr 1.3fr .8fr 1.2fr .8fr .8fr auto!important}.armsol{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:10px}.armsol.best{border-color:var(--accent,#2563eb);box-shadow:0 0 0 1px var(--accent,#2563eb) inset}.armhd{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;font-size:12.5px}.armhd>span{flex:1;color:var(--muted)}.armhd .neg{color:var(--danger,#dc2626)}.armhd .good{color:var(--ok,#15803d);font-weight:600}.armres{max-height:56vh;overflow:auto}@media(max-width:800px){.armform{grid-template-columns:1fr 1fr!important}}
 .pygrid{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:12px}.modal.lg:has(.pygrid){width:min(1180px,100%)}.pygrid>.lnbox{grid-column:auto;margin:0;min-width:0}.pygrid .lnhead{flex-wrap:wrap}.pygrid .lnhead b{white-space:nowrap}.pygrid .lnhead .dim{flex:1 1 100%;order:3}@media(max-width:860px){.pygrid{grid-template-columns:1fr}}
 .plcols,.plrow{display:grid;grid-template-columns:minmax(64px,.7fr) minmax(130px,1.2fr) minmax(0,1fr) minmax(0,1.5fr) 28px;gap:8px;align-items:center}.plcols{font-size:12px;color:var(--muted,#6b7280);margin-top:8px}.plrow{margin-top:6px}.plrow input[data-pl=amount]{text-align:right}
@@ -4763,8 +4763,12 @@ document.addEventListener('submit',e=>{
     if(hasIvaAmt(r)&&((v.sub!=null&&+v.sub!==+r.sub)||(v.iva!=null&&v.iva!==r.iva)||(v.cur!=null&&v.cur!==r.cur)||(v.disc!=null&&+v.disc!==+(r.disc||0)))){delete r.ivaAmt;
       // 부가세 칸을 직접 고치지 않았으면 새 금액·세율로 다시 계산 (화면에 남은 예전 부가세로 덮어쓰지 않음)
       if(v.ivaAmt!=null&&v.ivaAmt!==''&&r2(+v.ivaAmt)===r2(+f.dataset.ivaOrig||0))v.ivaAmt=''}
-    const oldAmt=+r.amount||0;
-    Object.assign(r,v);fixRow(m,r);if(m.data==='cash'){if(r.xfer&&!xfOn(f)){const P=DB.cash.find(x=>x.id===r.xfer);if(P&&P.xfer===r.id)Object.assign(P,{date:r.date})}else xfApply(f,r)}
+    const oldAmt=+r.amount||0,oldItem=String(r.item||''),oldParty=String(r.vendor||r.customer||'');
+    Object.assign(r,v);fixRow(m,r);
+    // 외상매입·외상매출의 품목(적요)·거래처·분류를 고치면 연결된 경리자료 지급·수금 전표도 같이 바뀜
+    if(m.data==='ap'||m.data==='ar'){const isAR=m.data==='ar',it=String(r.item||''),pty=String((isAR?r.customer:r.vendor)||'');DB.cash.filter(c=>c.link===r.id&&c.linkMod===m.data).forEach(c=>{
+      if(it!==oldItem){const mm=String(c.memo||'');c.memo=oldItem&&mm.startsWith(oldItem)?it+mm.slice(oldItem.length):`${it} ${isAR?'대금 수금':'대금 지급'} (외상${isAR?'매출':'매입'} 연계${r.folio?' · Factura '+r.folio:''})`}
+      if(pty!==oldParty&&(!c.party||c.party===oldParty))c.party=pty;if(!isAR&&r.cat)c.cat=r.cat==='차입금'?'판관비용':r.cat})}if(m.data==='cash'){if(r.xfer&&!xfOn(f)){const P=DB.cash.find(x=>x.id===r.xfer);if(P&&P.xfer===r.id)Object.assign(P,{date:r.date})}else xfApply(f,r)}
     // 입금·지급 완료로 만든 경리자료 전표를 고치면 연결된 외상매출 수금액·외상매입 지급액도 같은 차이만큼 바뀜 (대쉬보드·잔액 자동 반영)
     if(m.data==='cash'&&r.link&&(r.linkMod==='ar'||r.linkMod==='ap')){const L=DB[r.linkMod].find(x=>x.id===r.link),k=r.linkMod==='ar'?'received':'paid';if(L)L[k]=Math.max(0,r2((+L[k]||0)+(+r.amount||0)-oldAmt))}flashId=r.id;save();closeModal();renderMain();toast('수정했습니다');
   }
