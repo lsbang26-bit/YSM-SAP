@@ -2984,8 +2984,10 @@ function xfSync(F,src){const B=F&&F.querySelector('[data-xfer]');if(!B)return;co
   const opts=BANKS().map(b=>b.name).filter(n=>n!==from);T.innerHTML=opts.map(n=>`<option${n===cur?' selected':''}>${esc(n)}</option>`).join('');if(!opts.includes(cur)){const pref=opts.find(n=>bankCur(n)!==fc)||opts[0];if(pref)T.value=pref}
   const tc=bankCur(T.value),fxEl=B.querySelector('[data-xf="fx"]'),diff=fc!==tc;B.querySelector('[data-xffx]').hidden=!diff;if(diff&&!(pnum(fxEl.value)>0))fxEl.value=(pnum((g('fx')||{}).value)>0?pnum(g('fx').value):FX());
   const ivs=g('iva');if(ivs&&ivs.value!=='면세'&&[...ivs.options].some(o=>o.value==='면세')){ivs.value='면세';vatBoxSync(F)}
-  const amt=pnum((g('sub')||{}).value)||0,fx=pnum(fxEl.value)||0,A=B.querySelector('[data-xf="amt"]');if(src==='amt')A.dataset.manual='1';
-  if(!A.dataset.manual||src==='sub'||src==='fx'||src==='to'||src==='bank'){A.dataset.manual='';const v=!diff?amt:fc==='USD'?amt*fx:fx?amt/fx:0;A.value=v?r2(v).toFixed(2):''}
+  const amt=pnum((g('sub')||{}).value)||0,A=B.querySelector('[data-xf="amt"]'),inA=pnum(A.value)||0;if(src==='amt')A.dataset.manual='1';if(src==='fx')A.dataset.manual='';
+  // 받는 금액을 직접 넣으면 환율을 거꾸로 계산 (US$→MXN: 받는 금액 ÷ 보낸 금액, MXN→US$: 보낸 금액 ÷ 받는 금액)
+  if(diff&&A.dataset.manual&&amt>0&&inA>0&&(src==='amt'||src==='sub')){const f=fc==='USD'?inA/amt:amt/inA;fxEl.value=String(Math.round(f*10000)/10000)}
+  else if(!A.dataset.manual||src==='fx'||src==='to'||src==='bank'||(src==='sub'&&!diff)){A.dataset.manual='';const fx=pnum(fxEl.value)||0,v=!diff?amt:fc==='USD'?amt*fx:fx?amt/fx:0;A.value=v?r2(v).toFixed(2):''}
   B.querySelector('[data-xfcur]').textContent=`(${tc==='USD'?'US$':'MXN'})`;B.querySelector('[data-xfnote]').textContent=opts.length?`${T.value}에 ${tc==='USD'?'US$':'MXN'} ${nf2.format(pnum(A.value)||0)} 입금 전표가 자동으로 만들어집니다`:'받을 계좌가 없습니다. 설정에서 계좌를 추가해 주세요'}
 document.addEventListener('input',e=>{const t=e.target,F=t.form;if(!F||(F.dataset.reg||F.dataset.edit)!=='cash')return;if(t.dataset.xf)xfSync(F,t.dataset.xf);else if(['sub','fx','bank'].includes(t.name))xfSync(F,t.name)});
 document.addEventListener('change',e=>{const t=e.target,F=t.form;if(!F||(F.dataset.reg||F.dataset.edit)!=='cash')return;if(t.dataset.xf)xfSync(F,t.dataset.xf);else if(['type','cat','account','bank','cur'].includes(t.name))setTimeout(()=>xfSync(F,t.name))});
