@@ -215,6 +215,7 @@ table[data-seltbl="ap"] tbody tr[data-row]{cursor:pointer}
 input.kdate.kdate{font-variant-numeric:tabular-nums;padding-right:30px!important;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round'%3E%3Crect x='3' y='5' width='18' height='16' rx='2'/%3E%3Cpath d='M3 10h18M8 3v4M16 3v4'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;background-size:15px 15px}
 .range input.kdate.kdate{flex:0 1 124px;width:124px;padding-left:2px}
 #kdpick{position:fixed;left:-9999px;top:-9999px;opacity:0;pointer-events:none;border:0;padding:0;margin:0;z-index:10000;cursor:pointer;background:none}#kdpick::-webkit-calendar-picker-indicator{position:absolute;inset:0;width:100%;height:100%;cursor:pointer}
+.xferbox .xfgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.xferbox label{display:grid;gap:4px;font-size:12px;color:var(--muted)}.xferbox label[hidden]{display:none}@media(max-width:700px){.xferbox .xfgrid{grid-template-columns:1fr}}
 .pygrid{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:12px}.modal.lg:has(.pygrid){width:min(1180px,100%)}.pygrid>.lnbox{grid-column:auto;margin:0;min-width:0}.pygrid .lnhead{flex-wrap:wrap}.pygrid .lnhead b{white-space:nowrap}.pygrid .lnhead .dim{flex:1 1 100%;order:3}@media(max-width:860px){.pygrid{grid-template-columns:1fr}}
 .plcols,.plrow{display:grid;grid-template-columns:minmax(64px,.7fr) minmax(130px,1.2fr) minmax(0,1fr) minmax(0,1.5fr) 28px;gap:8px;align-items:center}.plcols{font-size:12px;color:var(--muted,#6b7280);margin-top:8px}.plrow{margin-top:6px}.plrow input[data-pl=amount]{text-align:right}
 .plst{font-size:12px;white-space:nowrap;overflow:hidden;display:flex;align-items:center;gap:6px;min-width:0}.plst em{font-style:normal;overflow:hidden;text-overflow:ellipsis;min-width:0}.plok{flex:none;margin-left:auto;border:1px solid var(--accent,#2563eb);color:var(--accent,#2563eb);background:var(--surface);border-radius:7px;padding:2px 8px;font-size:11.5px;font-weight:600;cursor:pointer}.plok:hover{background:var(--accent,#2563eb);color:#fff}.pyrow.pynew input,.pyrow.pynew select{border-color:var(--accent,#2563eb)}.plst.ok{color:var(--ok,#15803d)}.plst.bad{color:var(--danger,#dc2626);font-weight:600}.plst.late{color:var(--warn,#b45309)}.plst.fut{color:var(--muted,#6b7280)}
@@ -2943,9 +2944,31 @@ function formFields(m,r,pre){
     else if(isNum(c))inp=`<input type="text" inputmode="decimal" autocomplete="off" data-numin="${c.t}" ${a} value="${v===''||(+v===0&&(!c.keepBlank||c.k==='amount'||!(+r.sub)))?'':esc(fmtIn(c,v))}" placeholder="${c.keepBlank?'자동':c.t==='money'?'0.00':'0'}">`;
     else inp=`<input type="text" ${a} value="${esc(v)}"${c.sug?` list="dl-${c.sug}"`:''}${c.k==='name'?' required':''}>`;
     const vc=c.k==='iva'&&m.cols.some(x=>x.k==='sub')?`<div class="vatcalc" data-vatcalc aria-live="polite">${vatCalcHTML(+r.sub||0,v,r.cur,hasIvaAmt(r)?+r.ivaAmt:null,m.data==='ap'&&+r.amount?+r.amount:m.data==='ar'?(+r.sub||0)+(hasIvaAmt(r)?+r.ivaAmt:(+r.sub||0)*(IVA_RATES[v]||0))-(+r.ivaRet||0):null)}</div>`:'';
-    const ln=c.k==='price'&&(m.data==='ap'||m.data==='ar')?lnBox(r):c.k==='item'&&m.data==='ped'?pdBox(r):c.k==='repaid'&&m.data==='loans'?pyBox(r):c.k==='ivaprv'&&m.data==='ped'?`<div class="vatcalc"><span>합계</span><b data-pedtot>${nf2.format(pedTotal(r))}</b></div>`:'';
+    const ln=c.k==='price'&&(m.data==='ap'||m.data==='ar')?lnBox(r):c.k==='item'&&m.data==='ped'?pdBox(r):c.k==='repaid'&&m.data==='loans'?pyBox(r):c.k==='uuid'&&m.data==='cash'?xfBox(r):c.k==='ivaprv'&&m.data==='ped'?`<div class="vatcalc"><span>합계</span><b data-pedtot>${nf2.format(pedTotal(r))}</b></div>`:'';
     return `${sec}<label class="${c.wide?'wide':''}">${esc(c.l)}${inp}</label>${vc}${ln}`}).join('');
 }
+// 계좌간 이체: 보통예금 · 계좌 이체 · 출금이면 받는 계좌·환율·입금액을 받아 그 계좌에 입금 전표를 자동으로 만듦 (두 전표는 xfer 로 서로 연결)
+const bankCur=n=>((BANKS().find(b=>b.name===n)||{}).cur)||'MXN';
+function xfBox(r){const P=r.xfer?DB.cash.find(x=>x.id===r.xfer):null;return `<div class="lnbox xferbox" data-xfer hidden><div class="lnhead"><b>계좌간 이체</b><span class="dim" data-xfnote>받는 계좌에 입금 전표가 자동으로 만들어집니다</span></div>
+  <div class="xfgrid"><label>받는 계좌<select data-xf="to" data-init="${esc(P?P.bank:'')}"></select></label><label data-xffx>이체 환율 (1 US$ = MXN)<input type="text" inputmode="decimal" data-xf="fx" value="${esc(P?(P.cur==='USD'?P.fx:r.fx)||'':'')}"></label><label><span>받는 금액 <span data-xfcur></span></span><input type="text" inputmode="decimal" data-numin="money" data-xf="amt" value="${P?(+P.amount).toFixed(2):''}"${P?' data-manual="1"':''}></label></div></div>`}
+function xfOn(F){const g=k=>(F.querySelector(`[name="${k}"]`)||{}).value;return g('type')==='출금'&&g('cat')==='보통예금'&&g('account')==='계좌 이체'}
+function xfSync(F,src){const B=F&&F.querySelector('[data-xfer]');if(!B)return;const on=xfOn(F);B.hidden=!on;if(!on)return;
+  const g=k=>F.querySelector(`[name="${k}"]`),from=(g('bank')||{}).value||'',fc=bankCur(from),T=B.querySelector('[data-xf="to"]'),cur=T.value||T.dataset.init||'';
+  const opts=BANKS().map(b=>b.name).filter(n=>n!==from);T.innerHTML=opts.map(n=>`<option${n===cur?' selected':''}>${esc(n)}</option>`).join('');if(!opts.includes(cur)){const pref=opts.find(n=>bankCur(n)!==fc)||opts[0];if(pref)T.value=pref}
+  const tc=bankCur(T.value),fxEl=B.querySelector('[data-xf="fx"]'),diff=fc!==tc;B.querySelector('[data-xffx]').hidden=!diff;if(diff&&!(pnum(fxEl.value)>0))fxEl.value=(pnum((g('fx')||{}).value)>0?pnum(g('fx').value):FX());
+  const ivs=g('iva');if(ivs&&ivs.value!=='면세'&&[...ivs.options].some(o=>o.value==='면세')){ivs.value='면세';vatBoxSync(F)}
+  const amt=pnum((g('sub')||{}).value)||0,fx=pnum(fxEl.value)||0,A=B.querySelector('[data-xf="amt"]');if(src==='amt')A.dataset.manual='1';
+  if(!A.dataset.manual||src==='sub'||src==='fx'||src==='to'||src==='bank'){A.dataset.manual='';const v=!diff?amt:fc==='USD'?amt*fx:fx?amt/fx:0;A.value=v?r2(v).toFixed(2):''}
+  B.querySelector('[data-xfcur]').textContent=`(${tc==='USD'?'US$':'MXN'})`;B.querySelector('[data-xfnote]').textContent=opts.length?`${T.value}에 ${tc==='USD'?'US$':'MXN'} ${nf2.format(pnum(A.value)||0)} 입금 전표가 자동으로 만들어집니다`:'받을 계좌가 없습니다. 설정에서 계좌를 추가해 주세요'}
+document.addEventListener('input',e=>{const t=e.target,F=t.form;if(!F||(F.dataset.reg||F.dataset.edit)!=='cash')return;if(t.dataset.xf)xfSync(F,t.dataset.xf);else if(['sub','fx','bank'].includes(t.name))xfSync(F,t.name)});
+document.addEventListener('change',e=>{const t=e.target,F=t.form;if(!F||(F.dataset.reg||F.dataset.edit)!=='cash')return;if(t.dataset.xf)xfSync(F,t.dataset.xf);else if(['type','cat','account','bank','cur'].includes(t.name))setTimeout(()=>xfSync(F,t.name))});
+new MutationObserver(()=>document.querySelectorAll('form [data-xfer]:not([data-xi])').forEach(B=>{B.dataset.xi=1;xfSync(B.closest('form'))})).observe(document.body,{childList:true,subtree:true});
+// 저장할 때: 받는 계좌 입금 전표 만들기/고치기
+function xfApply(F,row){const B=F.querySelector('[data-xfer]');if(!B||B.hidden||!xfOn(F))return '';const to=B.querySelector('[data-xf="to"]').value,amt=r2(pnum(B.querySelector('[data-xf="amt"]').value)||0);if(!to||!(amt>0))return '';
+  const fc=bankCur(row.bank),tc=bankCur(to),fx=pnum(B.querySelector('[data-xf="fx"]').value)||0;if(fc==='USD'&&tc!=='USD'&&fx>0)row.fx=fx;row.iva='면세';row.cur=fc;
+  let P=row.xfer?DB.cash.find(x=>x.id===row.xfer):null;if(!P){P={id:uid()};DB.cash.unshift(P)}
+  Object.assign(P,{date:row.date,bank:to,type:'입금',cat:'보통예금',account:'계좌 이체',party:row.bank,memo:`계좌간 이체 ← ${row.bank}`,cur:tc,amount:amt,sub:amt,iva:'면세',factura:row.factura||'발행',uuid:'',xfer:row.id});
+  if(tc==='USD'&&fc!=='USD'&&fx>0)P.fx=fx;else delete P.fx;row.xfer=P.id;return ` · ${to}에 ${tc==='USD'?'US$':'MXN'} ${nf2.format(amt)} 입금 전표를 만들었습니다`}
 // 외상매입 품목 내역: 품목 · 수량 · 단가 여러 줄 → 금액(공급가액) = Σ 수량 × 단가
 const lnRow=(x={})=>`<div class="lnrow"><input type="text" data-ln="item" placeholder="품목" value="${esc(x.item||'')}"><input type="text" inputmode="decimal" data-ln="qty" placeholder="수량" value="${x.qty===''||x.qty==null?'':esc(x.qty)}"><input type="text" inputmode="decimal" data-ln="price" placeholder="단가" value="${x.price===''||x.price==null?'':esc(x.price)}"><span class="lnamt">${(+x.qty||0)*(+x.price||0)?nf2.format(r2((+x.qty||0)*(+x.price||0))):''}</span><button type="button" class="lndel" data-lndel="1" title="이 품목 삭제">✕</button></div>`;
 function lnBox(r){const L=r.lines||[];return `<div class="lnbox" data-lines><div class="lnhead"><b>품목 내역</b><span class="dim">${L.length?'':'여러 품목을 넣으면 금액이 자동 합산됩니다'}</span><button type="button" class="btn" data-lnadd="1">＋ 품목 추가</button></div>
@@ -3679,6 +3702,7 @@ function closeModal(){modal=null;renderModal()}
 // removes one row; a 경리자료 row made by 입금/지급 완료 or 퇴직금 지급 first undoes what it settled
 function delRow(mod,id){
   const m=MODS[mod],arr=DB[m.data],i=arr.findIndex(r=>r.id===id),row=arr[i];if(i<0)return;
+  if(mod==='cash'&&row.xfer){const j=arr.findIndex(x=>x.id===row.xfer&&x.xfer===row.id);if(j>=0){arr.splice(j,1);return delRow(mod,id)}}
   if(row.link&&row.linkMod==='sever'){const L=DB.sever.find(x=>x.id===row.link);if(L){L.status='정산 대기';L.pdate=''}}
   else if(row.link&&DB[row.linkMod]){const L=DB[row.linkMod].find(x=>x.id===row.link),k=row.linkMod==='ar'?'received':'paid';if(L)L[k]=Math.max(0,Math.round(((+L[k]||0)-(+row.amount||0))*100)/100)}
   if(mod==='outbound'&&row.arId){DB.obSkip=DB.obSkip||[];if(!DB.obSkip.includes(row.arId))DB.obSkip.push(row.arId)}
@@ -4651,9 +4675,9 @@ document.addEventListener('submit',e=>{
   if(f.dataset.reg){
     const id=f.dataset.reg, m=MODS[id], row=fixRow(m,Object.assign({id:uid()},m.blank(curPeriod()),readForm(f,m)));
     if(id==='sever'){const e=DB.employees.find(x=>x.name===row.emp);if(e&&!validD(e.leave)&&validD(row.date))e.leave=row.date}
-    DB[m.data].unshift(row);flashId=row.id;UI.q='';save();if(modal&&modal.type==='add')closeModal();renderMain();
+    DB[m.data].unshift(row);const xm=id==='cash'?xfApply(f,row):'';flashId=row.id;UI.q='';save();if(modal&&modal.type==='add')closeModal();renderMain();
     const tr=document.querySelector(`[data-row="${row.id}"]`);
-    toast(tr?'등록했습니다':'등록했습니다. 선택한 기간 밖의 날짜라 지금 목록에는 보이지 않습니다');
+    toast((tr?'등록했습니다':'등록했습니다. 선택한 기간 밖의 날짜라 지금 목록에는 보이지 않습니다')+xm);
     return;
   }
   if(f.dataset.sevpay){
@@ -4702,7 +4726,7 @@ document.addEventListener('submit',e=>{
       // 부가세 칸을 직접 고치지 않았으면 새 금액·세율로 다시 계산 (화면에 남은 예전 부가세로 덮어쓰지 않음)
       if(v.ivaAmt!=null&&v.ivaAmt!==''&&r2(+v.ivaAmt)===r2(+f.dataset.ivaOrig||0))v.ivaAmt=''}
     const oldAmt=+r.amount||0;
-    Object.assign(r,v);fixRow(m,r);
+    Object.assign(r,v);fixRow(m,r);if(m.data==='cash'){if(r.xfer&&!xfOn(f)){const P=DB.cash.find(x=>x.id===r.xfer);if(P&&P.xfer===r.id)Object.assign(P,{date:r.date})}else xfApply(f,r)}
     // 입금·지급 완료로 만든 경리자료 전표를 고치면 연결된 외상매출 수금액·외상매입 지급액도 같은 차이만큼 바뀜 (대쉬보드·잔액 자동 반영)
     if(m.data==='cash'&&r.link&&(r.linkMod==='ar'||r.linkMod==='ap')){const L=DB[r.linkMod].find(x=>x.id===r.link),k=r.linkMod==='ar'?'received':'paid';if(L)L[k]=Math.max(0,r2((+L[k]||0)+(+r.amount||0)-oldAmt))}flashId=r.id;save();closeModal();renderMain();toast('수정했습니다');
   }
