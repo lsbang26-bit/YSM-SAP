@@ -828,7 +828,9 @@ const ACCOUNTS={
   '세금납부':['부가세 납부','법인세 납부','원천세 납부'],
   '보통예금':['계좌 이체','예금 입금','예금 인출'],
   '영업외수익':['이자수익','외환차익','임대료수익','유형자산처분이익','잡이익'],
-  '영업외비용':['외환차손','유형자산처분손실','기부금','잡손실','이자비용']};
+  '영업외비용':['외환차손','유형자산처분손실','기부금','잡손실','이자비용'],
+  '유동부채':['단기차입금']};
+const NOVAT_ACC=['차입금 입금','원금 상환','단기차입금'];
 const CATS4=['자산매입','제조비용','판관비용','차입금'];
 const PTYPES=['주급','14 급여','월급','특별'];
 const PER_PFX={'주급':'W','14 급여':'C','월급':'M','특별':'S'};
@@ -1429,7 +1431,7 @@ function income0(p){
 }
 // IVA on a cash basis (LIVA art. 1-B, 5): output IVA when collected, input IVA when paid with a CFDI, plus IVA paid on Pedimentos
 function vatCalc(p){
-  const c=DB.cash.filter(r=>inP(r,p)&&r.cat!=='세금납부'&&r.cat!=='보통예금'), inc=c.filter(r=>r.type==='입금'), out=c.filter(r=>r.type==='출금');
+  const c=DB.cash.filter(r=>inP(r,p)&&r.cat!=='세금납부'&&r.cat!=='보통예금'&&r.cat!=='유동부채'&&!NOVAT_ACC.includes(r.account)), inc=c.filter(r=>r.type==='입금'), out=c.filter(r=>r.type==='출금');
   const tras=sumBy(inc,r=>ivaPart(r)), trasNo=sumBy(inc.filter(r=>!hasCfdi(r)),r=>ivaPart(r));
   const acr=sumBy(out.filter(hasCfdi),r=>ivaPart(r)), noCr=sumBy(out.filter(r=>!hasCfdi(r)),r=>ivaPart(r));
   const ped=sumBy(DB.inbound.filter(r=>r.origin==='수입'&&validD(r.pedDate)&&inP(r,p,'pedDate')),r=>+r.pediva||0);
@@ -1464,11 +1466,12 @@ function balance(end){
   const fixed=sumBy(DB.assets.filter(r=>r.acq<=end),r=>mx(r,'cost')-assetAccum(r,end));
   const ap=sumBy(DB.ap.filter(r=>r.date<=end),apBal);
   const loans=sumBy(DB.loans.filter(r=>r.date<=end),loanBal);
+  const stLoan=sumBy(DB.cash.filter(r=>r.cat==='유동부채'&&r.account==='단기차입금'&&validD(r.date)&&r.date<=end),r=>(r.type==='입금'?1:-1)*mx(r,'amount'));
   const accr=sumBy(DB.employees,e=>{const y=payableYTD(e,end);return y.ag+y.vp+y.sf});
   const v=vatCalc({start:'0000-01-01',end}), vatRec=vatAP(end), vatLiab=v.net-v.paid+vatAR(end);
   const y0=end.slice(0,4)+'-01-01', citLiab=citCalc({start:y0,end}).isr-sumBy(DB.cash.filter(r=>r.account==='법인세 납부'&&r.date>=y0&&r.date<=end),M('amount'));
-  const assets=cashBal+ar+inv+fixed+vatRec, liab=ap+loans+accr+vatLiab+citLiab;
-  return {cashBal,ar,inv,fixed,vatRec,assets,ap,loans,accr,vatLiab,citLiab,liab,equity:assets-liab};
+  const assets=cashBal+ar+inv+fixed+vatRec, liab=ap+loans+stLoan+accr+vatLiab+citLiab;
+  return {cashBal,ar,inv,fixed,vatRec,assets,ap,loans,stLoan,accr,vatLiab,citLiab,liab,equity:assets-liab};
 }
 
 /* ---------- suggestions ---------- */
@@ -1492,7 +1495,7 @@ const SUG={
 };
 const TONE={'입금':'good','출금':'bad','완료':'good','진행':'info','연체':'bad','검수완료':'good','검수대기':'warn','반품':'bad','출고완료':'good','출고예정':'info',
   '거래중':'good','중지':'','발행':'good','미발행':'warn','정산 대기':'warn','지급 완료':'good','승인':'good','신청':'info','반려':'bad','연차휴가':'acc','반차':'acc','무급휴가':'','해고 · 부당 (사유 없음)':'bad','해고 · 정당한 사유':'warn','수입(Pedimento)':'info','수입':'info','국내':'','세금납부':'warn','재직':'good','휴직':'warn','퇴사':'','일치':'good','과잉':'warn','부족':'bad','기초':'info','외주가공':'acc','입사예정':'info','상환중':'info','상환완료':'good','만기임박':'warn','원자재':'info','부자재':'',
-  '지배기업':'acc','종속기업':'info','자산매입':'info','제조비용':'warn','판관비용':'acc','차입금':'bad','매출수입':'good','보통예금':'info','영업외수익':'good','영업외비용':'warn'};
+  '지배기업':'acc','종속기업':'info','자산매입':'info','제조비용':'warn','판관비용':'acc','차입금':'bad','매출수입':'good','보통예금':'info','영업외수익':'good','영업외비용':'warn','유동부채':'bad'};
 const pill=v=>`<span class="pill ${TONE[v]||''}">${esc(v)}</span>`;
 const kv=(l,v,s,tone,go)=>({l,v,s,tone,go});
 
@@ -1555,7 +1558,7 @@ function bomNorm(r){
 function prodNorm(r){r.pn=String(r.pn||'').trim();r.item=String(r.item||'').trim();
   const B=DB&&DB.bom||[],hit=k=>{const b=k&&B.find(x=>x.assyPn===k);return b&&b.product};
   r.product=hit(r.pn)||hit(r.pn.replace(/-[A-Z]{1,4}$/,''))||[r.pn,r.item].filter(Boolean).join(' ')||r.product||'';return r}
-function fixRow(m,r){if(m===MODS.cash&&r.cat==='보통예금')r.iva='면세';if(m===MODS.bom)return bomNorm(r);if(m===MODS.loans&&Array.isArray(r.plan)){r.plan=r.plan.filter(x=>validD(x.date)&&+x.amount);r.plan.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);if(!r.plan.length)delete r.plan}if(m===MODS.loans&&Array.isArray(r.pays)){r.pays=r.pays.filter(x=>validD(x.date)&&+x.amount);r.pays.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);if(r.pays.length)r.repaid=r2(r.pays.filter(x=>x.kind==='원금').reduce((a,x)=>a+(+x.amount||0),0));else delete r.pays}if(m===MODS.ped)return pedNorm(r);if(m===MODS.production)return prodNorm(r);if(m===MODS.outbound||m===MODS.prices){r.pn=String(r.pn||'').trim();r.item=String(r.item||'').trim()}
+function fixRow(m,r){if(m===MODS.cash&&(r.cat==='보통예금'||r.cat==='유동부채'||NOVAT_ACC.includes(r.account)))r.iva='면세';if(m===MODS.bom)return bomNorm(r);if(m===MODS.loans&&Array.isArray(r.plan)){r.plan=r.plan.filter(x=>validD(x.date)&&+x.amount);r.plan.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);if(!r.plan.length)delete r.plan}if(m===MODS.loans&&Array.isArray(r.pays)){r.pays=r.pays.filter(x=>validD(x.date)&&+x.amount);r.pays.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);if(r.pays.length)r.repaid=r2(r.pays.filter(x=>x.kind==='원금').reduce((a,x)=>a+(+x.amount||0),0));else delete r.pays}if(m===MODS.ped)return pedNorm(r);if(m===MODS.production)return prodNorm(r);if(m===MODS.outbound||m===MODS.prices){r.pn=String(r.pn||'').trim();r.item=String(r.item||'').trim()}
   if(m===MODS.outbound){const pr=priceAt(r.customer,r.pn,r.item,r.date);if(pr){if(!(+r.price>0)){r.price=+pr.price;r.cur=pr.cur||r.cur}if(!r.item)r.item=pr.item||'';if(!r.pn)r.pn=pr.pn||''}r.product=[r.pn,r.item].filter(Boolean).join(' ')||r.product||''}
 if(m.cols.some(c=>c.k==='folio')&&String(r.folio||'').trim())r.factura='발행';if(m.cols.some(c=>c.bank)){const b=BANKS().find(x=>x.name===r.bank);if(!b||(b.cur||'MXN')!==(r.cur||'MXN'))r.bank=bankFor(r.cur)}if(m===MODS.ar&&!lnNorm(r)&&+r.qty>0&&+r.price>0)r.sub=r2(+r.qty*+r.price);if(m===MODS.ar&&validD(r.date)){const tm=String(r.terms??'').trim()===''?NaN:Math.round(+r.terms);if(isFinite(tm)&&tm>=0){r.terms=tm;r.due=addDs(r.date,tm)}else{if(!validD(r.due))r.due=addDs(r.date,partyTerms('ar',r));r.terms=diffD(r.date,r.due)}}if(m===MODS.ap)apNorm(r);else if(m.cols.some(c=>c.k==='sub'))r.amount=hasIvaAmt(r)?r2((+r.sub||0)+(+r.ivaAmt)):r2((+r.sub||0)*(1+ivaRt(r)));if(m===MODS.ar){const rt=+r.ivaRet||0;if(rt>0){const v=hasIvaAmt(r)?+r.ivaAmt:r2((+r.sub||0)*ivaRt(r));r.ivaAmt=v;r.amount=r2((+r.sub||0)+v-rt)}else r.ivaRet=0}if(m.cols.some(c=>c.k==='fx')){if(r.cur==='USD'){if(!(+r.fx>0))r.fx=FX()}else r.fx=''}return r}
 const PED_KINDS=['자산','원자재','부자재','소모품'];
@@ -1566,7 +1569,7 @@ let BKED=-1; // 은행 설정: 수정 중인 은행 줄 (수정 버튼을 눌러
 document.addEventListener('pointerdown',e=>{const b=e.target.closest&&e.target.closest('[data-bankdone]');if(!b)return;e.preventDefault();const el=document.querySelector(`[data-bankname="${b.dataset.bankdone}"]`),bk=BANKS()[+b.dataset.bankdone];BKED=-1;if(el&&bk&&el.value.trim()!==bk.name)el.dispatchEvent(new Event('change',{bubbles:true}));else renderMain()});
 const MODS={
   cash:{name:'경리자료',desc:'입금·출금 전표와 기간 현금 흐름. 분류를 고르면 그 분류의 계정과목만 선택됩니다.',data:'cash',dated:true,tight:1,
-    cols:[C('date','일자','date'),BANKC,C('type','구분','sel',{opts:['입금','출금'],pill:1}),C('cat','분류','sel',{opts:[...CATS4,'매출수입','영업외수익','영업외비용','세금납부','보통예금'],pill:1}),ACCT,
+    cols:[C('date','일자','date'),BANKC,C('type','구분','sel',{opts:['입금','출금'],pill:1}),C('cat','분류','sel',{opts:[...CATS4,'매출수입','영업외수익','영업외비용','유동부채','세금납부','보통예금'],pill:1}),ACCT,
       C('party','거래처','text',{sug:'parties'}),C('memo','적요','text',{wide:1}),CUR,C('fx','환율 (US$ 건)','num',{noTable:1,opt:1}),SUB(),IVAF,VATR(),TOT(),FACTC,UUIDC],
     filters:[['bank','은행'],['type','구분'],['cat','분류'],['account','계정과목'],['party','거래처'],['memo','적요','text'],['amount','금액','range']],
     footSplit:{k:'type',plus:'입금',minus:'출금'},
@@ -2037,7 +2040,7 @@ function arFacturaCard(p,id){
 const CF_SKIP_ACC=['외상매입금 지급','매출대금 수금','차입금 입금','원금 상환','이자비용','계좌 이체','예금 입금','예금 인출'];
 // 경리자료에서 반복되는 입출금 찾기: 같은 구분·계정과목·거래처가 최근 6개월 중 2개월 이상, 최근 2개월 안에 있으면 반복으로 봄
 function cfRecurring(){const from=ds(new Date(pd(TODAY).getFullYear(),pd(TODAY).getMonth()-6,1)),recent=ds(new Date(pd(TODAY).getFullYear(),pd(TODAY).getMonth()-1,1)),G=new Map();
-  DB.cash.forEach(r=>{if(!validD(r.date)||r.date<from||r.date>TODAY||r.link||r.cat==='보통예금'||CF_SKIP_ACC.includes(r.account)||!(+r.amount))return;
+  DB.cash.forEach(r=>{if(!validD(r.date)||r.date<from||r.date>TODAY||r.link||r.cat==='보통예금'||r.cat==='유동부채'||CF_SKIP_ACC.includes(r.account)||!(+r.amount))return;
     const key=[r.type,r.account||'',String(r.party||'').trim()].join('|');if(!G.has(key))G.set(key,[]);G.get(key).push(r)});
   const out=[];G.forEach((rs,key)=>{rs.sort((a,b)=>a.date<b.date?-1:1);const months=[...new Set(rs.map(r=>r.date.slice(0,7)))];if(months.length<2||rs[rs.length-1].date<recent)return;
     const [type,account,party]=key.split('|'),perM=rs.length/months.length,weekly=perM>=3;
@@ -2195,7 +2198,7 @@ function fsPage(){
     <div class="card"><header><h2>재무상태표</h2><span class="meta">각 기간 말일 기준 (진행 중인 기간은 오늘 기준)</span></header><div class="tw"><table class="stmt">
       ${head(P.map(p=>p.label+' 말'),false)}<tbody>
       ${bsRow('자산 총계','assets','sub')}${bsRow('현금및현금성자산','cashBal','ind')}${bsRow('매출채권 (외상매출)','ar','ind')}${bsRow('재고자산 (원·부자재·제품, 재고조사 평가)','inv','ind')}${bsRow('유형자산 장부가액','fixed','ind')}${bsRow('부가세 대급금 (미지급 매입분 IVA)','vatRec','ind')}
-      ${bsRow('부채 총계','liab','sub')}${bsRow('매입채무 (외상매입)','ap','ind')}${bsRow('차입금','loans','ind')}${bsRow('미지급 인건비 (미지급금)','accr','ind')}${bsRow('부가세 예수금·미납부 (IVA)','vatLiab','ind')}${bsRow('미지급 법인세 (ISR, − 는 선급)','citLiab','ind')}
+      ${bsRow('부채 총계','liab','sub')}${bsRow('매입채무 (외상매입)','ap','ind')}${bsRow('단기차입금 (경리자료)','stLoan','ind')}${bsRow('차입금 (차입금현황)','loans','ind')}${bsRow('미지급 인건비 (미지급금)','accr','ind')}${bsRow('부가세 예수금·미납부 (IVA)','vatLiab','ind')}${bsRow('미지급 법인세 (ISR, − 는 선급)','citLiab','ind')}
       ${bsRow('자본 총계','equity','total')}</tbody></table></div></div>
     <div class="card"><div class="body" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
       ${BANKS().map((b,i)=>`<span style="font-size:12px;color:var(--muted)">기초 현금 · ${esc(b.name)}${b.cur==='USD'?' (US$)':''}</span><input class="cell n" type="number" step="any" data-bankopen="${i}" value="${+b.open||0}" style="width:150px">`).join('')}
@@ -3141,7 +3144,7 @@ function entIS(e,P){
   return {sales:f('sales'),cogs:f('cogs'),sga:f('sga'),nonop:f('nonop'),tax:f('tax')};
 }
 function entBS(e,end,subs){
-  if(e.role==='지배기업'){const b=balance(end);return {cash:b.cashBal,ar:b.ar+b.vatRec,inv:b.inv,fixed:b.fixed,invest:sumBy(subs,s=>+s.invest||0),gw:0,ap:b.ap,loans:b.loans,othl:b.accr+b.vatLiab+b.citLiab,capital:0}}
+  if(e.role==='지배기업'){const b=balance(end);return {cash:b.cashBal,ar:b.ar+b.vatRec,inv:b.inv,fixed:b.fixed,invest:sumBy(subs,s=>+s.invest||0),gw:0,ap:b.ap,loans:b.loans+b.stLoan,othl:b.accr+b.vatLiab+b.citLiab,capital:0}}
   const r=(DB.entfs||[]).filter(x=>x.entity===e.name&&x.date<=end).sort((a,b)=>a.date<b.date?1:-1)[0]||{}, f=k=>mx(r,k);
   return {cash:f('cash'),ar:f('ar'),inv:f('inv'),fixed:f('fixed'),invest:0,gw:0,ap:f('ap'),loans:f('loans'),othl:f('othl'),capital:f('capital')};
 }
@@ -3337,7 +3340,7 @@ function vatPage(){
   const rows=[['매출세액 (IVA trasladado · 입금 기준)',x=>x.tras,'sub'],['└ 그중 Factura 미발행 입금분',x=>x.trasNo,'ind'],
     ['매입세액 (IVA acreditable · Factura 있는 출금)',x=>x.acr,'sub'],['수입 부가세 (Pedimento)',x=>x.ped,'ind'],
     ['납부할 부가세 (− 는 환급·이월)',x=>x.net,'total'],['실제 납부 (경리자료 "부가세 납부")',x=>x.paid,'ind'],['참고: 공제 불가 매입세액 (Factura 없음)',x=>x.noCr,'ind']];
-  const lines=DB.cash.filter(r=>inP(r,last)&&r.cat!=='세금납부'&&r.cat!=='보통예금'&&ivaPart(r)>0).sort((a,b)=>a.date<b.date?1:-1);
+  const lines=DB.cash.filter(r=>inP(r,last)&&r.cat!=='세금납부'&&r.cat!=='보통예금'&&r.cat!=='유동부채'&&!NOVAT_ACC.includes(r.account)&&ivaPart(r)>0).sort((a,b)=>a.date<b.date?1:-1);
   const peds=DB.inbound.filter(r=>r.origin==='수입'&&validD(r.pedDate)&&inP(r,last,'pedDate'));
   return `<div class="content">
     <div class="card"><header><h2>부가세 계산</h2><span class="meta">${esc(P.map(p=>p.label).join(' · '))}</span></header>${stmtTable(P.map(p=>p.label),D,rows,multi)}</div>
