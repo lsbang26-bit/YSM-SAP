@@ -824,6 +824,7 @@ const ACCOUNTS={
   '영업외수익':['이자수익','외환차익','임대료수익','유형자산처분이익','잡이익'],
   '영업외비용':['외환차손','유형자산처분손실','기부금','잡손실']};
 const CATS4=['자산매입','제조비용','판관비용','차입금'];
+const PTYPES=['주급','14 급여','월급','특별'];
 const DEPTS=['법인장','생산','품질','생기','생관','구매/영업','금형 보전','물류','영업','관리'], DEPT_HUE={법인장:'#1F2937',생산:'#0070F2',품질:'#7858FF',생기:'#0891B2',생관:'#CA8A04','구매/영업':'#188918','금형 보전':'#DB2777',물류:'#C35500',영업:'#188918',관리:'#0F828F'};
 const VAC_TYPES=['연차휴가','반차','특별휴가 (유급)','무급휴가'];
 const SEV_REASONS=['자진 퇴사 (Renuncia)','합의 퇴사 (Mutuo acuerdo)','해고 · 정당한 사유','해고 · 부당 (사유 없음)'];
@@ -1153,7 +1154,7 @@ function seedGroup(D,r,withParentAP){
     D.ic.push({id:uid(),date:s25,seller:QRO,buyer:USA,item:'AB-100 반제품 수출',cur:'USD',amount:a2,settled:old?a2:0});
   }
 }
-function migrate(D){if((D.ver||1)<3)D=migrate3(D);if(D.ver<4){upgradeV4(D,rng(11));D.ver=4}if(D.ver<5){upgradeV5(D,rng(13),false);D.ver=5}if(D.ver<6){upgradeV6(D);D.ver=6}if(D.ver<7){upgradeV7(D,rng(17));D.ver=7}if(D.ver<8){upgradeV8(D,rng(19));D.ver=8}if(D.ver<9){upgradeV9(D);D.ver=9}if(D.ver<10){upgradeV10(D);D.ver=10}if(D.ver<11){upgradeV11(D);D.ver=11}if(D.ver<12){upgradeV12(D);D.ver=12}if(D.ver<13){upgradeV13(D);D.ver=13}if(D.ver<14){upgradeV14(D);D.ver=14}if(D.ver<15){upgradeV15(D);D.ver=15}if(D.ver<16){upgradeV16(D);D.ver=16}if(D.ver<17){(D.production||[]).forEach(x=>{if(x.pn!=null)return;const[pn,it]=splitProd(x.product);Object.assign(x,{plant:'YSM',pn,item:it,spec:'',model:'',cat:'',amount:0})});D.ver=17}(D.ap||[]).forEach(r=>{if((r.iva==='0%'||r.iva==='면세')&&+r.ivaAmt&&+r.sub){r.ivaAmt=0;r.amount=Math.round(((+r.sub||0)-(+r.disc||0)-(+r.ivaRet||0)-(+r.isrRet||0))*100)/100}});if(!Array.isArray(D.ped))D.ped=[];return D}
+function migrate(D){if((D.ver||1)<3)D=migrate3(D);if(D.ver<4){upgradeV4(D,rng(11));D.ver=4}if(D.ver<5){upgradeV5(D,rng(13),false);D.ver=5}if(D.ver<6){upgradeV6(D);D.ver=6}if(D.ver<7){upgradeV7(D,rng(17));D.ver=7}if(D.ver<8){upgradeV8(D,rng(19));D.ver=8}if(D.ver<9){upgradeV9(D);D.ver=9}if(D.ver<10){upgradeV10(D);D.ver=10}if(D.ver<11){upgradeV11(D);D.ver=11}if(D.ver<12){upgradeV12(D);D.ver=12}if(D.ver<13){upgradeV13(D);D.ver=13}if(D.ver<14){upgradeV14(D);D.ver=14}if(D.ver<15){upgradeV15(D);D.ver=15}if(D.ver<16){upgradeV16(D);D.ver=16}if(D.ver<17){(D.production||[]).forEach(x=>{if(x.pn!=null)return;const[pn,it]=splitProd(x.product);Object.assign(x,{plant:'YSM',pn,item:it,spec:'',model:'',cat:'',amount:0})});D.ver=17}(D.ap||[]).forEach(r=>{if((r.iva==='0%'||r.iva==='면세')&&+r.ivaAmt&&+r.sub){r.ivaAmt=0;r.amount=Math.round(((+r.sub||0)-(+r.disc||0)-(+r.ivaRet||0)-(+r.isrRet||0))*100)/100}});if(!Array.isArray(D.ped))D.ped=[];(D.payroll||[]).forEach(r=>{if(r.ptype==='2주급')r.ptype='14 급여'});return D}
 function migrate3(D){
   if(D.ver>=3)return D;
   if(D.ver===2){D.settings.openRM=D.settings.openRM||2500000;seedGroup(D,rng(7),false);D.ver=3;return D}
@@ -1207,7 +1208,7 @@ function syncFromAR(D){
   return res;
 }
 function save(){VCACHE.clear();LS.set('ysm-sap-saved-at',Date.now());bkQueue();syncFromAR(DB);if(BANKS().length)DB.cash.forEach(r=>{if(!r.bank)r.bank=bankFor(r.cur)});if(LS.set(KEY,DB))savedAt=new Date();const el=$('#saved');if(el)el.textContent=savedText()}
-function saveUI(){LS.set(UKEY,{cfu:UI.cfu,cfx:UI.cfx,cw:UI.cw,vlang:UI.vlang,lastBank:UI.lastBank,cons:UI.cons,mod:UI.mod,dtab:UI.dtab,flt:UI.flt,rs:UI.rs,re:UI.re,pf:UI.pf,fm:UI.fm,mq:UI.mq,open:UI.open,fs:UI.fs})}
+function saveUI(){LS.set(UKEY,{pm:UI.pm,cfu:UI.cfu,cfx:UI.cfx,cw:UI.cw,vlang:UI.vlang,lastBank:UI.lastBank,cons:UI.cons,mod:UI.mod,dtab:UI.dtab,flt:UI.flt,rs:UI.rs,re:UI.re,pf:UI.pf,fm:UI.fm,mq:UI.mq,open:UI.open,fs:UI.fs})}
 const savedText=()=>savedAt?`저장됨 ${pad(savedAt.getHours())}:${pad(savedAt.getMinutes())}`:'이 브라우저에 자동 저장';
 
 /* ---------- domain calcs (all return MXN) ---------- */
@@ -1467,7 +1468,7 @@ const GROUPS=[
   {id:'prod',name:'생산관리',items:['production']},
   {id:'out',name:'출고관리',items:['customers','prices','outbound']},
   {id:'sales',name:'영업관리',items:['forecast','mrp','bom']},
-  {id:'gen',name:'일반관리',items:['employees','empstatus','payroll','paytax','vac','sever','payables']}];
+  {id:'gen',name:'일반관리',items:['employees','empstatus','payroll','paymon','paytax','vac','sever','payables']}];
 const C=(k,l,t,o={})=>Object.assign({k,l,t},o);
 const CUR=C('cur','통화','sel',{opts:['MXN','USD'],cls:'cur',rowCur:1});
 const ACCT=C('account','계정과목','sel',{optsOf:r=>ACCOUNTS[r.cat]||[]});
@@ -1710,7 +1711,7 @@ const MODS={
       birth:'',gender:'남',marital:'미혼',kids:0,edu:'고등학교',nat:'MEXICANA',phone:'',email:'',addr:'',curp:'',rfc:'',nss:'',memo:''})},
   empstatus:{importMod:'employees',name:'직원 현황',desc:'부서별 인원과 직원 명단',page:empStatusPage},
   payroll:{name:'급여지급내역',desc:'Contpaq lista de raya 기준 급여 지급 내역: 지급(Percepciones), 원천징수(Deducciones), 회사부담금(Aportaciones patronales)',data:'payroll',dated:true,page:p=>payrollPage(p),
-    cols:[C('date','지급일','date'),C('emp','직원','text',{sug:'employees'}),C('dept','부서','sel',{opts:DEPTS}),C('ptype','구분','sel',{opts:['주급','2주급','월급','특별'],pill:1}),
+    cols:[C('date','지급일','date'),C('emp','직원','text',{sug:'employees'}),C('dept','부서','sel',{opts:DEPTS}),C('ptype','구분','sel',{opts:PTYPES,pill:1}),C('cdept','Contpaq 부서','text',{noTable:1,opt:1}),
       C('from','근무 시작','date',{noTable:1}),C('to','근무 종료','date',{noTable:1}),C('days','근무일수','num'),CUR,C('daily','일급','money2',{noTable:1}),
       C('sueldo','기본급 (Sueldo)','money',{sum:1,sec:'지급 (Percepciones)'}),C('ot','연장수당','money',{sum:1}),C('bonus','기타 지급','money',{sum:1}),C('gross','총지급액','money',{sum:1,calc:payGross}),
       C('isr','ISR','money',{sum:1,sec:'원천징수 (Deducciones)'}),C('imss','IMSS 근로자분','money',{sum:1}),C('infon','Infonavit 대출','money',{sum:1}),C('oded','기타 공제','money',{sum:1}),
@@ -1731,6 +1732,7 @@ const MODS={
     kpis:rows=>{const w=rows.filter(r=>r.status!=='지급 완료'),d=rows.filter(r=>r.status==='지급 완료'),t=x=>sumBy(x,r=>{const c=severCalc(r);return c?c.total:0});
       return[kv('정산 건수',rows.length+'건'),kv('정산 대기',money(t(w)),w.length+'건',w.length?'warn':''),kv('지급 완료',money(t(d)),d.length+'건','good'),kv('평균 근속',rows.length?(avg(rows.map(r=>{const c=severCalc(r);return c?c.yrs:0}))).toFixed(1)+'년':'–')]},
     blank:p=>({date:TODAY,emp:'',reason:'자진 퇴사 (Renuncia)',unpaid:0,vacAdj:0,status:'정산 대기',pdate:'',memo:''})},
+  paymon:{name:'월별 급여',desc:'급여지급내역을 월별로 모아 직원별·부서별로 봅니다 (주급 · 14 급여 · 월급)',importMod:'payroll',page:()=>payMonPage(),toolbar:()=>payMonToolbar()},
   paytax:{name:'원천징수·회사부담금',desc:'급여지급내역의 원천징수(ISR·IMSS·Infonavit)와 회사부담금(IMSS 사업주분·RCV·Infonavit 5%·ISN)을 직원·부서별로 모으고 납부처별로 요약합니다',importMod:'payroll',page:p=>paytaxPage(p)},
   vac:{name:'휴가관리',desc:'직원별 연차 부여·사용·잔여일수와 휴가 사용 내역 (LFT 2023 개정 기준). 잔여일수는 퇴직금 정산의 미사용 휴가에 그대로 쓰입니다.',data:'vac',dated:true,page:p=>vacPage(p),
     cols:[C('date','시작일','date'),C('to','종료일','date'),C('emp','직원','text',{sug:'employees'}),C('type','구분','sel',{opts:VAC_TYPES,pill:1}),C('days','사용일수','num',{sum:1}),
@@ -2288,6 +2290,35 @@ function empCard(e){
     <footer><button type="button" class="btn danger" data-delrow="${e.id}" data-m="employees" style="margin-right:auto">삭제</button><button type="button" class="btn" data-close="1">닫기</button><button type="button" class="btn primary" data-editrow="${e.id}" data-m="employees">수정</button></footer></div></div>`;
 }
 
+/* ---------- 월별 급여: 직원별 · 부서별 × 1~12월 (지급일 기준) ---------- */
+const PM_MET={cost:['총 인건비',r=>payGross(r)+payER(r)],gross:['총지급액',payGross],net:['실지급액',payNet],ded:['원천징수',payDed],er:['회사부담금',payER]};
+const payDeptOf=r=>String(r.cdept||r.dept||'').trim()||'부서 없음';
+function pmState(){const S=UI.pm=Object.assign({view:'emp',ptype:'',m:'cost',year:'',q:''},UI.pm||{});const yrs=uniq(DB.payroll.map(r=>String(r.date||'').slice(0,4)).filter(y=>/^\d{4}$/.test(y))).sort();
+  return Object.assign({},S,{yrs,Y:yrs.includes(S.year)?S.year:(yrs[yrs.length-1]||String(THIS_YEAR))})}
+function payMonToolbar(){const S=pmState();return `<div class="seg"><button data-pmv="emp" class="${S.view==='emp'?'on':''}">직원별</button><button data-pmv="dept" class="${S.view==='dept'?'on':''}">부서별</button></div>
+  <select class="fsel" data-pmf="year" aria-label="연도">${(S.yrs.length?S.yrs:[S.Y]).map(y=>`<option${y===S.Y?' selected':''}>${y}</option>`).join('')}</select>
+  <select class="fsel${S.ptype?' on':''}" data-pmf="ptype" aria-label="구분"><option value="">구분 전체</option>${PTYPES.map(o=>`<option${o===S.ptype?' selected':''}>${o}</option>`).join('')}</select>
+  <select class="fsel" data-pmf="m" aria-label="금액 기준">${Object.entries(PM_MET).map(([k,[l]])=>`<option value="${k}"${k===S.m?' selected':''}>${l}</option>`).join('')}</select>
+  ${S.view==='emp'?`<input type="search" class="fsel" data-pmf="q" placeholder="직원 검색" value="${esc(S.q)}" style="width:150px">`:''}`}
+function payMonPage(){const S=pmState(),[ml,fn]=PM_MET[S.m]||PM_MET.cost,q=normName(S.q);
+  const all=DB.payroll.filter(r=>String(r.date||'').slice(0,4)===S.Y),rows=all.filter(r=>(!S.ptype||(r.ptype||'주급')===S.ptype)&&(S.view!=='emp'||!q||normName(r.emp).includes(q)));
+  const mi=r=>+String(r.date).slice(5,7)-1,M12=[...Array(12).keys()],vec=L=>M12.map(i=>sumBy(L.filter(r=>mi(r)===i),fn)),tot=v=>v.reduce((a,x)=>a+x,0);
+  const cell=v=>`<td class="n">${Math.abs(v)>0.004?plain(v):'<span class="muted">–</span>'}</td>`,used=M12.filter(i=>rows.some(r=>mi(r)===i));
+  const byType=PTYPES.map(t=>({t,v:sumBy(all.filter(r=>(r.ptype||'주급')===t),fn),n:uniq(all.filter(r=>(r.ptype||'주급')===t).map(r=>r.emp+'#'+(r.code||''))).length})).filter(x=>x.v||['주급','14 급여','월급'].includes(x.t));
+  const kp=kpiHTML([kv(S.Y+'년 '+ml,money(sumBy(all.filter(r=>!S.ptype||(r.ptype||'주급')===S.ptype),fn)),uniq(all.map(r=>r.emp+'#'+(r.code||''))).length+'명 · '+all.length+'건'),...byType.map(x=>kv(x.t,money(x.v),x.n+'명',x.t===S.ptype?'good':''))]);
+  const depts=uniq(rows.map(payDeptOf)).sort((a,b)=>a==='부서 없음'?1:b==='부서 없음'?-1:a.localeCompare(b));UI.pmx=UI.pmx||{};
+  const tg=k=>`<button type="button" class="cfx" data-pmx="${esc(k)}" title="${UI.pmx[k]?'펼치기':'접기'}">${UI.pmx[k]?'+':'−'}</button>`;
+  const head=`<thead><tr><th>${S.view==='emp'?'부서 · 직원':'부서'}</th><th class="c">구분</th><th class="n">인원</th>${M12.map(i=>`<th class="n">${i+1}월</th>`).join('')}<th class="n">합계</th></tr></thead>`;
+  const tline=(L,label,cls,extra)=>{const v=vec(L);return `<tr class="${cls||''}"><td>${label}</td><td class="c">${uniq(L.map(r=>r.ptype||'주급')).map(t=>`<span class="pill">${esc(t)}</span>`).join(' ')}</td><td class="n">${uniq(L.map(r=>r.emp+'#'+(r.code||''))).length}</td>${v.map(cell).join('')}<td class="n"><b>${plain(tot(v))}</b></td></tr>${extra||''}`};
+  const body=depts.map(d=>{const L=rows.filter(r=>payDeptOf(r)===d),open=S.view==='emp'&&!UI.pmx[d];
+    const ad=uniq(L.map(r=>r.dept).filter(Boolean)),lab=`${S.view==='emp'?tg(d):''}<b>${esc(d)}</b>${ad.length&&!(ad.length===1&&ad[0]===d)?' '+ad.map(deptTag).join(' '):''}`;
+    const ek=r=>r.emp+'#'+(r.code||''),emps=open?uniq(L.map(ek)).sort((a,b)=>a.localeCompare(b)).map(k=>{const E=L.filter(r=>ek(r)===k),r0=E[0];return tline(E,`<span title="${esc(r0.emp)}">${esc(r0.emp)}</span>${r0.code?` <span class="muted small">#${esc(r0.code)}</span>`:''}`,'cfsub')}).join(''):'';
+    return tline(L,lab,S.view==='emp'?'cfsec':'',emps)}).join('');
+  return `<div class="content">${kp}
+    <div class="card"><header><h2>${S.Y}년 월별 ${esc(ml)} · ${S.view==='emp'?'직원별':'부서별'}</h2><span class="meta">${S.ptype?esc(S.ptype)+' · ':''}지급일 기준 · MXN${S.view==='emp'?' · 부서는 Contpaq 부서명 (없으면 인원관리 부서)':''}</span></header>
+      ${rows.length?`<div class="tw cfw"><table class="tight cft">${head}<tbody>${body}</tbody><tfoot>${tline(rows,'<b>합계</b>','cftot')}</tfoot></table></div>`
+      :`<div class="empty">${S.Y}년 급여지급내역이 없습니다. <button class="link" data-go="payroll">급여지급내역</button>에서 Contpaq lista de raya 엑셀을 등록하세요.</div>`}</div>
+  </div>`}
 /* ---------- 급여지급내역 ---------- */
 // one weekly pay row per employee for every Saturday in the period, skipping rows that already exist
 function genPayroll(p){
@@ -2382,7 +2413,7 @@ async function pdfLines(buf){
   }
   return out;
 }
-const DEPT_MAP=[[/prod|manufac|planta|operac/i,'생산'],[/calid|quality|inspec/i,'품질'],[/almac|log[ií]st|embarq|tr[aá]fico|compras/i,'물류'],[/venta|comerc|sales/i,'영업'],[/admin|contab|finan|direc|recursos|rh|gerenc/i,'관리']];
+const DEPT_MAP=[[/molde|mantenim|maintenance|mtto/i,'금형 보전'],[/desarroll|ingenier|engineer/i,'생기'],[/prod|manufac|planta|operac|pintura|prensa|soldad|ensambl/i,'생산'],[/calid|quality|inspec/i,'품질'],[/almac|log[ií]st|embarq|tr[aá]fico|compras/i,'물류'],[/venta|comerc|sales/i,'영업'],[/admin|contab|finan|direc|recursos|rh|gerenc|limpieza|asuntos/i,'관리']];
 const mapDept=t=>{t=String(t||'');if(DEPTS.includes(t))return t;const m=DEPT_MAP.find(([re])=>re.test(t));return m?m[1]:''};
 function rayaRow(g,code,name,dept){
   const sueldo=g('sueldo')+g('septimo'), ot=g('ot'), tperc=g('tperc')||(sueldo+ot+g('extraP')), bonus=Math.max(0,Math.round((tperc-sueldo-ot)*100)/100);
@@ -2390,6 +2421,24 @@ function rayaRow(g,code,name,dept){
   if(!tperc&&!g('neto'))return null;
   return {code,name,dept:mapDept(dept),emp:matchEmp(code,name),days:g('days'),sdi:g('sdi'),sueldo,ot,bonus,isr,imss,infon,oded,neto:g('neto'),imssPat:g('imssPat'),rcv:g('rcv'),infPat:g('infPat'),isn:g('isn')};
 }
+// layout 0: Contpaq "Lista de Raya (forma tabular)" 엑셀 — 머리행 Código·Empleado·…·*NETO*, "Departamento N 이름" 줄로 부서, 머리글의 "Periodo … Semanal/Catorcenal/Mensual del dd/mm/yyyy al dd/mm/yyyy"로 구분·기간
+function rayaContpaq(aoa){
+  const hi=aoa.slice(0,30).findIndex(r=>/^c[oó]digo$/i.test(String(r[0]??'').trim())&&/empleado/i.test(String(r[1]??''))&&r.some(c=>/total\s*percep/i.test(String(c).replace(/\*/g,''))));
+  if(hi<0)return null;
+  const H=aoa[hi].map(c=>String(c??'').replace(/\*/g,' ').replace(/\s+/g,' ').trim()),cols=re=>H.map((h,i)=>re.test(h)?i:-1).filter(i=>i>=0);
+  const head=aoa.slice(0,hi).map(r=>r.join(' ')).join(' '),pm=head.match(/periodo.*?\b(semanal|catorcenal|quincenal|mensual)\b.*?del\s+(\d{1,2})\/(\d{1,2})\/(\d{4})\s+al\s+(\d{1,2})\/(\d{1,2})\/(\d{4})/i);
+  const period=pm?{ptype:/semanal/i.test(pm[1])?'주급':/mensual/i.test(pm[1])?'월급':'14 급여',from:`${pm[4]}-${pad(+pm[3])}-${pad(+pm[2])}`,to:`${pm[7]}-${pad(+pm[6])}-${pad(+pm[5])}`,label:pm[0].replace(/\s+/g,' ')}:null;
+  const C0={sueldo:/^sueldo$|^s[eé]ptimo/i,ot:/^horas extras/i,tperc:/^total percep/i,isr:/^i\.s\.r\. \(mes\)$/i,imss:/^i\.m\.s\.s\.$/i,infon:/^pr[eé]stamo infonavit|^seguro de vivienda infonavit/i,tded:/^total deduc/i,neto:/^neto$/i,ter:/^total obligac/i,isn:/impuesto sobre n[oó]mina/i,infPat:/^infonavit empresa$/i,rcv:/^cesant[ií]a y vejez$|fondo retiro sar/i};
+  const IX={};Object.keys(C0).forEach(k=>IX[k]=cols(C0[k]));const S=(line,k)=>IX[k].reduce((a,i)=>a+numOf(line[i]),0);
+  const rows=[];let cdept='';
+  aoa.slice(hi+1).forEach(line=>{const a=String(line[0]??'').trim();
+    const dm=a.match(/^departamento\s*\d*\s*(.*)$/i);if(dm){cdept=dm[1].replace(/^\((.*)\)$/,'$1').trim();if(/^ninguno$/i.test(cdept))cdept='';return}
+    const name=String(line[1]??'').replace(/\s+/g,' ').trim();if(!/^\d+$/.test(a)||!name)return;
+    const g=k=>S(line,k),sueldo=r2(g('sueldo')),ot=r2(g('ot')),isr=r2(g('isr')),imss=r2(g('imss')),infon=r2(g('infon')),isn=r2(g('isn')),infPat=r2(g('infPat')),rcv=r2(g('rcv'));
+    rows.push({code:a,name,cdept,dept:mapDept(cdept),emp:matchEmp(a,name),days:0,sdi:0,sueldo,ot,bonus:Math.max(0,r2(g('tperc')-sueldo-ot)),isr,imss,infon,oded:Math.max(0,r2(g('tded')-isr-imss-infon)),neto:g('neto'),
+      imssPat:Math.max(0,r2(g('ter')-isn-infPat-rcv)),rcv,infPat,isn})});
+  const L={sueldo:'기본급 (Sueldo + Séptimo día)',ot:'연장수당 (Horas Extras)',tperc:'총지급 (TOTAL PERCEPCIONES)',isr:'ISR (I.S.R. (mes))',imss:'IMSS 근로자분 (I.M.S.S.)',infon:'Infonavit 대출',tded:'공제 합계 (TOTAL DEDUCCIONES)',neto:'실지급 (NETO)',ter:'회사부담 합계 (TOTAL OBLIGACIONES)',isn:'ISN 3%',infPat:'Infonavit 5%',rcv:'RCV (Cesantía + SAR)'};
+  return {mode:'Contpaq 표',found:Object.keys(L).filter(k=>IX[k].length).map(k=>L[k]),keys:['sueldo','septimo','ot','tperc','isr','imss','infon','tded','neto','imssPat','rcv','infPat','isn'],rows,period}}
 // layout 1: one row per employee under a header row (Excel export, some PDF reports)
 function rayaTable(aoa){
   const hi=aoa.slice(0,40).findIndex(row=>row.some(c=>/nombre|empleado|trabajador/i.test(String(c)))&&row.some(c=>/neto|percep|sueldo|i\.?s\.?r/i.test(String(c))));
@@ -2446,9 +2495,10 @@ function parseRaya(file){
     let aoa;
     if(isPdf){try{aoa=await pdfLines(new Uint8Array(rd.result))}catch(e){return fail('PDF를 읽지 못했습니다. 인터넷 연결을 확인하고, 스캔한 이미지 PDF가 아니라 Contpaq에서 바로 출력한 PDF인지 확인해 주세요.')}}
     else{const wb=XLSX.read(new Uint8Array(rd.result),{type:'array'});aoa=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:'',raw:true})}
-    let res=rayaTable(aoa);if(!res||!res.rows.length){const b=rayaBlocks(aoa);if(b.rows.length||!res)res=b}
+    let res=rayaContpaq(aoa);if(!res||!res.rows.length)res=rayaTable(aoa);if(!res||!res.rows.length){const b=rayaBlocks(aoa);if(b.rows.length||!res)res=b}
     if(!res.rows.length)return fail('직원별 급여를 찾지 못했습니다. "Nombre", "Sueldo", "I.S.R.", "Neto" 같은 항목이 있는 lista de raya인지 확인해 주세요. 계속 안 되면 파일을 보내주시면 형식에 맞추겠습니다.');
     raya=Object.assign({file:file.name,isPdf},res);
+    if(res.period){const P=res.period,set=(id,v)=>{const el=$(id);if(el)el.value=v};set('#ry-type',P.ptype);set('#ry-from',P.from);set('#ry-to',P.to);set('#ry-date',P.to)}
   }catch(e){return fail('파일을 읽지 못했습니다. PDF, 엑셀(.xlsx, .xls) 또는 CSV 파일인지 확인해 주세요.')}renderRaya()};
   rd.readAsArrayBuffer(file);
 }
@@ -2470,7 +2520,7 @@ function rayaModal(){
     <header><h3 id="mt">Contpaq lista de raya 등록 (PDF · 엑셀)</h3><button type="button" class="x" data-close="1" aria-label="닫기">×</button></header>
     <div class="mbody" style="display:grid;gap:14px">
       <div class="form"><label>지급일<input type="date" id="ry-date" value="${sat}"></label><label>기간 시작<input type="date" id="ry-from" value="${addDs(sat,-6)}"></label><label>기간 종료<input type="date" id="ry-to" value="${sat}"></label>
-        <label>구분<select id="ry-type"><option>주급</option><option>2주급</option><option>월급</option><option>특별</option></select></label>
+        <label>구분<select id="ry-type">${PTYPES.map(o=>`<option>${o}</option>`).join('')}</select></label>
         <label>같은 지급일 기존 자료<select id="ry-dup"><option value="replace">덮어쓰기</option><option value="skip">건너뛰기</option></select></label></div>
       <p class="note" style="margin:0">PDF는 Contpaq에서 바로 출력한 파일이어야 합니다 (스캔 이미지는 읽을 수 없음). 직원마다 "Código / Nombre" 아래 지급·공제 항목이 나오는 형식과, 한 줄에 한 명씩 나오는 표 형식을 모두 읽습니다. "Departamento" 제목으로 부서를 나눕니다 (Producción→생산, Calidad→품질, Almacén→물류, Ventas→영업, Administración→관리). 찾는 항목 (스페인어 그대로): Código · Nombre · Días trabajados · Sueldo · Séptimo día · Tiempo extra · Total percepciones · I.S.R. (Subsidio al empleo는 차감) · I.M.S.S. · Infonavit · Fonacot/Préstamo · Total deducciones · Neto. 회사부담금: IMSS patronal · RCV · Infonavit 5% · ISN. 목록에 없는 지급 열은 Total percepciones에서 기본급과 연장수당을 뺀 "기타 지급"으로 들어갑니다.</p>
       <label class="filebox" for="rayaFile">lista de raya 파일 선택 (PDF, .xlsx, .xls, .csv)<input type="file" id="rayaFile" accept=".pdf,application/pdf,.xlsx,.xls,.csv"></label>
@@ -2482,10 +2532,10 @@ function doRaya(){
   if(!validD(date)){toast('지급일을 확인해 주세요');return}
   let n=0,sk=0;
   raya.rows.forEach(x=>{
-    const e=x.emp, name=e?e.name:x.name, i=DB.payroll.findIndex(r=>r.emp===name&&r.date===date);
+    const e=x.emp, name=e?e.name:x.name, i=DB.payroll.findIndex(r=>(x.code&&r.code?String(r.code)===String(x.code):r.emp===name)&&r.date===date&&(r.ptype||'주급')===ptype);
     if(i>=0){if(dup==='skip'){sk++;return}DB.payroll.splice(i,1)}
     const days=x.days||(validD(from)&&validD(to)?diffD(from,to)+1:0), daily=e?+e.daily||0:(x.sdi||(days?x.sueldo/days:0));
-    const r={id:uid(),date,emp:name,dept:x.dept||(e?e.dept:'관리'),ptype,from,to,days,cur:'MXN',daily,sueldo:x.sueldo,ot:x.ot,bonus:x.bonus,isr:x.isr,imss:x.imss,infon:x.infon,oded:x.oded,src:'Contpaq'};
+    const r={id:uid(),date,emp:name,dept:x.dept||(e?e.dept:'관리'),cdept:x.cdept||'',code:x.code||'',ptype,from,to,days,cur:'MXN',daily,sueldo:x.sueldo,ot:x.ot,bonus:x.bonus,isr:x.isr,imss:x.imss,infon:x.infon,oded:x.oded,src:'Contpaq'};
     ['imssPat','rcv','infPat','isn'].forEach(k=>{if(raya.keys.includes(k))r[k]=x[k]});
     DB.payroll.unshift(payFill(r));n++;
   });
@@ -4357,6 +4407,8 @@ document.addEventListener('click',e=>{
   if(d.mod&&t.closest('#nav')){go(d.mod);return}
   if(d.preset){[UI.rs,UI.re]=presetRange(d.preset);saveUI();renderMain();return}
   if(d.cfx){UI.cfx=UI.cfx||{};UI.cfx[d.cfx]=!UI.cfx[d.cfx];saveUI();renderMain();return}
+  if(d.pmv){UI.pm=Object.assign(UI.pm||{},{view:d.pmv});saveUI();renderMain();return}
+  if(d.pmx){UI.pmx=UI.pmx||{};UI.pmx[d.pmx]=!UI.pmx[d.pmx];renderMain();return}
   if(d.cfu){UI.cfu=d.cfu;saveUI();renderMain();return}
   if(d.bday){BDAY=d.bday==='0'?TODAY:addDs(BDAY,+d.bday);renderMain();return}
   if(d.bankadd){const B=BANKS();let k=B.length+1;while(B.some(b=>b.name==='은행 '+k))k++;B.push({name:'은행 '+k,cur:'MXN',open:0});BKED=B.length-1;save();renderMain();const el=document.querySelector(`[data-bankname="${BKED}"]`);if(el){el.focus();el.select()}return}
@@ -4405,6 +4457,7 @@ document.addEventListener('drop',e=>{
 document.addEventListener('change',e=>{
   const t=e.target;
   if(t.id==='bankDay'){if(validD(t.value)){BDAY=t.value;renderMain()}return}
+  if(t.dataset&&t.dataset.pmf){UI.pm=Object.assign(UI.pm||{},{[t.dataset.pmf]:t.value});saveUI();renderMain();return}
   if(t.dataset&&t.dataset.bf){BF=t.value;renderMain();return}
   if(t.dataset&&t.dataset.bankcur!=null){const b=BANKS()[+t.dataset.bankcur];if(b&&!DB.cash.some(r=>bankOf(r)===b.name)){b.cur=t.value;syncOpenCash();save();renderMain()}return}
   if(t.dataset&&t.dataset.bankopen!=null){const b=BANKS()[+t.dataset.bankopen];if(b){b.open=parseFloat(t.value)||0;syncOpenCash();save();renderMain()}return}
