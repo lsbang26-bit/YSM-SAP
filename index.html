@@ -825,6 +825,11 @@ const ACCOUNTS={
   '영업외비용':['외환차손','유형자산처분손실','기부금','잡손실']};
 const CATS4=['자산매입','제조비용','판관비용','차입금'];
 const PTYPES=['주급','14 급여','월급','특별'];
+const PER_PFX={'주급':'W','14 급여':'C','월급':'M','특별':'S'};
+// Contpaq 연도: 1·2번 기간이 12월에 끝나면 다음 해 급여연도 (예: 2025-12-22~28 = 2026년 W1)
+const perYear=(per,to)=>{const n=+String(per||'').replace(/\D+/g,' ').trim().split(' ')[0]||0,y=+String(to||'').slice(0,4);if(!y)return '';return String(n&&n<=2&&String(to).slice(5,7)==='12'?y+1:y)};
+const payYear=r=>String(r.pyear||String(r.date||'').slice(0,4));
+const perKey=p=>{const m=String(p||'').match(/^([A-Z]*)(\d+)/);return m?[m[1],+m[2]]:[String(p||''),0]};
 const DEPTS=['법인장','생산','품질','생기','생관','구매/영업','금형 보전','물류','영업','관리'], DEPT_HUE={법인장:'#1F2937',생산:'#0070F2',품질:'#7858FF',생기:'#0891B2',생관:'#CA8A04','구매/영업':'#188918','금형 보전':'#DB2777',물류:'#C35500',영업:'#188918',관리:'#0F828F'};
 const VAC_TYPES=['연차휴가','반차','특별휴가 (유급)','무급휴가'];
 const SEV_REASONS=['자진 퇴사 (Renuncia)','합의 퇴사 (Mutuo acuerdo)','해고 · 정당한 사유','해고 · 부당 (사유 없음)'];
@@ -1711,7 +1716,7 @@ const MODS={
       birth:'',gender:'남',marital:'미혼',kids:0,edu:'고등학교',nat:'MEXICANA',phone:'',email:'',addr:'',curp:'',rfc:'',nss:'',memo:''})},
   empstatus:{importMod:'employees',name:'직원 현황',desc:'부서별 인원과 직원 명단',page:empStatusPage},
   payroll:{name:'급여지급내역',desc:'Contpaq lista de raya 기준 급여 지급 내역: 지급(Percepciones), 원천징수(Deducciones), 회사부담금(Aportaciones patronales)',data:'payroll',dated:true,page:p=>payrollPage(p),
-    cols:[C('date','지급일','date'),C('emp','직원','text',{sug:'employees'}),C('dept','부서','sel',{opts:DEPTS}),C('ptype','구분','sel',{opts:PTYPES,pill:1}),C('cdept','Contpaq 부서','text',{noTable:1,opt:1}),
+    cols:[C('date','지급일','date'),C('emp','직원','text',{sug:'employees'}),C('dept','부서','sel',{opts:DEPTS}),C('ptype','구분','sel',{opts:PTYPES,pill:1}),C('per','기간','text',{opt:1,view:r=>r.per?`${esc(r.per)}${r.pyear&&r.pyear!==String(r.date||'').slice(0,4)?` <span class="muted small">(${esc(r.pyear)})</span>`:''}`:''}),C('cdept','Contpaq 부서','text',{noTable:1,opt:1}),
       C('from','근무 시작','date',{noTable:1}),C('to','근무 종료','date',{noTable:1}),C('days','근무일수','num'),CUR,C('daily','일급','money2',{noTable:1}),
       C('sueldo','기본급 (Sueldo)','money',{sum:1,sec:'지급 (Percepciones)'}),C('ot','연장수당','money',{sum:1}),C('bonus','기타 지급','money',{sum:1}),C('gross','총지급액','money',{sum:1,calc:payGross}),
       C('isr','ISR','money',{sum:1,sec:'원천징수 (Deducciones)'}),C('imss','IMSS 근로자분','money',{sum:1}),C('infon','Infonavit 대출','money',{sum:1}),C('oded','기타 공제','money',{sum:1}),
@@ -1732,7 +1737,7 @@ const MODS={
     kpis:rows=>{const w=rows.filter(r=>r.status!=='지급 완료'),d=rows.filter(r=>r.status==='지급 완료'),t=x=>sumBy(x,r=>{const c=severCalc(r);return c?c.total:0});
       return[kv('정산 건수',rows.length+'건'),kv('정산 대기',money(t(w)),w.length+'건',w.length?'warn':''),kv('지급 완료',money(t(d)),d.length+'건','good'),kv('평균 근속',rows.length?(avg(rows.map(r=>{const c=severCalc(r);return c?c.yrs:0}))).toFixed(1)+'년':'–')]},
     blank:p=>({date:TODAY,emp:'',reason:'자진 퇴사 (Renuncia)',unpaid:0,vacAdj:0,status:'정산 대기',pdate:'',memo:''})},
-  paymon:{name:'월별 급여',desc:'급여지급내역을 월별로 모아 직원별·부서별로 봅니다 (주급 · 14 급여 · 월급)',importMod:'payroll',page:()=>payMonPage(),toolbar:()=>payMonToolbar()},
+  paymon:{name:'월별 급여',desc:'급여지급내역을 기간별(W1…)·월별로 모아 직원별·부서별로 봅니다 (주급 · 14 급여 · 월급)',importMod:'payroll',page:()=>payMonPage(),toolbar:()=>payMonToolbar()},
   paytax:{name:'원천징수·회사부담금',desc:'급여지급내역의 원천징수(ISR·IMSS·Infonavit)와 회사부담금(IMSS 사업주분·RCV·Infonavit 5%·ISN)을 직원·부서별로 모으고 납부처별로 요약합니다',importMod:'payroll',page:p=>paytaxPage(p)},
   vac:{name:'휴가관리',desc:'직원별 연차 부여·사용·잔여일수와 휴가 사용 내역 (LFT 2023 개정 기준). 잔여일수는 퇴직금 정산의 미사용 휴가에 그대로 쓰입니다.',data:'vac',dated:true,page:p=>vacPage(p),
     cols:[C('date','시작일','date'),C('to','종료일','date'),C('emp','직원','text',{sug:'employees'}),C('type','구분','sel',{opts:VAC_TYPES,pill:1}),C('days','사용일수','num',{sum:1}),
@@ -2293,29 +2298,30 @@ function empCard(e){
 /* ---------- 월별 급여: 직원별 · 부서별 × 1~12월 (지급일 기준) ---------- */
 const PM_MET={cost:['총 인건비',r=>payGross(r)+payER(r)],gross:['총지급액',payGross],net:['실지급액',payNet],ded:['원천징수',payDed],er:['회사부담금',payER]};
 const payDeptOf=r=>String(r.cdept||r.dept||'').trim()||'부서 없음';
-function pmState(){const S=UI.pm=Object.assign({view:'emp',ptype:'',m:'cost',year:'',q:''},UI.pm||{});const yrs=uniq(DB.payroll.map(r=>String(r.date||'').slice(0,4)).filter(y=>/^\d{4}$/.test(y))).sort();
+function pmState(){const S=UI.pm=Object.assign({view:'emp',col:'per',ptype:'',m:'cost',year:'',q:''},UI.pm||{});const yrs=uniq(DB.payroll.map(payYear).filter(y=>/^\d{4}$/.test(y))).sort();
   return Object.assign({},S,{yrs,Y:yrs.includes(S.year)?S.year:(yrs[yrs.length-1]||String(THIS_YEAR))})}
-function payMonToolbar(){const S=pmState();return `<div class="seg"><button data-pmv="emp" class="${S.view==='emp'?'on':''}">직원별</button><button data-pmv="dept" class="${S.view==='dept'?'on':''}">부서별</button></div>
+function payMonToolbar(){const S=pmState();return `<div class="seg"><button data-pmv="emp" class="${S.view==='emp'?'on':''}">직원별</button><button data-pmv="dept" class="${S.view==='dept'?'on':''}">부서별</button></div><div class="seg"><button data-pmc="per" class="${S.col!=='month'?'on':''}">기간별 (W1…)</button><button data-pmc="month" class="${S.col==='month'?'on':''}">월별</button></div>
   <select class="fsel" data-pmf="year" aria-label="연도">${(S.yrs.length?S.yrs:[S.Y]).map(y=>`<option${y===S.Y?' selected':''}>${y}</option>`).join('')}</select>
   <select class="fsel${S.ptype?' on':''}" data-pmf="ptype" aria-label="구분"><option value="">구분 전체</option>${PTYPES.map(o=>`<option${o===S.ptype?' selected':''}>${o}</option>`).join('')}</select>
   <select class="fsel" data-pmf="m" aria-label="금액 기준">${Object.entries(PM_MET).map(([k,[l]])=>`<option value="${k}"${k===S.m?' selected':''}>${l}</option>`).join('')}</select>
-  ${S.view==='emp'?`<input type="search" class="fsel" data-pmf="q" placeholder="직원 검색" value="${esc(S.q)}" style="width:150px">`:''}`}
+  ${S.view==='emp'?`<input type="search" class="fsel" data-pmf="q" placeholder="직원 검색" value="${esc(S.q)}" style="width:150px">`:''}<button class="btn primary" data-raya="1">⇪ lista de raya 등록</button>`}
 function payMonPage(){const S=pmState(),[ml,fn]=PM_MET[S.m]||PM_MET.cost,q=normName(S.q);
-  const all=DB.payroll.filter(r=>String(r.date||'').slice(0,4)===S.Y),rows=all.filter(r=>(!S.ptype||(r.ptype||'주급')===S.ptype)&&(S.view!=='emp'||!q||normName(r.emp).includes(q)));
-  const mi=r=>+String(r.date).slice(5,7)-1,M12=[...Array(12).keys()],vec=L=>M12.map(i=>sumBy(L.filter(r=>mi(r)===i),fn)),tot=v=>v.reduce((a,x)=>a+x,0);
+  const all=DB.payroll.filter(r=>payYear(r)===S.Y),rows=all.filter(r=>(!S.ptype||(r.ptype||'주급')===S.ptype)&&(S.view!=='emp'||!q||normName(r.emp).includes(q)));
+  const byPer=S.col!=='month',PERS=byPer?uniq(rows.map(r=>r.per||'(기간 없음)')).sort((a,b)=>{const x=perKey(a),y=perKey(b);return x[0]<y[0]?-1:x[0]>y[0]?1:x[1]-y[1]}):null;
+  const mi=byPer?(r=>PERS.indexOf(r.per||'(기간 없음)')):(r=>+String(r.date).slice(5,7)-1),M12=byPer?[...PERS.keys()]:[...Array(12).keys()],vec=L=>M12.map(i=>sumBy(L.filter(r=>mi(r)===i),fn)),tot=v=>v.reduce((a,x)=>a+x,0);
   const cell=v=>`<td class="n">${Math.abs(v)>0.004?plain(v):'<span class="muted">–</span>'}</td>`,used=M12.filter(i=>rows.some(r=>mi(r)===i));
   const byType=PTYPES.map(t=>({t,v:sumBy(all.filter(r=>(r.ptype||'주급')===t),fn),n:uniq(all.filter(r=>(r.ptype||'주급')===t).map(r=>r.emp+'#'+(r.code||''))).length})).filter(x=>x.v||['주급','14 급여','월급'].includes(x.t));
   const kp=kpiHTML([kv(S.Y+'년 '+ml,money(sumBy(all.filter(r=>!S.ptype||(r.ptype||'주급')===S.ptype),fn)),uniq(all.map(r=>r.emp+'#'+(r.code||''))).length+'명 · '+all.length+'건'),...byType.map(x=>kv(x.t,money(x.v),x.n+'명',x.t===S.ptype?'good':''))]);
   const depts=uniq(rows.map(payDeptOf)).sort((a,b)=>a==='부서 없음'?1:b==='부서 없음'?-1:a.localeCompare(b));UI.pmx=UI.pmx||{};
   const tg=k=>`<button type="button" class="cfx" data-pmx="${esc(k)}" title="${UI.pmx[k]?'펼치기':'접기'}">${UI.pmx[k]?'+':'−'}</button>`;
-  const head=`<thead><tr><th>${S.view==='emp'?'부서 · 직원':'부서'}</th><th class="c">구분</th><th class="n">인원</th>${M12.map(i=>`<th class="n">${i+1}월</th>`).join('')}<th class="n">합계</th></tr></thead>`;
+  const head=`<thead><tr><th>${S.view==='emp'?'부서 · 직원':'부서'}</th><th class="c">구분</th><th class="n">인원</th>${M12.map(i=>`<th class="n">${byPer?esc(PERS[i]):(i+1)+'월'}</th>`).join('')}<th class="n">합계</th></tr></thead>`;
   const tline=(L,label,cls,extra)=>{const v=vec(L);return `<tr class="${cls||''}"><td>${label}</td><td class="c">${uniq(L.map(r=>r.ptype||'주급')).map(t=>`<span class="pill">${esc(t)}</span>`).join(' ')}</td><td class="n">${uniq(L.map(r=>r.emp+'#'+(r.code||''))).length}</td>${v.map(cell).join('')}<td class="n"><b>${plain(tot(v))}</b></td></tr>${extra||''}`};
   const body=depts.map(d=>{const L=rows.filter(r=>payDeptOf(r)===d),open=S.view==='emp'&&!UI.pmx[d];
     const ad=uniq(L.map(r=>r.dept).filter(Boolean)),lab=`${S.view==='emp'?tg(d):''}<b>${esc(d)}</b>${ad.length&&!(ad.length===1&&ad[0]===d)?' '+ad.map(deptTag).join(' '):''}`;
     const ek=r=>r.emp+'#'+(r.code||''),emps=open?uniq(L.map(ek)).sort((a,b)=>a.localeCompare(b)).map(k=>{const E=L.filter(r=>ek(r)===k),r0=E[0];return tline(E,`<span title="${esc(r0.emp)}">${esc(r0.emp)}</span>${r0.code?` <span class="muted small">#${esc(r0.code)}</span>`:''}`,'cfsub')}).join(''):'';
     return tline(L,lab,S.view==='emp'?'cfsec':'',emps)}).join('');
   return `<div class="content">${kp}
-    <div class="card"><header><h2>${S.Y}년 월별 ${esc(ml)} · ${S.view==='emp'?'직원별':'부서별'}</h2><span class="meta">${S.ptype?esc(S.ptype)+' · ':''}지급일 기준 · MXN${S.view==='emp'?' · 부서는 Contpaq 부서명 (없으면 인원관리 부서)':''}</span></header>
+    <div class="card"><header><h2>${S.Y}년 ${byPer?'기간별':'월별'} ${esc(ml)} · ${S.view==='emp'?'직원별':'부서별'}</h2><span class="meta">${S.ptype?esc(S.ptype)+' · ':''}${byPer?'Contpaq 기간 (W=주급 · C=14 급여 · M=월급)':'지급일 기준'} · MXN${S.view==='emp'?' · 부서는 Contpaq 부서명 (없으면 인원관리 부서)':''}</span></header>
       ${rows.length?`<div class="tw cfw"><table class="tight cft">${head}<tbody>${body}</tbody><tfoot>${tline(rows,'<b>합계</b>','cftot')}</tfoot></table></div>`
       :`<div class="empty">${S.Y}년 급여지급내역이 없습니다. <button class="link" data-go="payroll">급여지급내역</button>에서 Contpaq lista de raya 엑셀을 등록하세요.</div>`}</div>
   </div>`}
@@ -2426,8 +2432,8 @@ function rayaContpaq(aoa){
   const hi=aoa.slice(0,30).findIndex(r=>/^c[oó]digo$/i.test(String(r[0]??'').trim())&&/empleado/i.test(String(r[1]??''))&&r.some(c=>/total\s*percep/i.test(String(c).replace(/\*/g,''))));
   if(hi<0)return null;
   const H=aoa[hi].map(c=>String(c??'').replace(/\*/g,' ').replace(/\s+/g,' ').trim()),cols=re=>H.map((h,i)=>re.test(h)?i:-1).filter(i=>i>=0);
-  const head=aoa.slice(0,hi).map(r=>r.join(' ')).join(' '),pm=head.match(/periodo.*?\b(semanal|catorcenal|quincenal|mensual)\b.*?del\s+(\d{1,2})\/(\d{1,2})\/(\d{4})\s+al\s+(\d{1,2})\/(\d{1,2})\/(\d{4})/i);
-  const period=pm?{ptype:/semanal/i.test(pm[1])?'주급':/mensual/i.test(pm[1])?'월급':'14 급여',from:`${pm[4]}-${pad(+pm[3])}-${pad(+pm[2])}`,to:`${pm[7]}-${pad(+pm[6])}-${pad(+pm[5])}`,label:pm[0].replace(/\s+/g,' ')}:null;
+  const head=aoa.slice(0,hi).map(r=>r.join(' ')).join(' '),pm=head.match(/periodo\s*(\d+)?(?:\s*al\s*(\d+))?.*?\b(semanal|catorcenal|quincenal|mensual)\b.*?del\s+(\d{1,2})\/(\d{1,2})\/(\d{4})\s+al\s+(\d{1,2})\/(\d{1,2})\/(\d{4})/i);
+  const pt=pm&&(/semanal/i.test(pm[3])?'주급':/mensual/i.test(pm[3])?'월급':'14 급여'),period=pm?{ptype:pt,per:pm[1]?PER_PFX[pt]+pm[1]+(pm[2]&&pm[2]!==pm[1]?'~'+pm[2]:''):'',from:`${pm[6]}-${pad(+pm[5])}-${pad(+pm[4])}`,to:`${pm[9]}-${pad(+pm[8])}-${pad(+pm[7])}`,label:pm[0].replace(/\s+/g,' ')}:null;
   const C0={sueldo:/^sueldo$|^s[eé]ptimo/i,ot:/^horas extras/i,tperc:/^total percep/i,isr:/^i\.s\.r\. \(mes\)$/i,imss:/^i\.m\.s\.s\.$/i,infon:/^pr[eé]stamo infonavit|^seguro de vivienda infonavit/i,tded:/^total deduc/i,neto:/^neto$/i,ter:/^total obligac/i,isn:/impuesto sobre n[oó]mina/i,infPat:/^infonavit empresa$/i,rcv:/^cesant[ií]a y vejez$|fondo retiro sar/i};
   const IX={};Object.keys(C0).forEach(k=>IX[k]=cols(C0[k]));const S=(line,k)=>IX[k].reduce((a,i)=>a+numOf(line[i]),0);
   const rows=[];let cdept='';
@@ -2498,7 +2504,7 @@ function parseRaya(file){
     let res=rayaContpaq(aoa);if(!res||!res.rows.length)res=rayaTable(aoa);if(!res||!res.rows.length){const b=rayaBlocks(aoa);if(b.rows.length||!res)res=b}
     if(!res.rows.length)return fail('직원별 급여를 찾지 못했습니다. "Nombre", "Sueldo", "I.S.R.", "Neto" 같은 항목이 있는 lista de raya인지 확인해 주세요. 계속 안 되면 파일을 보내주시면 형식에 맞추겠습니다.');
     raya=Object.assign({file:file.name,isPdf},res);
-    if(res.period){const P=res.period,set=(id,v)=>{const el=$(id);if(el)el.value=v};set('#ry-type',P.ptype);set('#ry-from',P.from);set('#ry-to',P.to);set('#ry-date',P.to)}
+    if(res.period){const P=res.period,set=(id,v)=>{const el=$(id);if(el)el.value=v};set('#ry-type',P.ptype);set('#ry-from',P.from);set('#ry-to',P.to);set('#ry-date',P.to);set('#ry-per',P.per||'')}
   }catch(e){return fail('파일을 읽지 못했습니다. PDF, 엑셀(.xlsx, .xls) 또는 CSV 파일인지 확인해 주세요.')}renderRaya()};
   rd.readAsArrayBuffer(file);
 }
@@ -2521,21 +2527,21 @@ function rayaModal(){
     <div class="mbody" style="display:grid;gap:14px">
       <div class="form"><label>지급일<input type="date" id="ry-date" value="${sat}"></label><label>기간 시작<input type="date" id="ry-from" value="${addDs(sat,-6)}"></label><label>기간 종료<input type="date" id="ry-to" value="${sat}"></label>
         <label>구분<select id="ry-type">${PTYPES.map(o=>`<option>${o}</option>`).join('')}</select></label>
-        <label>같은 지급일 기존 자료<select id="ry-dup"><option value="replace">덮어쓰기</option><option value="skip">건너뛰기</option></select></label></div>
+        <label>기간 (예: W1)<input id="ry-per" placeholder="W1"></label><label>같은 지급일 기존 자료<select id="ry-dup"><option value="replace">덮어쓰기</option><option value="skip">건너뛰기</option></select></label></div>
       <p class="note" style="margin:0">PDF는 Contpaq에서 바로 출력한 파일이어야 합니다 (스캔 이미지는 읽을 수 없음). 직원마다 "Código / Nombre" 아래 지급·공제 항목이 나오는 형식과, 한 줄에 한 명씩 나오는 표 형식을 모두 읽습니다. "Departamento" 제목으로 부서를 나눕니다 (Producción→생산, Calidad→품질, Almacén→물류, Ventas→영업, Administración→관리). 찾는 항목 (스페인어 그대로): Código · Nombre · Días trabajados · Sueldo · Séptimo día · Tiempo extra · Total percepciones · I.S.R. (Subsidio al empleo는 차감) · I.M.S.S. · Infonavit · Fonacot/Préstamo · Total deducciones · Neto. 회사부담금: IMSS patronal · RCV · Infonavit 5% · ISN. 목록에 없는 지급 열은 Total percepciones에서 기본급과 연장수당을 뺀 "기타 지급"으로 들어갑니다.</p>
       <label class="filebox" for="rayaFile">lista de raya 파일 선택 (PDF, .xlsx, .xls, .csv)<input type="file" id="rayaFile" accept=".pdf,application/pdf,.xlsx,.xls,.csv"></label>
       <div id="rayaPreview"></div></div>
     <footer><button type="button" class="btn" data-close="1">취소</button><button type="button" class="btn primary" data-dorays="1" disabled>등록</button></footer></div></div>`;
 }
 function doRaya(){
-  const date=$('#ry-date').value, from=$('#ry-from').value, to=$('#ry-to').value, ptype=$('#ry-type').value, dup=$('#ry-dup').value;
+  const date=$('#ry-date').value, from=$('#ry-from').value, to=$('#ry-to').value, ptype=$('#ry-type').value, dup=$('#ry-dup').value, per=String(($('#ry-per')||{}).value||'').trim().toUpperCase(), pyear=per?perYear(per,to||date):'';
   if(!validD(date)){toast('지급일을 확인해 주세요');return}
   let n=0,sk=0;
   raya.rows.forEach(x=>{
     const e=x.emp, name=e?e.name:x.name, i=DB.payroll.findIndex(r=>(x.code&&r.code?String(r.code)===String(x.code):r.emp===name)&&r.date===date&&(r.ptype||'주급')===ptype);
     if(i>=0){if(dup==='skip'){sk++;return}DB.payroll.splice(i,1)}
     const days=x.days||(validD(from)&&validD(to)?diffD(from,to)+1:0), daily=e?+e.daily||0:(x.sdi||(days?x.sueldo/days:0));
-    const r={id:uid(),date,emp:name,dept:x.dept||(e?e.dept:'관리'),cdept:x.cdept||'',code:x.code||'',ptype,from,to,days,cur:'MXN',daily,sueldo:x.sueldo,ot:x.ot,bonus:x.bonus,isr:x.isr,imss:x.imss,infon:x.infon,oded:x.oded,src:'Contpaq'};
+    const r={id:uid(),date,emp:name,dept:x.dept||(e?e.dept:'관리'),cdept:x.cdept||'',code:x.code||'',ptype,per,pyear,from,to,days,cur:'MXN',daily,sueldo:x.sueldo,ot:x.ot,bonus:x.bonus,isr:x.isr,imss:x.imss,infon:x.infon,oded:x.oded,src:'Contpaq'};
     ['imssPat','rcv','infPat','isn'].forEach(k=>{if(raya.keys.includes(k))r[k]=x[k]});
     DB.payroll.unshift(payFill(r));n++;
   });
@@ -3322,6 +3328,7 @@ function parseImport(file,id){
     let sn=wb.SheetNames.includes('등록')?'등록':wb.SheetNames[0];
     if(id==='ar'){let best=-1;wb.SheetNames.forEach(n=>{const a=sheetAoa(n),v=Math.max(0,...a.slice(0,15).map(arScore))+(n==='등록'?.5:0);if(v>best){best=v;sn=n}})}
     const aoa=sheetAoa(sn);
+    if(id==='payroll'){const R=rayaContpaq(aoa);if(R&&R.rows.length){modal={type:'raya'};renderModal();raya=Object.assign({file:file.name,isPdf:false},R);const P=R.period,set=(k,v)=>{const el=$(k);if(el)el.value=v};if(P){set('#ry-type',P.ptype);set('#ry-from',P.from);set('#ry-to',P.to);set('#ry-date',P.to);set('#ry-per',P.per||'')}renderRaya();return}}
     if(id==='loans'){const L=loanFromSheet(aoa);if(L){imp={mod:id,rows:L,errs:[],missing:[],file:file.name};renderImp();return}}
     if(id==='production'){const pv=prodPivot(aoa);if(pv){imp=Object.assign({mod:id,file:file.name,missing:[],errs:[]},pv);renderImp();return}}
     const head=(aoa[0]||[]).map(normH), idx={}, totI=head.indexOf(normH('합계')), seen=new Set();
@@ -4407,6 +4414,7 @@ document.addEventListener('click',e=>{
   if(d.mod&&t.closest('#nav')){go(d.mod);return}
   if(d.preset){[UI.rs,UI.re]=presetRange(d.preset);saveUI();renderMain();return}
   if(d.cfx){UI.cfx=UI.cfx||{};UI.cfx[d.cfx]=!UI.cfx[d.cfx];saveUI();renderMain();return}
+  if(d.pmc){UI.pm=Object.assign(UI.pm||{},{col:d.pmc});saveUI();renderMain();return}
   if(d.pmv){UI.pm=Object.assign(UI.pm||{},{view:d.pmv});saveUI();renderMain();return}
   if(d.pmx){UI.pmx=UI.pmx||{};UI.pmx[d.pmx]=!UI.pmx[d.pmx];renderMain();return}
   if(d.cfu){UI.cfu=d.cfu;saveUI();renderMain();return}
