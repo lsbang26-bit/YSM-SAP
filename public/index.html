@@ -1715,7 +1715,8 @@ const MODS={
     blank:()=>({no:nextEmpNo(),name:'',dept:'생산',pos:'작업자',shift:'주간',hire:TODAY,leave:'',work:'재직',contract:'수습',cend:addDs(TODAY,89),cur:'MXN',daily:315,bus:'',
       birth:'',gender:'남',marital:'미혼',kids:0,edu:'고등학교',nat:'MEXICANA',phone:'',email:'',addr:'',curp:'',rfc:'',nss:'',memo:''})},
   empstatus:{importMod:'employees',name:'직원 현황',desc:'부서별 인원과 직원 명단',page:empStatusPage},
-  payroll:{name:'급여지급내역',desc:'Contpaq lista de raya 기준 급여 지급 내역: 지급(Percepciones), 원천징수(Deducciones), 회사부담금(Aportaciones patronales)',data:'payroll',dated:true,page:p=>payrollPage(p),
+  payroll:{name:'급여지급내역',desc:'Contpaq lista de raya 기준 급여 지급 내역: 지급(Percepciones), 원천징수(Deducciones), 회사부담금(Aportaciones patronales)',data:'payroll',dated:true,
+    filters:[['emp','직원'],['cdept','Contpaq 부서'],['dept','부서'],['ptype','구분'],['per','기간'],['src','출처']],page:p=>payrollPage(p),
     cols:[C('date','지급일','date'),C('emp','직원','text',{sug:'employees'}),C('dept','부서','sel',{opts:DEPTS}),C('ptype','구분','sel',{opts:PTYPES,pill:1}),C('per','기간','text',{opt:1,view:r=>r.per?`${esc(r.per)}${r.pyear&&r.pyear!==String(r.date||'').slice(0,4)?` <span class="muted small">(${esc(r.pyear)})</span>`:''}`:''}),C('cdept','Contpaq 부서','text',{noTable:1,opt:1}),
       C('from','근무 시작','date',{noTable:1}),C('to','근무 종료','date',{noTable:1}),C('days','근무일수','num'),CUR,C('daily','일급','money2',{noTable:1}),
       C('sueldo','기본급 (Sueldo)','money',{sum:1,sec:'지급 (Percepciones)'}),C('ot','연장수당','money',{sum:1}),C('bonus','기타 지급','money',{sum:1}),C('gross','총지급액','money',{sum:1,calc:payGross}),
@@ -1822,7 +1823,7 @@ const fltOf=id=>(UI.flt&&UI.flt[id])||{};
 const fltOn=(m,id)=>{const f=fltOf(id);return (m.filters||[]).filter(([k,,t])=>t==='range'?(f[k+'Min']||'')!==''||(f[k+'Max']||'')!=='':!!f[k])};
 const fval=(m,r,k)=>{const c=m.cols.find(x=>x.k===k);return c&&c.calc&&r[k]==null?c.calc(r,curPeriod()):r[k]};
 // 거래처(공급사·고객사 등) 필터: 목록에서 고르거나 일부만 입력해도 이름 중간에 들어 있으면 걸러짐
-const FPARTY=['vendor','customer','party','shipTo','spSupplier'];
+const FPARTY=['vendor','customer','party','shipTo','spSupplier','emp','cdept'];
 const matchF=(m,id)=>{const f=fltOf(id),act=fltOn(m,id);return r=>act.every(([k,,t])=>{const v=fval(m,r,k);
   if(t==='text'||FPARTY.includes(k))return String(v??'').toLowerCase().includes(String(f[k]).trim().toLowerCase());
   if(t==='range'){const x=+v||0,a=parseFloat(f[k+'Min']),b=parseFloat(f[k+'Max']);return (isNaN(a)||x>=a)&&(isNaN(b)||x<=b)}
@@ -2347,7 +2348,6 @@ function payrollPage(p){
     <div class="card"><header><h2>Contpaq lista de raya 가져오기</h2><span class="meta">PDF 또는 엑셀</span></header><div class="body" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
       <button class="btn primary" data-raya="1">⇪ lista de raya 등록 (PDF · 엑셀)</button><button class="btn" data-rayatpl="1">엑셀 예시 양식</button><button class="btn" data-genpay="1">선택 기간 주급 자동 생성</button>
       <p class="note" style="flex:1 1 320px">Contpaqi Nóminas에서 출력한 lista de raya PDF(또는 엑셀)를 올리면 직원별 지급·원천징수·회사부담금을 읽어 부서별로 등록합니다. 등록한 급여는 부서에 따라 제조원가(생산·품질·물류)와 판관비(영업·관리)에 반영됩니다. 원천징수와 회사부담금은 <button class="link" data-go="paytax">원천징수·회사부담금</button> 화면에서 봅니다.</p></div></div>
-    ${registerCard('payroll',p,'급여 직접 등록')}
     ${tableCard(MODS.payroll,p,'payroll','지급 내역')}
     ${deptPayCard(p)}</div>`;
 }
