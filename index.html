@@ -1196,6 +1196,10 @@ if(!validD(UI.rs)||!validD(UI.re)){[UI.rs,UI.re]=presetRange('month')}
 let savedAt=null, flashId=null, resetAsk=false;
 // 외상매출 → 고객사 등록·출고현황 자동 반영 (엑셀로 올린 품번/수량 있는 줄만; 샘플 외상매출은 제외)
 // 출고 줄은 arId로 연결: 외상매출을 고치면 같이 고쳐지고, 지우면 같이 지워짐
+// 외상매입·외상매출에 연결된 경리자료 전표의 적요(품목)·거래처를 원래 건에 맞춤 (어떤 화면에서 고쳐도 저장할 때 반영)
+function syncLinkedCash(D){const M={ap:new Map((D.ap||[]).map(r=>[r.id,r])),ar:new Map((D.ar||[]).map(r=>[r.id,r]))},re=/^(.*) 대금 (지급|수금) \(외상(매입|매출) 연계(.*)\)$/s;
+  (D.cash||[]).forEach(c=>{const doc=c.link&&M[c.linkMod]&&M[c.linkMod].get(c.link);if(!doc)return;const it=String(doc.item||''),m=String(c.memo||'').match(re);
+    if(m&&m[1]!==it&&it)c.memo=`${it} 대금 ${m[2]} (외상${m[3]} 연계${m[4]})`;const pty=c.linkMod==='ar'?doc.customer:doc.vendor;if(pty&&c.party!==pty&&(!c.party||normName(c.party)!==normName(pty)))c.party=pty})}
 function syncFromAR(D){
   if(!D||!D.ar||!D.outbound||!D.customers)return {c:0,o:0,u:0,d:0};
   const res={c:0,o:0,u:0,d:0}, nk=x=>String(x||'').trim().toLowerCase();
@@ -1222,7 +1226,7 @@ function syncFromAR(D){
     else if(Object.keys(v).some(k=>String(o[k]??'')!==String(v[k]??''))){Object.assign(o,v);res.u++}});
   return res;
 }
-function save(){VCACHE.clear();calcReset();LS.set('ysm-sap-saved-at',Date.now());bkQueue();syncFromAR(DB);if(BANKS().length)DB.cash.forEach(r=>{if(!r.bank)r.bank=bankFor(r.cur)});if(LS.set(KEY,DB))savedAt=new Date();const el=$('#saved');if(el)el.textContent=savedText()}
+function save(){VCACHE.clear();calcReset();syncLinkedCash(DB);LS.set('ysm-sap-saved-at',Date.now());bkQueue();syncFromAR(DB);if(BANKS().length)DB.cash.forEach(r=>{if(!r.bank)r.bank=bankFor(r.cur)});if(LS.set(KEY,DB))savedAt=new Date();const el=$('#saved');if(el)el.textContent=savedText()}
 function saveUI(){LS.set(UKEY,{pm:UI.pm,cfu:UI.cfu,cfx:UI.cfx,cw:UI.cw,vlang:UI.vlang,lastBank:UI.lastBank,cons:UI.cons,mod:UI.mod,dtab:UI.dtab,flt:UI.flt,rs:UI.rs,re:UI.re,pf:UI.pf,fm:UI.fm,mq:UI.mq,open:UI.open,fs:UI.fs})}
 const savedText=()=>savedAt?`저장됨 ${pad(savedAt.getHours())}:${pad(savedAt.getMinutes())}`:'이 브라우저에 자동 저장';
 
@@ -4426,7 +4430,8 @@ function renderNav(){
 }
 
 /* ---------- main render ---------- */
-function renderMain(){calcReset();
+let LSYNC=0;
+function renderMain(){calcReset();if(!LSYNC){LSYNC=1;try{syncLinkedCash(DB)}catch(_){}}
   const openD=[...document.querySelectorAll('details.mgmt[open]')].map(d=>d.querySelector('summary').textContent);
   const id=UI.mod, m=MODS[id];
   if(m.singleMonth&&UI.fm.sel.length>1)UI.fm.sel=[Math.max(...UI.fm.sel)];
