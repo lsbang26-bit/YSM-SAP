@@ -1261,6 +1261,22 @@ function loanImplied(r){const P=(r.pays||[]).filter(x=>validD(x.date)&&+x.amount
   const balDays=(a,b)=>{let t=0,cur=a,bal=+r.principal;Pr.forEach(x=>{if(x.date<=a)bal-=+x.amount});Pr.forEach(x=>{if(x.date>a&&x.date<b){t+=Math.max(0,bal)*diffD(cur,x.date);cur=x.date;bal-=+x.amount}});return t+Math.max(0,bal)*diffD(cur,b)};
   let prev=r.date,S=0,A=0,last=null;I.forEach(x=>{if(x.date<=prev)return;const bd=balDays(prev,x.date);if(bd>0){S+=bd;A+=+x.amount;last=+x.amount/bd*365*100}prev=x.date});
   return S>0?{rate:A/S*365*100,last}:null}
+// 앞으로의 상환 일정 (차입 통화): 미지급 이자와 같은 방식. 마지막 이자 지급일부터 매월 같은 날 원금(최근 원금 상환액)과 그 기간 이자.
+// 원금 분할 상환 내역이 없으면 이자는 매월, 원금은 만기에 일시 상환
+function loanSchedule(r){let bal=r2((+r.principal||0)-(+r.repaid||0));if(!(bal>0))return [];const R=(+r.rate||0)/100/365,P=(r.pays||[]).filter(x=>validD(x.date)),I=P.filter(x=>x.kind==='이자').map(x=>x.date).sort(),Pr=P.filter(x=>x.kind==='원금').sort((a,b)=>a.date<b.date?-1:1);
+  let from=I.length?I[I.length-1]:r.date;if(!validD(from))return [];const inst=Pr.length?+Pr[Pr.length-1].amount:0,due=validD(r.due)?r.due:'',out=[];let k=1;const d0=pd(from);
+  while(bal>0.005&&k<600){const d=new Date(d0);d.setMonth(d0.getMonth()+k);let nx=ds(d);if(due&&nx>due)nx=due;k++;if(nx<=from)continue;
+    const it=bal*R*diffD(from,nx);if(it>0.005)out.push({kind:'이자',date:nx,amt:r2(it)});
+    let pr=inst>0?Math.min(bal,inst):0;if(due&&nx>=due)pr=bal;if(pr>0)out.push({kind:'원금',date:nx,amt:r2(pr)});bal=r2(bal-pr);from=nx;if(!due&&!(inst>0))break}
+  return out}
+// 자금 계획용: 구분별로 상환 계획이 있으면 계획(밀린 금액은 오늘), 없으면 위 일정
+function loanCfItems(r){if(!(loanBal(r)>0.5))return [];const plan=r.plan||[],out=[],S=loanSchedule(r);
+  ['원금','이자'].forEach(k=>{const Pk=plan.filter(x=>x.kind===k&&validD(x.date)&&+x.amount>0);
+    if(!Pk.length){S.filter(x=>x.kind===k).forEach(x=>out.push(Object.assign({src:'예상 일정 (이자율 '+(+r.rate||0)+'%)'},x)));return}
+    const paid=(r.pays||[]).filter(x=>x.kind===k&&validD(x.date)&&x.date<=TODAY).reduce((a,x)=>a+(+x.amount||0),0),dueAmt=Pk.filter(x=>x.date<=TODAY).reduce((a,x)=>a+(+x.amount),0),od=r2(dueAmt-paid);
+    if(od>0.5)out.push({kind:k,date:TODAY,amt:od,od:1,src:'상환 계획 미달분'});
+    Pk.filter(x=>x.date>TODAY).forEach(x=>out.push({kind:k,date:x.date,amt:+x.amount,src:'상환 계획'}))});
+  return out}
 const loanStatus=r=>loanBal(r)<=0?'상환완료':(validD(r.due)&&r.due<TODAY?'연체':(validD(r.due)&&diffD(TODAY,r.due)<=90?'만기임박':'상환중'));
 const costTotal=r=>mx(r,'mat')+mx(r,'labor')+mx(r,'oh');
 const lineAmt=r=>(+r.qty||0)*mx(r,'price');
@@ -2018,7 +2034,7 @@ function arFacturaCard(p,id){
     </tbody><tfoot><tr><td colspan="6">합계 (MXN 환산) · ${gs.length}건</td><td class="n">${money(gs.reduce((a,g)=>a+g.mxAmt,0))}</td><td></td><td class="n">${money(gs.reduce((a,g)=>a+g.mx,0))}</td><td></td><td></td></tr></tfoot></table></div></div>`;
 }
 /* ---------- Cash Flow: 은행 잔고 + 외상매출(수금기일) − 외상매입(지급기일) ± 경리자료 반복 입출금, 주간/월간 ---------- */
-const CF_SKIP_ACC=['외상매입금 지급','매출대금 수금','차입금 입금','계좌 이체','예금 입금','예금 인출'];
+const CF_SKIP_ACC=['외상매입금 지급','매출대금 수금','차입금 입금','원금 상환','이자비용','계좌 이체','예금 입금','예금 인출'];
 // 경리자료에서 반복되는 입출금 찾기: 같은 구분·계정과목·거래처가 최근 6개월 중 2개월 이상, 최근 2개월 안에 있으면 반복으로 봄
 function cfRecurring(){const from=ds(new Date(pd(TODAY).getFullYear(),pd(TODAY).getMonth()-6,1)),recent=ds(new Date(pd(TODAY).getFullYear(),pd(TODAY).getMonth()-1,1)),G=new Map();
   DB.cash.forEach(r=>{if(!validD(r.date)||r.date<from||r.date>TODAY||r.link||r.cat==='보통예금'||CF_SKIP_ACC.includes(r.account)||!(+r.amount))return;
@@ -2039,6 +2055,7 @@ function cfData(){const u=UI.cfu==='month'?'month':'week',P=cfPeriods(u),end=P[P
   const dueOf=(r,md)=>validD(r.due)?r.due:addDs(validD(r.date)?r.date:TODAY,partyTerms(md,r));
   DB.ar.forEach(r=>{const v=arBal(r);if(v<=0.5)return;const d=dueOf(r,'ar');items.push({sec:'ar',kind:'입금',date:d,od:d<TODAY,party:r.customer||'',memo:[r.folio?'Factura '+r.folio:'',r.item||''].filter(Boolean).join(' · '),amt:v,src:'외상매출 수금기일'})});
   DB.ap.forEach(r=>{const v=apBal(r);if(v<=0.5)return;const d=dueOf(r,'ap');items.push({sec:'ap',kind:'출금',date:d,od:d<TODAY,party:r.vendor||'',memo:[r.folio?'Factura '+r.folio:'',r.item||''].filter(Boolean).join(' · '),amt:v,src:'외상매입 지급기일'})});
+  DB.loans.forEach(r=>loanCfItems(r).forEach(x=>{const fx=rate(r.cur);items.push({sec:'loan',kind:'출금',date:x.date,od:!!x.od,party:r.bank||'',name:(r.bank||'차입금')+' '+x.kind+(r.cur==='USD'?' (US$)':''),memo:(r.type||'')+' '+x.kind+(r.cur==='USD'?` · US$ ${nf2.format(x.amt)}`:''),amt:x.amt*fx,src:x.src})}));
   const rec=cfRecurring();rec.forEach(x=>{const sec=x.type==='입금'?'rin':'rout',nm=x.account+(x.party?' · '+x.party:'');
     if(x.weekly){let d=addD(pd(TODAY),(x.dow-pd(TODAY).getDay()+7)%7);if(diffD(x.last,ds(d))<4)d=addD(d,7);for(;ds(d)<=end;d=addD(d,7))items.push({sec,kind:x.type,date:ds(d),party:x.party,name:nm,memo:x.account,amt:x.amt,src:`반복 (매주, 최근 ${Math.min(4,x.n)}회 평균)`})}
     else{const t=pd(TODAY);for(let i=0;i<7;i++){const y=t.getFullYear(),mo=t.getMonth()+i,ld=new Date(y,mo+1,0).getDate(),d=ds(new Date(y,mo,Math.min(x.dom,ld)));if(d>end)break;
@@ -2065,7 +2082,7 @@ function cfPage(){const D=cfData(),P=D.P,n=P.length,od=D.items.filter(x=>x.od);U
       <div class="tw cfw"><table class="tight cft"><thead><tr><th>항목</th>${P.map(p=>`<th class="n">${esc(p.label)}</th>`).join('')}<th class="n">합계</th></tr></thead><tbody>
       ${line('기초 잔고',p=>p.open,'cfbal')}
       <tr class="cfhd"><td colspan="${n+2}">${tg('in')}입금</td></tr>${cx('in')?'':sec('ar','외상매출 수금')+sec('rin','반복 입금 (경리자료)')}${line('입금 합계',p=>p.inn,'cftot')}
-      <tr class="cfhd"><td colspan="${n+2}">${tg('out')}출금</td></tr>${cx('out')?'':sec('ap','외상매입 지급')+sec('rout','반복 지급 (경리자료)')}${line('출금 합계',p=>p.out,'cftot')}
+      <tr class="cfhd"><td colspan="${n+2}">${tg('out')}출금</td></tr>${cx('out')?'':sec('ap','외상매입 지급')+sec('loan','차입금 상환 (원금·이자)')+sec('rout','반복 지급 (경리자료)')}${line('출금 합계',p=>p.out,'cftot')}
       ${line('순현금흐름',p=>p.net,'cfnet')}${line('기말 잔고',p=>p.close,'cfbal')}</tbody></table></div></div>
     <div class="card"><header><h2>반복 입출금 (경리자료에서 자동 인식)</h2><span class="meta">최근 6개월 중 2개월 이상 · 최근 2개월 안에 있었던 같은 계정과목·거래처</span></header>
       ${D.rec.length?`<div class="tw"><table class="tight"><thead><tr><th class="c">구분</th><th>계정과목</th><th>거래처</th><th class="c">주기</th><th class="n">예상 금액</th><th class="c">마지막</th><th class="n">횟수</th></tr></thead><tbody>
