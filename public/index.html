@@ -216,6 +216,7 @@ input.kdate.kdate{font-variant-numeric:tabular-nums;padding-right:30px!important
 .range input.kdate.kdate{flex:0 1 124px;width:124px;padding-left:2px}
 #kdpick{position:fixed;left:-9999px;top:-9999px;opacity:0;pointer-events:none;border:0;padding:0;margin:0;z-index:10000;cursor:pointer;background:none}#kdpick::-webkit-calendar-picker-indicator{position:absolute;inset:0;width:100%;height:100%;cursor:pointer}
 .xferbox .xfgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.xferbox label{display:grid;gap:4px;font-size:12px;color:var(--muted)}.xferbox label[hidden]{display:none}@media(max-width:700px){.xferbox .xfgrid{grid-template-columns:1fr}}
+.armform{grid-template-columns:2fr 1.3fr .8fr 1.2fr .8fr .8fr auto!important}.armsol{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:10px}.armsol.best{border-color:var(--accent,#2563eb);box-shadow:0 0 0 1px var(--accent,#2563eb) inset}.armhd{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;font-size:12.5px}.armhd>span{flex:1;color:var(--muted)}.armhd .neg{color:var(--danger,#dc2626)}.armhd .good{color:var(--ok,#15803d);font-weight:600}.armres{max-height:56vh;overflow:auto}@media(max-width:800px){.armform{grid-template-columns:1fr 1fr!important}}
 .pygrid{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:12px}.modal.lg:has(.pygrid){width:min(1180px,100%)}.pygrid>.lnbox{grid-column:auto;margin:0;min-width:0}.pygrid .lnhead{flex-wrap:wrap}.pygrid .lnhead b{white-space:nowrap}.pygrid .lnhead .dim{flex:1 1 100%;order:3}@media(max-width:860px){.pygrid{grid-template-columns:1fr}}
 .plcols,.plrow{display:grid;grid-template-columns:minmax(64px,.7fr) minmax(130px,1.2fr) minmax(0,1fr) minmax(0,1.5fr) 28px;gap:8px;align-items:center}.plcols{font-size:12px;color:var(--muted,#6b7280);margin-top:8px}.plrow{margin-top:6px}.plrow input[data-pl=amount]{text-align:right}
 .plst{font-size:12px;white-space:nowrap;overflow:hidden;display:flex;align-items:center;gap:6px;min-width:0}.plst em{font-style:normal;overflow:hidden;text-overflow:ellipsis;min-width:0}.plok{flex:none;margin-left:auto;border:1px solid var(--accent,#2563eb);color:var(--accent,#2563eb);background:var(--surface);border-radius:7px;padding:2px 8px;font-size:11.5px;font-weight:600;cursor:pointer}.plok:hover{background:var(--accent,#2563eb);color:#fff}.pyrow.pynew input,.pyrow.pynew select{border-color:var(--accent,#2563eb)}.plst.ok{color:var(--ok,#15803d)}.plst.bad{color:var(--danger,#dc2626);font-weight:600}.plst.late{color:var(--warn,#b45309)}.plst.fut{color:var(--muted,#6b7280)}
@@ -1951,7 +1952,7 @@ function syncSel(){
 }
 function tableCard(m,p,modId,title){
   const note=hasCur(m)?`<span class="meta">· US$ 금액은 환율로 환산해 합계</span>`:'';
-  if(m.filters)return `<div class="card"><header class="fhead"><h2>${esc(title||'상세 내역')}</h2>${filterBar(m,p,modId)}${(()=>{const all=rowsFor(m,p).length,vis=viewRows(m,p,modId).length;return all>vis?`<span class="meta" style="color:var(--warn)">필터로 숨긴 ${all-vis}건</span>`:''})()}${m===MODS.ap||m===MODS.ar?`<div class="selwrap">${selBtn(modId)}<div class="selsum" data-selsum="${modId}" aria-live="polite"></div></div>`:selBtn(modId)}</header>
+  if(m.filters)return `<div class="card"><header class="fhead"><h2>${esc(title||'상세 내역')}</h2>${filterBar(m,p,modId)}${(()=>{const all=rowsFor(m,p).length,vis=viewRows(m,p,modId).length;return all>vis?`<span class="meta" style="color:var(--warn)">필터로 숨긴 ${all-vis}건</span>`:''})()}${m===MODS.ar?'<button class="btn" data-armatch="1" title="입금액으로 어떤 Factura 인지 찾기">입금 매칭</button>':''}${m===MODS.ap||m===MODS.ar?`<div class="selwrap">${selBtn(modId)}<div class="selsum" data-selsum="${modId}" aria-live="polite"></div></div>`:selBtn(modId)}</header>
     ${m.fsum?`<div id="fsum-${modId}">${fsumHTML(m,p,modId)}</div>`:''}
     <div id="tbl-${modId}">${tableHTML(m,p,modId)}</div></div>`;
   return `<div class="card"><header><h2>${esc(title||'상세 내역')}</h2>${m.monthNav?`<span class="monthbadge">${esc(p.label)}</span>`:`<span class="meta">${m.dated?esc(p.label):'전체 등록 자료'}</span>`}${note}
@@ -2009,6 +2010,32 @@ function arWeekCard(){
     ${B.filter(b=>b.rows.length).map(b=>`<tr class="click" data-arwk="${b.k}"><td><b>${esc(b.l)}</b></td><td class="dim">${b.k==='od'?`~ ${esc(b.e)}`:b.k==='later'?`${esc(b.s)} ~`:`${esc(b.s)} ~ ${esc(b.e)}`}</td><td class="n">${b.rows.length}</td><td class="n${b.k==='od'?' neg':''}">${money(b.v)}</td></tr>`).join('')||'<tr><td colspan="4" class="empty">미수 잔액이 없습니다.</td></tr>'}
     </tbody></table></div></div></div>`;
 }
+// 입금 매칭: 거래처·입금액·입금일로 미수 Factura 조합 찾기 (크레딧 기간을 감안해 만기가 입금일에 가까운 조합을 먼저)
+function arMatch(o){const cur=o.cur||'MXN',pay=o.date,terms=+o.terms||30,tol=Math.max(0,+o.tol||0),amt=+o.amt||0,nc=normName(o.cust||'');
+  const due=r=>validD(r.due)?r.due:addDs(r.date,terms),C=DB.ar.filter(r=>normName(r.customer||'')===nc&&(r.cur||'MXN')===cur&&validD(r.date)&&r.date<=pay).map(r=>({r,bal:r2(arBal(r)/rate(cur)),due:due(r)})).filter(x=>x.bal>0.005).sort((a,b)=>a.r.date<b.r.date?-1:a.r.date>b.r.date?1:0);
+  const sols=new Map(),add=L=>{const k=L.map(x=>x.r.id).sort().join(',');if(sols.has(k))return;const sum=r2(sumBy(L,x=>x.bal)),off=sumBy(L,x=>Math.abs(diffD(x.due,pay)))/L.length;sols.set(k,{L:L.slice().sort((a,b)=>a.r.date<b.r.date?-1:1),sum,diff:r2(amt-sum),off})};
+  if(!(amt>0))return {C,S:[]};
+  for(let i=0;i<C.length;i++){let t=0;for(let j=i;j<C.length;j++){t+=C[j].bal;if(Math.abs(t-amt)<=tol+0.005)add(C.slice(i,j+1));if(t>amt+tol)break}}
+  const pool=C.slice().sort((a,b)=>Math.abs(diffD(a.due,pay))-Math.abs(diffD(b.due,pay))).slice(0,32).sort((a,b)=>b.bal-a.bal),suf=[];for(let i=pool.length-1,t=0;i>=0;i--){t+=pool[i].bal;suf[i]=t}
+  let nodes=0;const pick=[];const dfs=(i,t)=>{if(++nodes>400000||sols.size>=40)return;if(Math.abs(t-amt)<=tol+0.005&&pick.length){add(pick);}if(i>=pool.length||t>amt+tol||t+suf[i]<amt-tol-0.005)return;pick.push(pool[i]);dfs(i+1,t+pool[i].bal);pick.pop();dfs(i+1,t)};dfs(0,0);
+  return {C,S:[...sols.values()].sort((a,b)=>Math.abs(a.diff)-Math.abs(b.diff)||a.off-b.off||a.L.length-b.L.length).slice(0,6)}}
+function arMatchModal(){const o=modal,custs=uniq(DB.ar.filter(r=>arBal(r)>0.5).map(r=>r.customer).filter(Boolean)).sort(),cur=o.cur||'MXN',R=o.run?arMatch(o):null,f2=v=>nf2.format(v);
+  const custCur=c=>{const L=DB.ar.filter(r=>r.customer===c&&arBal(r)>0.5);return L.filter(r=>r.cur==='USD').length>L.length/2?'USD':'MXN'};
+  const res=!R?'':!R.C.length?`<div class="empty">${esc(o.cust)}의 ${cur} 미수 Factura가 없습니다 (입금일 이전 발행분 기준)</div>`:!R.S.length?`<div class="empty">금액이 맞는 조합을 찾지 못했습니다. 허용 오차를 늘리거나 통화를 확인해 주세요. 미수 ${R.C.length}건 · 합계 ${f2(sumBy(R.C,x=>x.bal))}</div>`:
+    R.S.map((S,i)=>`<div class="armsol${i===0?' best':''}"><div class="armhd"><b>${i===0?'가장 유력':'후보 '+(i+1)}</b><span>${S.L.length}건 · 합계 ${f2(S.sum)}${Math.abs(S.diff)>0.004?` · 차이 <b class="${S.diff<0?'neg':''}">${f2(S.diff)}</b>`:' · <span class="good">금액 일치</span>'} · 만기와 평균 ${Math.round(S.off)}일 차이</span><button type="button" class="btn primary" data-armapply="${i}">이 Factura로 입금 처리</button></div>
+      <table class="tight"><thead><tr><th>Factura</th><th class="c">발행일</th><th class="c">만기 (${+o.terms||30}일)</th><th class="n">입금일과 차이</th><th>품목</th><th class="n">미수 잔액</th></tr></thead><tbody>${S.L.map(x=>{const dd=diffD(x.due,o.date);return `<tr><td>${esc(x.r.folio||'–')}</td><td class="c">${esc(x.r.date)}</td><td class="c">${esc(x.due)}</td><td class="n">${dd===0?'당일':dd>0?dd+'일 늦게':(-dd)+'일 먼저'}</td><td class="w" title="${esc(x.r.item||'')}">${esc(x.r.item||'')}</td><td class="n">${f2(x.bal)}</td></tr>`}).join('')}</tbody></table></div>`).join('');
+  return `<div class="modal-bg"><div class="modal lg" role="dialog" aria-modal="true" aria-labelledby="mt"><form data-armform="1">
+    <header><h3 id="mt">입금 매칭 · 어떤 Factura 입금인지 찾기</h3><button type="button" class="x" data-close="1" aria-label="닫기">×</button></header>
+    <div class="mbody" style="display:grid;gap:14px"><div class="form armform">
+      <label>거래처<select name="am_cust">${custs.map(c=>`<option${c===o.cust?' selected':''} data-cur="${custCur(c)}">${esc(c)}</option>`).join('')}</select></label>
+      <label>입금액<input type="text" inputmode="decimal" data-numin="money" name="am_amt" value="${o.amt?(+o.amt).toFixed(2):''}" required></label>
+      <label>통화<select name="am_cur">${['MXN','USD'].map(c=>`<option${c===cur?' selected':''}>${c}</option>`).join('')}</select></label>
+      <label>입금일<input type="date" name="am_date" value="${esc(o.date)}"></label>
+      <label>크레딧 (일)<input type="text" inputmode="numeric" name="am_terms" value="${+o.terms||30}"></label>
+      <label>허용 오차<input type="text" inputmode="decimal" name="am_tol" value="${o.tol??1}"></label>
+      <button type="submit" class="btn primary" style="align-self:end">찾기</button></div>
+    ${R&&R.S.length?`<div class="form armform"><label>입금 은행<select name="am_bank">${bankNames(cur).concat(bankNames().filter(n=>!bankNames(cur).includes(n))).map(n=>`<option${n===bankFor(cur)?' selected':''}>${esc(n)}</option>`).join('')}</select></label>${cur==='USD'?`<label>입금 환율<input type="text" inputmode="decimal" name="am_fx" value="${FX()}"></label>`:''}</div>`:''}
+    <div class="armres">${res}</div></div></form></div></div>`}
 function arWeekModal(k){
   const b=arWeeks().find(x=>x.k===k);if(!b)return '';
   const rs=b.rows.slice().sort((x,y)=>(x.due||'')<(y.due||'')?-1:(x.due||'')>(y.due||'')?1:String(x.customer).localeCompare(y.customer));
@@ -3643,6 +3670,7 @@ function renderModal(){
         <p class="note" style="margin:0">확인하면 경리자료에 출금 전표 2건(퇴직급여, 미지급금 지급)이 생기고 상태가 "지급 완료"로 바뀝니다.</p></div>
       <footer><button type="button" class="btn" data-close="1">취소</button><button type="submit" class="btn primary">지급 확인</button></footer></form></div></div>`;return}
   if(modal&&modal.type==='arwk'){host.innerHTML=arWeekModal(modal.k);return}
+  if(modal&&modal.type==='armatch'){host.innerHTML=arMatchModal();const q=host.querySelector('[name="am_amt"]');if(q&&!modal.run)q.focus();return}
   if(modal&&modal.type==='banktx'){host.innerHTML=bankTxModal(modal);return}
   if(modal&&modal.type==='stkprod'){host.innerHTML=stkProdModal(modal);return}
   if(modal&&modal.type==='delsel'){
@@ -4482,6 +4510,12 @@ document.addEventListener('click',e=>{
   if(d.cashgo){const r=DB.cash.find(x=>x.id===d.cashgo);if(r){UI.flt=UI.flt||{};UI.flt.cash={};if(r.date<UI.rs)UI.rs=r.date;if(r.date>UI.re)UI.re=r.date;saveUI();flashId=r.id;go('cash');setTimeout(()=>{const tr=document.querySelector(`tr[data-row="${r.id}"]`);if(tr)tr.scrollIntoView({block:'center'})},50)}return}
   if(d.close){closeModal();return}
   if(d.confirmdel){delRow(modal.mod,modal.id);save();closeModal();renderMain();toast('삭제했습니다');return}
+  if(d.armatch){const c=uniq(DB.ar.filter(r=>arBal(r)>0.5).map(r=>r.customer).filter(Boolean)).sort()[0]||'';modal={type:'armatch',cust:c,amt:'',cur:'',date:TODAY,terms:30,tol:1,run:0};
+    const L=DB.ar.filter(r=>r.customer===c&&arBal(r)>0.5);modal.cur=L.filter(r=>r.cur==='USD').length>L.length/2?'USD':'MXN';modal.terms=partyTerms('ar',{customer:c});renderModal();return}
+  if(d.armapply){const F=t.closest('form'),R=arMatch(modal),S=R.S[+d.armapply];if(!S)return;const bank=(F.querySelector('[name="am_bank"]')||{}).value||bankFor(modal.cur),fx=pnum((F.querySelector('[name="am_fx"]')||{}).value)||FX();
+    S.L.forEach(x=>{const r=x.r,amt=x.bal;r.received=r2((+r.received||0)+amt);const c={id:uid(),date:modal.date,bank,type:'입금',cat:'매출수입',account:'매출대금 수금',party:r.customer,memo:`${r.item||''} 대금 수금 (외상매출 연계${r.folio?' · Factura '+r.folio:''})`,cur:r.cur||'MXN',amount:amt,sub:r2(amt/(1+ivaRt(r))),iva:r.iva||'16%',factura:r.factura||'발행',uuid:r.uuid||'',link:r.id,linkMod:'ar'};
+      if(hasIvaAmt(r)&&+r.amount){const v=r2(r.ivaAmt*amt/r.amount);Object.assign(c,{ivaAmt:v,sub:r2(amt-v)})}if(c.cur==='USD')c.fx=fx;DB.cash.unshift(c)});UI.lastBank=bank;
+    const n=S.L.length,diff=S.diff;save();closeModal();renderMain();toast(`Factura ${n}건을 입금 처리하고 ${bank} 입금 전표 ${n}건을 만들었습니다${Math.abs(diff)>0.004?` · 입금액과 차이 ${nf2.format(diff)}`:''}`,{label:'경리자료 보기',fn:()=>go('cash')});return}
   if(d.delsel){const rs=selVisible(d.delsel);if(!rs.length)return;modal={type:'delsel',mod:d.delsel,ids:rs.map(r=>r.id)};renderModal();return}
   if(d.confirmdelsel){const id=modal.mod,em=MODS[id].editAs||id,n=modal.ids.length;modal.ids.forEach(x=>{delRow(em,x);selOf(id).delete(x)});save();closeModal();renderMain();toast(`${n}건을 삭제했습니다`);return}
   if(d.import){modal={type:'import',mod:d.import};renderModal();return}
@@ -4670,8 +4704,10 @@ document.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('[da
 document.addEventListener('dblclick',e=>{const h=e.target.closest&&e.target.closest('[data-cres]');if(!h)return;const [mid,k]=h.dataset.cres.split('|');if(UI.cw&&UI.cw[mid]){delete UI.cw[mid][k];cwCSS();saveUI()}});
 cwCSS();
 document.addEventListener('focusout',e=>{const t=e.target;if(!t.dataset||!t.dataset.numin||t.value.trim()==='')return;const x=pnum(t.value);if(isFinite(x))t.value=t.dataset.numin==='money'?x.toFixed(2):String(x)});
+document.addEventListener('change',e=>{const t=e.target;if(t.name!=='am_cust'||!t.form)return;const o=t.selectedOptions[0];if(o&&o.dataset.cur)t.form.querySelector('[name="am_cur"]').value=o.dataset.cur;t.form.querySelector('[name="am_terms"]').value=partyTerms('ar',{customer:t.value})});
 document.addEventListener('submit',e=>{
   const f=e.target;e.preventDefault();
+  if(f.dataset.armform){const g=k=>(f.querySelector(`[name="am_${k}"]`)||{}).value;Object.assign(modal,{cust:g('cust'),amt:pnum(g('amt'))||0,cur:g('cur'),date:validD(g('date'))?g('date'):TODAY,terms:pnum(g('terms'))||30,tol:pnum(g('tol'))||0,run:1});renderModal();return}
   if(f.dataset.reg){
     const id=f.dataset.reg, m=MODS[id], row=fixRow(m,Object.assign({id:uid()},m.blank(curPeriod()),readForm(f,m)));
     if(id==='sever'){const e=DB.employees.find(x=>x.name===row.emp);if(e&&!validD(e.leave)&&validD(row.date))e.leave=row.date}
