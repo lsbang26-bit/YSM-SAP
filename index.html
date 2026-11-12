@@ -1249,6 +1249,12 @@ const loanAccInt=r=>{let bal=r2((+r.principal||0)-(+r.repaid||0));if(!(bal>0)||!
   let tot=0,k=1,d0=pd(from);while(bal>0.005&&k<600){const d=new Date(d0);d.setMonth(d0.getMonth()+k);let nx=ds(d);if(due&&nx>due)nx=due;if(nx<=from){k++;continue}
     tot+=bal*R*diffD(from,nx);bal=r2(bal-Math.min(bal,inst));if(due&&nx>=due&&bal>0){bal=0}from=nx;k++}
   return r2(tot)};
+// 역산 이자율: 지급한 이자 ÷ (기간별 잔액 × 일수 ÷ 365). 이자 지급일 사이 기간마다 그 기간의 원금 상환을 반영한 잔액으로 계산
+function loanImplied(r){const P=(r.pays||[]).filter(x=>validD(x.date)&&+x.amount>0),I=P.filter(x=>x.kind==='이자').sort((a,b)=>a.date<b.date?-1:1),Pr=P.filter(x=>x.kind==='원금').sort((a,b)=>a.date<b.date?-1:1);
+  if(!I.length||!validD(r.date)||!(+r.principal>0))return null;
+  const balDays=(a,b)=>{let t=0,cur=a,bal=+r.principal;Pr.forEach(x=>{if(x.date<=a)bal-=+x.amount});Pr.forEach(x=>{if(x.date>a&&x.date<b){t+=Math.max(0,bal)*diffD(cur,x.date);cur=x.date;bal-=+x.amount}});return t+Math.max(0,bal)*diffD(cur,b)};
+  let prev=r.date,S=0,A=0,last=null;I.forEach(x=>{if(x.date<=prev)return;const bd=balDays(prev,x.date);if(bd>0){S+=bd;A+=+x.amount;last=+x.amount/bd*365*100}prev=x.date});
+  return S>0?{rate:A/S*365*100,last}:null}
 const loanStatus=r=>loanBal(r)<=0?'상환완료':(validD(r.due)&&r.due<TODAY?'연체':(validD(r.due)&&diffD(TODAY,r.due)<=90?'만기임박':'상환중'));
 const costTotal=r=>mx(r,'mat')+mx(r,'labor')+mx(r,'oh');
 const lineAmt=r=>(+r.qty||0)*mx(r,'price');
@@ -1588,7 +1594,7 @@ const MODS={
     blank:p=>({acq:TODAY,name:'',cat:'기계장치',cur:'MXN',cost:0,life:5})},
   loans:{name:'차입금현황',desc:'금융기관 차입금 잔액과 기간 이자',data:'loans',dated:false,
     cols:[C('date','차입일','date'),C('bank','금융기관','text',{sug:'banks'}),C('type','구분','sel',{opts:['운전자금','시설자금','기타']}),CUR,C('fx','환율 (US$ 건)','num',{noTable:1,opt:1}),C('principal','차입금액','money',{sum:1}),C('rate','이자율(%)','num'),
-      C('due','만기일','date'),C('repaid','상환액','money',{sum:1}),C('bal','잔액','money',{sum:1,calc:loanBal}),C('intPaid','지급 이자 누계','money',{sum:1,calc:r=>(r.pays||[]).filter(x=>x.kind==='이자').reduce((a,x)=>a+(+x.amount||0),0)*rate(r.cur)}),C('accInt','미지급 이자','money',{sum:1,calc:r=>loanAccInt(r)*rate(r.cur)}),C('lastPay','최근 지급일','calc',{calc:r=>(r.pays||[]).reduce((a,x)=>x.date>a?x.date:a,'')||'–'}),C('int','기간 이자','money',{sum:1,calc:(r,p)=>loanInt(r,p)}),C('st','상태','calc',{calc:loanStatus,pill:1})],
+      C('due','만기일','date'),C('repaid','상환액','money',{sum:1}),C('bal','잔액','money',{sum:1,calc:loanBal}),C('intPaid','지급 이자 누계','money',{sum:1,calc:r=>(r.pays||[]).filter(x=>x.kind==='이자').reduce((a,x)=>a+(+x.amount||0),0)*rate(r.cur)}),C('impRate','역산 이자율(%)','calc',{calc:r=>{const v=loanImplied(r);return v?v.rate.toFixed(4)+(v.last!=null&&Math.abs(v.last-v.rate)>=0.01?` (최근 ${v.last.toFixed(2)})`:''):'–'}}),C('accInt','미지급 이자','money',{sum:1,calc:r=>loanAccInt(r)*rate(r.cur)}),C('lastPay','최근 지급일','calc',{calc:r=>(r.pays||[]).reduce((a,x)=>x.date>a?x.date:a,'')||'–'}),C('int','기간 이자','money',{sum:1,calc:(r,p)=>loanInt(r,p)}),C('st','상태','calc',{calc:loanStatus,pill:1})],
     kpis:(rows,p)=>{const bal=sumBy(rows,loanBal),w=bal?sumBy(rows,r=>loanBal(r)*r.rate)/bal:0,soon=rows.filter(r=>loanStatus(r)==='만기임박');
       return[kv('차입금 잔액',money(bal),rows.length+'건'),kv('기간 이자',money(sumBy(rows,r=>loanInt(r,p))),p.days+'일분','warn'),kv('가중평균 이자율',w.toFixed(2)+'%'),kv('만기 90일 이내',soon.length+'건',plain(sumBy(soon,loanBal)),soon.length?'warn':'')]},
     trend:{l:'기간별 이자',fn:(rows,p)=>sumBy(rows,r=>loanInt(r,p)),money:1},
@@ -1924,7 +1930,7 @@ function tableCard(m,p,modId,title){
     <div id="tbl-${modId}">${tableHTML(m,p,modId)}</div></div>`;
   return `<div class="card"><header><h2>${esc(title||'상세 내역')}</h2>${m.monthNav?`<span class="monthbadge">${esc(p.label)}</span>`:`<span class="meta">${m.dated?esc(p.label):'전체 등록 자료'}</span>`}${note}
     <input class="search" id="q-${modId}" data-q="${modId}" type="search" placeholder="검색 (거래처, 품목, 이름 …)" value="${esc(UI.q)}">
-    ${(m.editAs||modId)!==impOf(UI.mod)?`<button class="btn" data-import="${m.editAs||modId}">⇪ 엑셀 일괄등록</button>`:''}${selBtn(modId)}</header>
+    ${(m.editAs||modId)!==impOf(UI.mod)?`<button class="btn" data-import="${m.editAs||modId}">⇪ 엑셀 일괄등록</button>`:''}${modId==='loans'?'<button class="btn" data-loanimp="1">역산 이자율 적용</button>':''}${selBtn(modId)}</header>
     <div id="tbl-${modId}">${tableHTML(m,p,modId)}</div></div>`;
 }
 
@@ -4433,6 +4439,10 @@ document.addEventListener('click',e=>{
   if(d.mod&&t.closest('#nav')){go(d.mod);return}
   if(d.preset){[UI.rs,UI.re]=presetRange(d.preset);saveUI();renderMain();return}
   if(d.cfx){UI.cfx=UI.cfx||{};UI.cfx[d.cfx]=!UI.cfx[d.cfx];saveUI();renderMain();return}
+  if(d.loanimp){const L=DB.loans.map(r=>[r,loanImplied(r)]).filter(([r,v])=>v&&Math.abs(v.rate-(+r.rate||0))>=0.0001);
+    if(!L.length){toast('이자 지급 내역으로 역산할 차입금이 없거나 이미 같은 이자율입니다');return}
+    if(!confirm('지급한 이자로 역산한 이자율을 적용합니다.\n\n'+L.map(([r,v])=>`${r.bank||''} ${r.date}: ${+r.rate||0}% → ${v.rate.toFixed(4)}%`).join('\n')+'\n\n계속할까요?'))return;
+    L.forEach(([r,v])=>r.rate=Math.round(v.rate*10000)/10000);save();renderMain();toast(`${L.length}건의 이자율을 역산값으로 바꿨습니다`);return}
   if(d.pmdel){const L=pmSelRows();if(!L.length)return;const emps=new Set(L.map(r=>r.emp+'#'+(r.code||''))).size;
     if(!confirm(`선택한 급여 내역 ${L.length}건 (${emps}명)을 삭제합니다. 되돌릴 수 없습니다. 계속할까요?`))return;
     const del=new Set(L);const keep=DB.payroll.filter(r=>!del.has(r));DB.payroll.length=0;keep.forEach(r=>DB.payroll.push(r));PMSEL.clear();save();renderMain();toast(`급여 내역 ${L.length}건을 삭제했습니다`);return}
