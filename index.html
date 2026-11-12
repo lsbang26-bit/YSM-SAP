@@ -1212,7 +1212,7 @@ function syncFromAR(D){
     else if(Object.keys(v).some(k=>String(o[k]??'')!==String(v[k]??''))){Object.assign(o,v);res.u++}});
   return res;
 }
-function save(){VCACHE.clear();LS.set('ysm-sap-saved-at',Date.now());bkQueue();syncFromAR(DB);if(BANKS().length)DB.cash.forEach(r=>{if(!r.bank)r.bank=bankFor(r.cur)});if(LS.set(KEY,DB))savedAt=new Date();const el=$('#saved');if(el)el.textContent=savedText()}
+function save(){VCACHE.clear();calcReset();LS.set('ysm-sap-saved-at',Date.now());bkQueue();syncFromAR(DB);if(BANKS().length)DB.cash.forEach(r=>{if(!r.bank)r.bank=bankFor(r.cur)});if(LS.set(KEY,DB))savedAt=new Date();const el=$('#saved');if(el)el.textContent=savedText()}
 function saveUI(){LS.set(UKEY,{pm:UI.pm,cfu:UI.cfu,cfx:UI.cfx,cw:UI.cw,vlang:UI.vlang,lastBank:UI.lastBank,cons:UI.cons,mod:UI.mod,dtab:UI.dtab,flt:UI.flt,rs:UI.rs,re:UI.re,pf:UI.pf,fm:UI.fm,mq:UI.mq,open:UI.open,fs:UI.fs})}
 const savedText=()=>savedAt?`저장됨 ${pad(savedAt.getHours())}:${pad(savedAt.getMinutes())}`:'이 브라우저에 자동 저장';
 
@@ -1366,8 +1366,11 @@ function fxRealized(p){
   return {gain,loss};
 }
 // open US$ amount of a document on date d: linked payments up to d count; any unlinked settled part counts from the due date
+var LINKIX=null,LINKDB=null,INCC=new Map();
+function calcReset(){LINKIX=null;if(INCC)INCC.clear()}
+function cashByLink(id){if(!LINKIX||LINKDB!==DB){LINKDB=DB;LINKIX=new Map();(DB.cash||[]).forEach(c=>{if(!c.link)return;const a=LINKIX.get(c.link);if(a)a.push(c);else LINKIX.set(c.link,[c])})}return LINKIX.get(id)||[]}
 function usdOpen(r,d,done){
-  const L=DB.cash.filter(c=>c.link===r.id), linked=sumBy(L,'amount'), upTo=sumBy(L.filter(c=>c.date<=d),'amount'), rest=Math.max(0,(+r[done]||0)-linked);
+  const L=cashByLink(r.id), linked=sumBy(L,'amount'), upTo=sumBy(L.filter(c=>c.date<=d),'amount'), rest=Math.max(0,(+r[done]||0)-linked);
   return Math.max(0,(+r.amount||0)-upTo-(validD(r.due)&&r.due<=d?rest:0));
 }
 // 외화환산이익·손실: change in the revaluation of open US$ receivables, payables and loans between the day before the period and its end
@@ -1379,7 +1382,8 @@ function fxReval(p){
   DB.loans.forEach(r=>{if(r.cur==='USD'&&r.date<=b)add(r,-1,d=>d>=r.date?Math.max(0,(+r.principal||0)-(+r.repaid||0)):0)});
   return {gain,loss};
 }
-function income(p){
+function income(p){const ik=p.start+'|'+p.end;if(INCC.has(ik))return Object.assign({},INCC.get(ik));const o=income0(p);INCC.set(ik,o);return Object.assign({},o)}
+function income0(p){
   const sales=sumBy(DB.outbound.filter(r=>inP(r,p)),lineAmt);
   const cogs=mfgCalc(p).cogs;
   const L=laborCost(SGA_DEPTS,p), wage=L.wage, social=L.social, allow=deptAllow(SGA_DEPTS,p), hq=hqAlloc(p).sga;
@@ -4306,7 +4310,7 @@ function renderNav(){
 }
 
 /* ---------- main render ---------- */
-function renderMain(){
+function renderMain(){calcReset();
   const openD=[...document.querySelectorAll('details.mgmt[open]')].map(d=>d.querySelector('summary').textContent);
   const id=UI.mod, m=MODS[id];
   if(m.singleMonth&&UI.fm.sel.length>1)UI.fm.sel=[Math.max(...UI.fm.sel)];
