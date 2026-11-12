@@ -828,7 +828,7 @@ const ACCOUNTS={
   '세금납부':['부가세 납부','법인세 납부','원천세 납부'],
   '보통예금':['계좌 이체','예금 입금','예금 인출'],
   '영업외수익':['이자수익','외환차익','임대료수익','유형자산처분이익','잡이익'],
-  '영업외비용':['외환차손','유형자산처분손실','기부금','잡손실']};
+  '영업외비용':['외환차손','유형자산처분손실','기부금','잡손실','이자비용']};
 const CATS4=['자산매입','제조비용','판관비용','차입금'];
 const PTYPES=['주급','14 급여','월급','특별'];
 const PER_PFX={'주급':'W','14 급여':'C','월급':'M','특별':'S'};
@@ -1422,8 +1422,8 @@ function income0(p){
   const intInc=sumBy(DB.cash.filter(r=>r.type==='입금'&&r.account==='이자수익'&&inP(r,p)),r=>mx(r,'amount')-ivaPart(r));
   // 경리자료 '영업외수익' 분류의 이자수익 외 계정 (외환차익·임대료수익·유형자산처분이익·잡이익)
   const othInc=sumBy(DB.cash.filter(r=>r.type==='입금'&&r.cat==='영업외수익'&&r.account!=='이자수익'&&inP(r,p)),r=>mx(r,'amount')-ivaPart(r));
-  // 경리자료 '영업외비용' 분류 (이자비용은 차입금현황에서 계산하므로 여기 없음)
-  const othExp=sumBy(DB.cash.filter(r=>r.type==='출금'&&r.cat==='영업외비용'&&inP(r,p)),r=>mx(r,'amount')-ivaPart(r));
+  // 경리자료 '영업외비용' 분류 (이자비용 계정은 차입금현황에서 이미 계산하므로 중복되지 않게 제외)
+  const othExp=sumBy(DB.cash.filter(r=>r.type==='출금'&&r.cat==='영업외비용'&&r.account!=='이자비용'&&inP(r,p)),r=>mx(r,'amount')-ivaPart(r));
   const X=fxRealized(p), V=fxReval(p), finInc=intInc+othInc+X.gain+V.gain, finExp=interest+othExp+X.loss+V.loss;
   return {sales,cogs,gross,sga,wage,social,allow,other,dep,hq,op,intInc,othInc,othExp,fxGain:X.gain,fxtGain:V.gain,finInc,interest,fxLoss:X.loss,fxtLoss:V.loss,finExp,pre:op+finInc-finExp};
 }
