@@ -212,6 +212,9 @@ table[data-seltbl="ap"] tbody tr[data-row]{cursor:pointer}
 .fparty{min-width:240px}
 .selwrap{display:flex;flex-direction:column;align-items:flex-end;gap:6px;margin-left:auto}.selsum{display:flex;flex-direction:column;align-items:flex-end;font-size:12px;line-height:1.5;font-variant-numeric:tabular-nums;color:var(--muted,#6b7280)}.selsum b{color:var(--text,#111827);font-weight:700}.selsum:empty{display:none}
 .pycols,.pyrow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr) minmax(0,1.3fr) 28px;gap:8px;align-items:center}.pycols{font-size:12px;color:var(--muted,#6b7280);margin-top:8px}.pyrow{margin-top:6px}.pyrow input[data-py=amount]{text-align:right}.pyrows{max-height:320px;overflow:auto}
+input.kdate.kdate{font-variant-numeric:tabular-nums;padding-right:30px!important;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round'%3E%3Crect x='3' y='5' width='18' height='16' rx='2'/%3E%3Cpath d='M3 10h18M8 3v4M16 3v4'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;background-size:15px 15px}
+.range input.kdate.kdate{flex:0 1 124px;width:124px;padding-left:2px}
+#kdpick{position:fixed;opacity:0;pointer-events:none;border:0;padding:0;margin:0;z-index:-1}
 .pygrid{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:12px}.modal.lg:has(.pygrid){width:min(1180px,100%)}.pygrid>.lnbox{grid-column:auto;margin:0;min-width:0}.pygrid .lnhead{flex-wrap:wrap}.pygrid .lnhead b{white-space:nowrap}.pygrid .lnhead .dim{flex:1 1 100%;order:3}@media(max-width:860px){.pygrid{grid-template-columns:1fr}}
 .plcols,.plrow{display:grid;grid-template-columns:minmax(64px,.7fr) minmax(130px,1.3fr) minmax(0,1.1fr) minmax(0,1.2fr) 28px;gap:8px;align-items:center}.plcols{font-size:12px;color:var(--muted,#6b7280);margin-top:8px}.plrow{margin-top:6px}.plrow input[data-pl=amount]{text-align:right}
 .plst{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.plst.ok{color:var(--ok,#15803d)}.plst.bad{color:var(--danger,#dc2626);font-weight:600}.plst.late{color:var(--warn,#b45309)}.plst.fut{color:var(--muted,#6b7280)}
@@ -4904,6 +4907,26 @@ cv.addEventListener('keydown',e=>{if(e.target.closest('[data-eng]')&&(e.key==='E
 document.querySelector('.brand').addEventListener('keydown',e=>{if(e.key==='Enter')showCover()});
 document.addEventListener('input',e=>{const F=e.target.form;if(F&&F.querySelector('[data-vatcalc]')&&['sub','iva','cur','ivaAmt','amount','disc','ivaRet','isrRet','qty','price'].includes(e.target.name))vatBoxSync(F)});
 document.addEventListener('change',e=>{const F=e.target.form;if(F&&F.querySelector('[data-vatcalc]')&&['iva','cur'].includes(e.target.name))vatBoxSync(F)});
+// 날짜 칸: 브라우저 언어(스페인어 등)와 상관없이 YYYY-MM-DD 로 표시. 네이티브 날짜 칸을 텍스트 칸으로 바꾸고, 달력 아이콘을 누르면 달력이 열림
+(function(){
+  const kd=el=>{if(el.type!=='date')return;const v=el.value;el.type='text';el.value=v;el.classList.add('kdate');el.setAttribute('inputmode','numeric');el.setAttribute('placeholder','YYYY-MM-DD');el.setAttribute('maxlength','10');el.setAttribute('autocomplete','off');el.removeAttribute('min');el.removeAttribute('max')};
+  const scan=n=>{if(n.nodeType!==1)return;if(n.tagName==='INPUT')kd(n);else n.querySelectorAll&&n.querySelectorAll('input[type="date"]').forEach(kd)};
+  scan(document.body);new MutationObserver(ms=>ms.forEach(m=>m.addedNodes.forEach(scan))).observe(document.body,{childList:true,subtree:true});
+  const p2=x=>String(x).padStart(2,'0'),ok=(y,m,d)=>{const t=new Date(Date.UTC(+y,+m-1,+d));return t.getUTCFullYear()==y&&t.getUTCMonth()==m-1&&t.getUTCDate()==d};
+  const norm=v=>{v=String(v||'').trim();if(!v)return v;let m;
+    if((m=v.match(/^(\d{4})[-./ ]?(\d{1,2})[-./ ]?(\d{1,2})\.?$/))&&ok(m[1],m[2],m[3]))return m[1]+'-'+p2(m[2])+'-'+p2(m[3]);
+    if((m=v.match(/^(\d{1,2})[-./](\d{1,2})[-./](\d{4})$/))&&ok(m[3],m[2],m[1]))return m[3]+'-'+p2(m[2])+'-'+p2(m[1]);
+    return v};
+  window.addEventListener('change',e=>{const t=e.target;if(t.classList&&t.classList.contains('kdate')){const n=norm(t.value);if(n!==t.value)t.value=n}},true);
+  window.addEventListener('blur',e=>{const t=e.target;if(t.classList&&t.classList.contains('kdate')){const n=norm(t.value);if(n!==t.value){t.value=n;t.dispatchEvent(new Event('input',{bubbles:true}));t.dispatchEvent(new Event('change',{bubbles:true}))}}},true);
+  let pk=null,tgt=null;
+  const open=el=>{if(!pk){pk=document.createElement('input');pk.type='date';pk.id='kdpick';pk.tabIndex=-1;pk.setAttribute('aria-hidden','true');document.body.appendChild(pk);
+      pk.addEventListener('change',()=>{if(!tgt||!pk.value)return;tgt.value=pk.value;tgt.dispatchEvent(new Event('input',{bubbles:true}));tgt.dispatchEvent(new Event('change',{bubbles:true}));tgt.focus()})}
+    const r=el.getBoundingClientRect();Object.assign(pk.style,{left:r.left+'px',top:r.top+'px',width:r.width+'px',height:r.height+'px'});tgt=el;const v=norm(el.value);pk.value=/^\d{4}-\d{2}-\d{2}$/.test(v)?v:'';
+    try{pk.showPicker()}catch(_){pk.focus();pk.click()}};
+  document.addEventListener('click',e=>{const t=e.target;if(!t.classList||!t.classList.contains('kdate'))return;const r=t.getBoundingClientRect();if(e.clientX>=r.right-32)open(t)});
+  document.addEventListener('keydown',e=>{const t=e.target;if(t.classList&&t.classList.contains('kdate')&&((e.altKey&&e.key==='ArrowDown')||e.key==='F4')){e.preventDefault();open(t)}});
+})();
 })();
 </script>
 </body>
