@@ -5006,14 +5006,20 @@ document.addEventListener('input',e=>{const F=e.target.form;if(F&&F.querySelecto
 document.addEventListener('change',e=>{const F=e.target.form;if(F&&F.querySelector('[data-vatcalc]')&&['iva','cur'].includes(e.target.name))vatBoxSync(F)});
 // 날짜 칸: 브라우저 언어(스페인어 등)와 상관없이 YYYY-MM-DD 로 표시. 네이티브 날짜 칸을 텍스트 칸으로 바꾸고, 달력 아이콘을 누르면 달력이 열림
 (function(){
-  const kd=el=>{if(el.type!=='date'||el.id==='kdpick')return;const v=el.value;el.type='text';el.value=v;el.classList.add('kdate');el.setAttribute('inputmode','numeric');el.setAttribute('placeholder','YYYY-MM-DD');el.setAttribute('maxlength','10');el.setAttribute('autocomplete','off');el.removeAttribute('min');el.removeAttribute('max')};
-  const scan=n=>{if(n.nodeType!==1)return;if(n.tagName==='INPUT')kd(n);else n.querySelectorAll&&n.querySelectorAll('input[type="date"]').forEach(kd)};
+  // 숫자 칸도 브라우저 언어(스페인어: 262,16)와 상관없이 점(.) 소수점으로 표시
+  const kn=el=>{if(el.type!=='number')return;const v=el.value;el.type='text';el.setAttribute('inputmode','decimal');el.value=v;el.classList.add('knum');['min','max','step'].forEach(a=>el.removeAttribute(a))};
+  const kd=el=>{kn(el);if(el.type!=='date'||el.id==='kdpick')return;const v=el.value;el.type='text';el.value=v;el.classList.add('kdate');el.setAttribute('inputmode','numeric');el.setAttribute('placeholder','YYYY-MM-DD');el.setAttribute('maxlength','10');el.setAttribute('autocomplete','off');el.removeAttribute('min');el.removeAttribute('max')};
+  const scan=n=>{if(n.nodeType!==1)return;if(n.tagName==='INPUT')kd(n);else n.querySelectorAll&&n.querySelectorAll('input[type="date"],input[type="number"]').forEach(kd)};
   scan(document.body);new MutationObserver(ms=>ms.forEach(m=>m.addedNodes.forEach(scan))).observe(document.body,{childList:true,subtree:true});
   const p2=x=>String(x).padStart(2,'0'),ok=(y,m,d)=>{const t=new Date(Date.UTC(+y,+m-1,+d));return t.getUTCFullYear()==y&&t.getUTCMonth()==m-1&&t.getUTCDate()==d};
   const norm=v=>{v=String(v||'').trim();if(!v)return v;let m;
     if((m=v.match(/^(\d{4})[-./ ]?(\d{1,2})[-./ ]?(\d{1,2})\.?$/))&&ok(m[1],m[2],m[3]))return m[1]+'-'+p2(m[2])+'-'+p2(m[3]);
     if((m=v.match(/^(\d{1,2})[-./](\d{1,2})[-./](\d{4})$/))&&ok(m[3],m[2],m[1]))return m[3]+'-'+p2(m[2])+'-'+p2(m[1]);
     return v};
+  const nn=v=>{v=String(v).trim().replace(/\s/g,'');if(/^-?\d+,\d{1,4}$/.test(v))return v.replace(',','.');if(/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(v))return v.replace(/,/g,'');return v};
+  window.addEventListener('submit',e=>{const F=e.target;F.querySelectorAll&&F.querySelectorAll('.knum').forEach(t=>{const v=nn(t.value);if(v!==t.value)t.value=v})},true);
+  window.addEventListener('change',e=>{const t=e.target;if(t.classList&&t.classList.contains('knum')){const v=nn(t.value);if(v!==t.value)t.value=v}},true);
+  window.addEventListener('blur',e=>{const t=e.target;if(t.classList&&t.classList.contains('knum')){const v=nn(t.value);if(v!==t.value){t.value=v;t.dispatchEvent(new Event('input',{bubbles:true}))}}},true);
   window.addEventListener('change',e=>{const t=e.target;if(t.classList&&t.classList.contains('kdate')){const n=norm(t.value);if(n!==t.value)t.value=n}},true);
   window.addEventListener('blur',e=>{const t=e.target;if(t.classList&&t.classList.contains('kdate')){const n=norm(t.value);if(n!==t.value){t.value=n;t.dispatchEvent(new Event('input',{bubbles:true}));t.dispatchEvent(new Event('change',{bubbles:true}))}}},true);
   // 달력 아이콘 위에 투명한 진짜 날짜 칸을 겹쳐 두어, 사용자가 직접 누르면 브라우저 달력이 열리도록 함
