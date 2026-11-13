@@ -258,10 +258,10 @@ body.cover-on{overflow:hidden}
 @keyframes mmBlink{50%{opacity:.35}}
 .mm-enter{justify-self:end;white-space:nowrap;flex:none;border:1px solid rgba(255,214,90,.55);background:rgba(255,194,26,.12);color:#FFE07A;border-radius:999px;padding:6px 13px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit;transition:background .2s,box-shadow .2s}
 .mm-enter:hover{background:rgba(255,194,26,.22);box-shadow:0 0 18px rgba(255,194,26,.35)}
-.mm-panel{position:absolute;z-index:2;top:74px;left:clamp(16px,2.4vw,32px);width:230px;display:grid;gap:2px;padding:10px;border:1px solid rgba(120,190,255,.28);border-radius:12px;background:rgba(8,30,80,.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.mm-panel{position:absolute;z-index:2;top:74px;left:clamp(16px,2.4vw,32px);width:250px;display:grid;gap:2px;padding:10px;border:1px solid rgba(120,190,255,.28);border-radius:12px;background:rgba(8,30,80,.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
 .mm-panel button{display:flex;justify-content:space-between;gap:10px;background:none;border:0;border-radius:8px;padding:7px 8px;color:#DCE8FF;font-family:inherit;cursor:pointer;text-align:left}
 .mm-panel button:hover{background:rgba(120,190,255,.12)}
-.mm-panel span{font-size:11.5px;color:#9EC3F5} .mm-panel b{font-size:12.5px;font-variant-numeric:tabular-nums}
+.mm-panel span{font-size:11.5px;color:#9EC3F5} .mm-panel b{font-size:12.5px;font-variant-numeric:tabular-nums}.mm-panel button{align-items:flex-start}.mm-panel .mmv{display:grid;justify-items:end;gap:1px}.mm-panel .mmv b.krw{font-size:13px}.mm-panel .mmv em{font-style:normal;font-size:11px;color:#B9D3F7;font-variant-numeric:tabular-nums}.mm-panel .mmv em i{font-style:normal;color:#7FA6DB;margin-right:6px;font-size:10px}.mm-panel .mm-fx{margin:2px 8px 0;font-size:10px;color:#7FA6DB}
 .mm-svg{display:block;width:100%;height:calc(100vh - 62px);min-height:560px;margin-top:-10px}
 .mm-svg [data-g]{transition:opacity .25s}
 .mm-svg[data-hl] [data-g]{opacity:.2}
@@ -435,7 +435,7 @@ body.cover-on{overflow:hidden}
   .mm-chat{max-height:40vh}
   .mm-voice{background:rgba(6,26,72,.85);border-radius:14px;padding:4px 8px}
   .mm-hud{grid-template-columns:1fr auto;padding-bottom:12px}
-  .mm-panel{position:relative;top:0;left:0;width:auto;margin:0 16px 12px;grid-template-columns:1fr 1fr}
+  .mm-panel{position:relative;top:0;left:0;width:auto;margin:0 16px 12px;grid-template-columns:1fr 1fr}.mm-panel button{flex-direction:column;gap:3px}.mm-panel .mmv{justify-items:start}.mm-panel .mm-fx{grid-column:1/-1}
   .mm-list{position:relative;display:grid;gap:14px;padding:4px 16px 96px}
   .mm-core-m{justify-self:center;width:150px;height:150px;border-radius:50%;border:6px solid #FFD23F;background:radial-gradient(#2E6BD8,#0A2466);color:#FFE07A;display:grid;place-content:center;gap:2px;box-shadow:0 0 30px rgba(255,210,63,.35);font-family:inherit;cursor:pointer;margin-bottom:6px}
   .mm-core-m b{font-size:30px;letter-spacing:.06em} .mm-core-m span{font-size:12px;color:#D6E6FF}
@@ -3915,7 +3915,12 @@ function coverHTML(){
   const R=rng(77), streams=Array.from({length:22},(_,i)=>{const y=60+i*42+R()*20, amp=6+R()*14, ph=R()*600;let d=`M-20 ${f1(y)}`;for(let x=0;x<=W+40;x+=80)d+=` L${x} ${f1(y+amp*Math.sin((x+ph)/170))}`;
     return `<path class="mm-stream${i%4===0?' hi':''}" d="${d}" style="--d:${(-R()*12).toFixed(1)}s;--t:${(8+R()*10).toFixed(1)}s"/>`}).join('');
   const d=TODAY_D, wd='일월화수목금토'[d.getDay()], arAll=sumBy(DB.ar,arBal), apAll=sumBy(DB.ap,apBal);
-  const info=[['현금 잔액',plain(cashBefore(addDs(TODAY,1))),'bank'],['미수 잔액',plain(arAll),'ar'],['미지급 잔액',plain(apAll),'ap'],['이번 달 매출',(()=>{try{return plain(income({start:ds(new Date(d.getFullYear(),d.getMonth(),1)),end:TODAY}).sales)}catch(e){return '–'}})(),'outbound']];
+  // 통화별 원래 금액 (MXN · US$) + 원화 환산 (MXN 환산 합계 × 원/MXN)
+  const byCur=(rows,f)=>{const o={MXN:0,USD:0};rows.forEach(r=>{const c=r.cur==='USD'?'USD':'MXN';o[c]+=f(r)||0});return o};
+  const cashC=(()=>{const o={MXN:0,USD:0},n=bankNames(),e=addDs(TODAY,1);BANKS().forEach(b=>{const c=b.cur==='USD'?'USD':'MXN';o[c]+=bankBefore(b,e)/rate(c)});DB.cash.filter(r=>r.date<e&&!n.includes(bankOf(r))).forEach(r=>{const c=r.cur==='USD'?'USD':'MXN';o[c]+=(r.type==='출금'?-1:1)*(+r.amount||0)});return o})();
+  const m0=ds(new Date(d.getFullYear(),d.getMonth(),1));
+  const info=[['현금 잔액',cashC,'bank'],['미수 잔액',byCur(DB.ar,r=>(+r.amount||0)-(+r.received||0)),'ar'],['미지급 잔액',byCur(DB.ap,r=>(+r.amount||0)-(+r.paid||0)),'ap'],['이번 달 매출',byCur(DB.outbound.filter(r=>r.date>=m0&&r.date<=TODAY),r=>(+r.qty||0)*(+r.price||0)),'outbound']];
+  const mmAmt=o=>{const mxn=o.MXN+o.USD*rate('USD');return `<b class="krw">₩${nf0.format(Math.round(mxn*KRW()))}</b><em><i>MXN</i>${nf2.format(o.MXN)}</em><em><i>US$</i>${nf2.format(o.USD)}</em>`};
   return `<style>${hl}</style>
   <div class="mm-hud">
     <div class="mm-clock"><b id="mmTime">${pad(new Date().getHours())}:${pad(new Date().getMinutes())}</b><span>${d.getFullYear()}.${pad(d.getMonth()+1)}.${pad(d.getDate())} (${wd})</span></div>
@@ -3924,7 +3929,7 @@ function coverHTML(){
   </div>
   <div id="engCmd" class="eng-cmd eng-top"><div class="mm-sbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m5 7 5 5-5 5M13 17h6"/></svg><input id="mmQ" type="text" placeholder="무엇이든 물어보세요 · 예) 이번 달 매출 얼마야?" autocomplete="off" aria-label="질문 입력"><button type="button" class="mm-send" data-mmsend="1" aria-label="보내기">↵</button></div><div id="mmRes" class="mm-res" hidden></div><div id="mmChat" class="mm-chat"${voice.chat&&voice.chat.length?'':' hidden'}>${chatHTML()}</div></div>
   <div id="mmAns" class="mm-ans" hidden></div>
-  <div class="mm-panel">${info.map(([l,v,go])=>`<button data-cgo="${go}"><span>${l}</span><b>${v}</b></button>`).join('')}</div>
+  <div class="mm-panel">${info.map(([l,v,go])=>`<button data-cgo="${go}"><span>${l}</span><div class="mmv">${mmAmt(v)}</div></button>`).join('')}<p class="mm-fx">원화 = (MXN + US$ × ${FX()}) × ${KRW()}원</p></div>
   <svg class="mm-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="업무 마인드맵">
     <defs><radialGradient id="mmCore"><stop offset="0" stop-color="#FFE27A" stop-opacity=".45"/><stop offset=".55" stop-color="#FFC21A" stop-opacity=".1"/><stop offset="1" stop-color="#FFC21A" stop-opacity="0"/></radialGradient>
       <radialGradient id="mmOrb"><stop offset="0" stop-color="#2E6BD8"/><stop offset=".7" stop-color="#123A8F"/><stop offset="1" stop-color="#0A2466"/></radialGradient>
