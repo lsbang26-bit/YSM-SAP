@@ -1148,10 +1148,8 @@ function upgradeV4(D,r){
 function seedGroup(D,r,withParentAP){
   const T=TODAY_D, rint=(a,b)=>Math.floor(a+r()*(b-a+1)), PARENT='YSM México (본사)', USA='YSM USA Inc.', QRO='YSM Querétaro S.A. de C.V.';
   D.entities=[
-    {id:uid(),code:'YSM-MX',name:PARENT,role:'지배기업',cur:'MXN',own:100,invest:0,note:'이 시스템의 자료로 자동 계산'},
-    {id:uid(),code:'YSM-US',name:USA,role:'종속기업',cur:'USD',own:100,invest:9250000,note:'미국 판매법인'},
-    {id:uid(),code:'YSM-QRO',name:QRO,role:'종속기업',cur:'MXN',own:70,invest:3800000,note:'부품 가공법인 (지분 70%)'}];
-  D.entfs=[];D.ic=[];
+    {id:uid(),code:'YSM-MX',name:PARENT,role:'지배기업',cur:'MXN',own:100,invest:0,note:'이 시스템의 자료로 자동 계산'}];
+  D.entfs=[];D.ic=[];D.entDrop1=1;if(0)
   for(let k=5;k>=0;k--){
     const me=new Date(T.getFullYear(),T.getMonth()-k+1,0), date=ds(me<=T?me:T), f=k===0?Math.min(1,T.getDate()/30):1, j=()=>0.92+r()*0.16;
     D.entfs.push({id:uid(),date,entity:USA,cur:'USD',sales:Math.round(125000*f*j()),cogs:Math.round(90000*f*j()),sga:Math.round(17000*f*j()),nonop:-Math.round(1200*f),tax:Math.round(4500*f),
@@ -4526,7 +4524,10 @@ function renderNav(){
 
 /* ---------- main render ---------- */
 let LSYNC=0;
-function renderMain(){calcReset();if(!LSYNC){LSYNC=1;try{syncLinkedCash(DB)}catch(_){}}
+// 예시 종속기업 2곳 (YSM USA · YSM Querétaro)과 그 재무자료·내부거래를 한 번만 지움
+function dropSampleEnt(D){if(D.entDrop1)return 0;D.entDrop1=1;const N=['YSM USA Inc.','YSM Querétaro S.A. de C.V.'],gone=new Set((D.entities||[]).filter(e=>N.includes(e.name)).map(e=>e.name));
+  if(!gone.size)return 1;D.entities=D.entities.filter(e=>!gone.has(e.name));D.entfs=(D.entfs||[]).filter(x=>!gone.has(x.entity));D.ic=(D.ic||[]).filter(x=>!gone.has(x.seller)&&!gone.has(x.buyer));return 1}
+function renderMain(){calcReset();if(!LSYNC){LSYNC=1;try{syncLinkedCash(DB)}catch(_){}try{if(dropSampleEnt(DB))save()}catch(_){}}
   const openD=[...document.querySelectorAll('details.mgmt[open]')].map(d=>d.querySelector('summary').textContent);
   const id=UI.mod, m=MODS[id];
   if(m.singleMonth&&UI.fm.sel.length>1)UI.fm.sel=[Math.max(...UI.fm.sel)];
