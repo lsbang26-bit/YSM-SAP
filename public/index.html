@@ -219,6 +219,7 @@ input.kdate.kdate{font-variant-numeric:tabular-nums;padding-right:30px!important
 .armform{grid-template-columns:2fr 1.3fr .8fr 1.2fr .8fr .8fr auto!important}.armsol{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:10px}.armsol.best{border-color:var(--accent,#2563eb);box-shadow:0 0 0 1px var(--accent,#2563eb) inset}.armhd{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;font-size:12.5px}.armhd>span{flex:1;color:var(--muted)}.armhd .neg{color:var(--danger,#dc2626)}.armhd .good{color:var(--ok,#15803d);font-weight:600}.armres{max-height:56vh;overflow:auto}@media(max-width:800px){.armform{grid-template-columns:1fr 1fr!important}}
 .stmt tr.fsd{cursor:pointer}.stmt tr.fsd:hover td{background:color-mix(in srgb,var(--accent,#0070f2) 8%,transparent)}.stmt tr.fsd td:first-child{text-decoration:underline dotted var(--muted);text-underline-offset:3px}.fsdhd{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;color:var(--muted)}.fsdhd b{color:var(--fg)}.fsdsum{max-width:640px}.fsdsum tr.lgsum td{font-weight:700;background:var(--surface-2)}.fsdtw{max-height:52vh;overflow:auto}
 .lggrid{display:grid;grid-template-columns:minmax(240px,290px) minmax(0,1fr);gap:14px;align-items:start}.lggrid .card{margin:0}.lgtb tr.lggrp td{background:var(--soft,#f5f6f7);font-weight:700;font-size:12px}.lgtb tr.lggrp small{font-weight:400;color:var(--muted);margin-left:6px}.lgtb tr.click{cursor:pointer}.lgtb tr.on td{background:color-mix(in srgb,var(--accent,#0070f2) 12%,transparent);font-weight:600}.lgtools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-left:auto}.lgtools select{max-width:260px}.lgtools input{width:170px}.lgled td.w{min-width:150px;max-width:240px}.lgled td.wr{white-space:normal;min-width:90px;max-width:150px;line-height:1.35}.lgled td{vertical-align:top}.lgled tr.lgopen td,.lgled tr.lgsum td{font-weight:700;background:var(--soft,#f5f6f7)}.lgled .lnk{background:none;border:0;padding:0;color:var(--accent,#0070f2);cursor:pointer;font:inherit;text-decoration:underline}.lgled tr[hidden]{display:none}@media(max-width:1100px){.lggrid{grid-template-columns:1fr}}
+.cnto{font-size:11px;color:var(--muted);white-space:nowrap}.cnto.bad{color:var(--danger,#dc2626)}.cnbox[hidden]{display:none!important}.cnbox label{display:grid;gap:4px;font-size:12px;color:var(--muted);max-width:420px}
 .pygrid{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:12px}.modal.lg:has(.pygrid){width:min(1180px,100%)}.pygrid>.lnbox{grid-column:auto;margin:0;min-width:0}.pygrid .lnhead{flex-wrap:wrap}.pygrid .lnhead b{white-space:nowrap}.pygrid .lnhead .dim{flex:1 1 100%;order:3}@media(max-width:860px){.pygrid{grid-template-columns:1fr}}
 .plcols,.plrow{display:grid;grid-template-columns:minmax(64px,.7fr) minmax(130px,1.2fr) minmax(0,1fr) minmax(0,1.5fr) 28px;gap:8px;align-items:center}.plcols{font-size:12px;color:var(--muted,#6b7280);margin-top:8px}.plrow{margin-top:6px}.plrow input[data-pl=amount]{text-align:right}
 .plst{font-size:12px;white-space:nowrap;overflow:hidden;display:flex;align-items:center;gap:6px;min-width:0}.plst em{font-style:normal;overflow:hidden;text-overflow:ellipsis;min-width:0}.plok{flex:none;margin-left:auto;border:1px solid var(--accent,#2563eb);color:var(--accent,#2563eb);background:var(--surface);border-radius:7px;padding:2px 8px;font-size:11.5px;font-weight:600;cursor:pointer}.plok:hover{background:var(--accent,#2563eb);color:#fff}.pyrow.pynew input,.pyrow.pynew select{border-color:var(--accent,#2563eb)}.plst.ok{color:var(--ok,#15803d)}.plst.bad{color:var(--danger,#dc2626);font-weight:600}.plst.late{color:var(--warn,#b45309)}.plst.fut{color:var(--muted,#6b7280)}
@@ -1247,7 +1248,14 @@ const bankBefore=(b,d)=>{const s=b.since||'';return (+b.open||0)*rate(b.cur||'MX
 const bankNat=(b,v)=>fmtCur(v/rate(b.cur||'MXN'),b.cur||'MXN');
 const syncOpenCash=()=>{SET().openCash=Math.round(bankOpenMX())};
 const apBal=r=>mx(r,'amount')-mx(r,'paid');
-const arBal=r=>mx(r,'amount')-mx(r,'received');
+// Credit Note: 음수 외상매출 건에 적용 Factura(cnFor = 같은 고객사·통화의 Factura 번호)를 고르면 그 Factura 잔액에서 빠지고, Credit Note 자체 잔액은 0
+var CNIX=null,CNDB=null;const cnNm=c=>String(c||'').trim().replace(/\s+/g,' ').toLowerCase();
+function cnIndex(){if(CNIX&&CNDB===DB)return CNIX;CNDB=DB;const T=new Map(),C=new Map(),key=(c,cur,f)=>cnNm(c)+'|'+(cur||'MXN')+'|'+String(f||'').trim().toLowerCase();
+  (DB.ar||[]).forEach(r=>{if(+r.amount>0&&String(r.folio||'').trim())T.set(key(r.customer,r.cur,r.folio),r)});
+  const tgt=new Map();(DB.ar||[]).forEach(r=>{if(!(+r.amount<0)||!String(r.cnFor||'').trim())return;const t=T.get(key(r.customer,r.cur,r.cnFor));if(!t)return;tgt.set(r.id,t);C.set(t.id,(C.get(t.id)||0)-(+r.amount||0))});
+  return CNIX={tgt,C}}
+const cnTarget=r=>cnIndex().tgt.get(r.id)||null, arCreditN=r=>cnIndex().C.get(r.id)||0;
+const arBal=r=>+r.amount<0&&cnTarget(r)?0:mx(r,'amount')-mx(r,'received')-arCreditN(r)*rate(r.cur);
 const dueStatus=(bal,due)=>bal<=0.5?'완료':(validD(due)&&due<TODAY?'연체':'진행');
 const assetEnd=r=>validD(r.acq)?ds(addD(pd(r.acq),Math.round((+r.life||1)*365)-1)):'';
 const assetPerDay=r=>mx(r,'cost')/((+r.life||1)*365);
@@ -1403,11 +1411,11 @@ function fxRealized(p){
 }
 // open US$ amount of a document on date d: linked payments up to d count; any unlinked settled part counts from the due date
 var LINKIX=null,LINKDB=null,INCC=new Map();
-function calcReset(){LINKIX=null;if(INCC)INCC.clear()}
+function calcReset(){LINKIX=null;CNIX=null;if(INCC)INCC.clear()}
 function cashByLink(id){if(!LINKIX||LINKDB!==DB){LINKDB=DB;LINKIX=new Map();(DB.cash||[]).forEach(c=>{if(!c.link)return;const a=LINKIX.get(c.link);if(a)a.push(c);else LINKIX.set(c.link,[c])})}return LINKIX.get(id)||[]}
 function usdOpen(r,d,done){
   const L=cashByLink(r.id), linked=sumBy(L,'amount'), upTo=sumBy(L.filter(c=>c.date<=d),'amount'), rest=Math.max(0,(+r[done]||0)-linked);
-  return Math.max(0,(+r.amount||0)-upTo-(validD(r.due)&&r.due<=d?rest:0));
+  return Math.max(0,(+r.amount||0)-upTo-(done==='received'?arCreditN(r):0)-(validD(r.due)&&r.due<=d?rest:0));
 }
 // 외화환산이익·손실: change in the revaluation of open US$ receivables, payables and loans between the day before the period and its end
 function fxReval(p){
@@ -1501,7 +1509,7 @@ const SUG={
 };
 const TONE={'입금':'good','출금':'bad','완료':'good','진행':'info','연체':'bad','검수완료':'good','검수대기':'warn','반품':'bad','출고완료':'good','출고예정':'info',
   '거래중':'good','중지':'','발행':'good','미발행':'warn','정산 대기':'warn','지급 완료':'good','승인':'good','신청':'info','반려':'bad','연차휴가':'acc','반차':'acc','무급휴가':'','해고 · 부당 (사유 없음)':'bad','해고 · 정당한 사유':'warn','수입(Pedimento)':'info','수입':'info','국내':'','세금납부':'warn','재직':'good','휴직':'warn','퇴사':'','일치':'good','과잉':'warn','부족':'bad','기초':'info','외주가공':'acc','입사예정':'info','상환중':'info','상환완료':'good','만기임박':'warn','원자재':'info','부자재':'',
-  '지배기업':'acc','종속기업':'info','자산매입':'info','제조비용':'warn','판관비용':'acc','차입금':'bad','매출수입':'good','보통예금':'info','영업외수익':'good','영업외비용':'warn','유동부채':'bad'};
+  '지배기업':'acc','종속기업':'info','자산매입':'info','제조비용':'warn','판관비용':'acc','차입금':'bad','매출수입':'good','보통예금':'info','영업외수익':'good','영업외비용':'warn','유동부채':'bad','CN 적용':'acc','CN 미적용':'warn'};
 const pill=v=>`<span class="pill ${TONE[v]||''}">${esc(v)}</span>`;
 const kv=(l,v,s,tone,go)=>({l,v,s,tone,go});
 
@@ -1609,8 +1617,8 @@ const MODS={
     blank:p=>({date:TODAY,vendor:'',folio:'',cat:'제조비용',dept:'',account:'원재료비',item:'',cur:'MXN',sub:0,disc:0,ivaRet:0,isrRet:0,ivaAmt:'',amount:0,iva:'16%',factura:'발행',uuid:'',paid:0,due:addDs(TODAY,30)})},
   ar:{name:'외상매출',desc:'고객사 매출 채권과 수금 현황',data:'ar',dated:true,tight:1,after:(p,id)=>arFacturaCard(p,id),side:()=>arWeekCard(),
     filters:[['customer','고객사'],['folio','Factura','text'],['item','품목','text'],['amount','합계','range'],['st','상태']],fsum:1,
-    cols:[C('date','발행일','date'),C('customer','고객사','text',{sug:'customers'}),C('folio','Factura','text',{opt:1,view:r=>String(r.folio||'').trim()?`<span class="pill good">${esc(r.folio)}</span>`:pill(r.factura||'미발행')}),C('item','품목','text',{opt:1}),C('qty','수량','num',{opt:1,keepBlank:1,view:r=>+r.qty?nfq.format(+r.qty):''}),C('price','단가','money2',{opt:1,keepBlank:1,view:r=>+r.price?fmtCur(+r.price,r.cur,1):''}),CUR,C('fx','환율 (US$ 건)','num',{noTable:1,opt:1}),SUB({sum:1}),IVAF,C('ivaAmt','부가세','money',{noTable:1,opt:1,keepBlank:1}),VATR({sum:1}),C('ivaRet','부가세 Ret','money',{sum:1,opt:1}),TOT({sum:1}),Object.assign({},FACTC_AR,{noTable:1}),Object.assign({},UUIDC,{regHide:1}),C('received','수금액','money',{sum:1}),C('terms','크레딧 텀(일)','num',{opt:1,keepBlank:1,noTable:1}),C('due','수금기일','date'),
-      C('bal','잔액','money',{sum:1,calc:arBal}),C('termsV','크레딧 텀(일)','calc',{n:1,calc:r=>validD(r.due)&&validD(r.date)?diffD(r.date,r.due):''}),C('st','상태','calc',{calc:r=>dueStatus(arBal(r),r.due),pill:1,act:{mod:'ar',label:'입금 완료',show:r=>arBal(r)>0.5}})],
+    cols:[C('date','발행일','date'),C('customer','고객사','text',{sug:'customers'}),C('folio','Factura','text',{opt:1,view:r=>(String(r.folio||'').trim()?`<span class="pill good">${esc(r.folio)}</span>`:pill(r.factura||'미발행'))+(+r.amount<0&&String(r.cnFor||'').trim()?` <span class="cnto${cnTarget(r)?'':' bad'}" title="${cnTarget(r)?'이 Factura 잔액에서 차감':'같은 고객사·통화에 이 번호의 Factura가 없습니다'}">→ ${esc(r.cnFor)}</span>`:'')+(arCreditN(r)>0.004?` <span class="cnto" title="적용된 Credit Note">CN −${nf2.format(arCreditN(r))}</span>`:'')}),C('item','품목','text',{opt:1}),C('qty','수량','num',{opt:1,keepBlank:1,view:r=>+r.qty?nfq.format(+r.qty):''}),C('price','단가','money2',{opt:1,keepBlank:1,view:r=>+r.price?fmtCur(+r.price,r.cur,1):''}),CUR,C('fx','환율 (US$ 건)','num',{noTable:1,opt:1}),SUB({sum:1}),IVAF,C('ivaAmt','부가세','money',{noTable:1,opt:1,keepBlank:1}),VATR({sum:1}),C('ivaRet','부가세 Ret','money',{sum:1,opt:1}),TOT({sum:1}),Object.assign({},FACTC_AR,{noTable:1}),Object.assign({},UUIDC,{regHide:1}),C('received','수금액','money',{sum:1}),C('terms','크레딧 텀(일)','num',{opt:1,keepBlank:1,noTable:1}),C('due','수금기일','date'),
+      C('bal','잔액','money',{sum:1,calc:arBal}),C('termsV','크레딧 텀(일)','calc',{n:1,calc:r=>validD(r.due)&&validD(r.date)?diffD(r.date,r.due):''}),C('st','상태','calc',{calc:r=>+r.amount<0?(cnTarget(r)?'CN 적용':'CN 미적용'):dueStatus(arBal(r),r.due),pill:1,act:{mod:'ar',label:'입금 완료',show:r=>arBal(r)>0.5}})],
     kpis:(rows,p)=>{const all=DB.ar.filter(r=>r.date<=p.end),od=all.filter(r=>dueStatus(arBal(r),r.due)==='연체');return[kv('기간 청구액',money(sumBy(rows,M('amount'))),rows.length+'건'),kv('기간분 미수',money(sumBy(rows,arBal))),
       kv('전체 미수 잔액',money(sumBy(all,arBal)),p.end+' 기준','warn'),kv('연체',od.length+'건',plain(sumBy(od,arBal)),od.length?'bad':'')]},
     trend:{l:'기간별 청구액',fn:rows=>sumBy(rows,M('amount')),money:1},
@@ -3100,7 +3108,7 @@ function formFields(m,r,pre){
     else if(isNum(c))inp=`<input type="text" inputmode="decimal" autocomplete="off" data-numin="${c.t}" ${a} value="${v===''||(+v===0&&(!c.keepBlank||c.k==='amount'||!(+r.sub)))?'':esc(fmtIn(c,v))}" placeholder="${c.keepBlank?'자동':c.t==='money'?'0.00':'0'}">`;
     else inp=`<input type="text" ${a} value="${esc(v)}"${c.sug?` list="dl-${c.sug}"`:''}${c.k==='name'?' required':''}>`;
     const vc=c.k==='iva'&&m.cols.some(x=>x.k==='sub')?`<div class="vatcalc" data-vatcalc aria-live="polite">${vatCalcHTML(+r.sub||0,v,r.cur,hasIvaAmt(r)?+r.ivaAmt:null,m.data==='ap'&&+r.amount?+r.amount:m.data==='ar'?(+r.sub||0)+(hasIvaAmt(r)?+r.ivaAmt:(+r.sub||0)*(IVA_RATES[v]||0))-(+r.ivaRet||0):null)}</div>`:'';
-    const ln=c.k==='price'&&(m.data==='ap'||m.data==='ar')?lnBox(r):c.k==='item'&&m.data==='ped'?pdBox(r):c.k==='repaid'&&m.data==='loans'?pyBox(r):c.k==='uuid'&&m.data==='cash'?xfBox(r):c.k==='ivaprv'&&m.data==='ped'?`<div class="vatcalc"><span>합계</span><b data-pedtot>${nf2.format(pedTotal(r))}</b></div>`:'';
+    const ln=c.k==='price'&&(m.data==='ap'||m.data==='ar')?lnBox(r):c.k==='item'&&m.data==='ped'?pdBox(r):c.k==='repaid'&&m.data==='loans'?pyBox(r):c.k==='uuid'&&m.data==='cash'?xfBox(r):c.k==='received'&&m.data==='ar'?cnBox(r):c.k==='ivaprv'&&m.data==='ped'?`<div class="vatcalc"><span>합계</span><b data-pedtot>${nf2.format(pedTotal(r))}</b></div>`:'';
     return `${sec}<label class="${c.wide?'wide':''}">${esc(c.l)}${inp}</label>${vc}${ln}`}).join('');
 }
 // 계좌간 이체: 보통예금 · 계좌 이체 · 출금이면 받는 계좌·환율·입금액을 받아 그 계좌에 입금 전표를 자동으로 만듦 (두 전표는 xfer 로 서로 연결)
@@ -3127,6 +3135,19 @@ function xfApply(F,row){const B=F.querySelector('[data-xfer]');if(!B||B.hidden||
   let P=row.xfer?DB.cash.find(x=>x.id===row.xfer):null;if(!P){P={id:uid()};DB.cash.unshift(P)}
   Object.assign(P,{date:row.date,bank:to,type:'입금',cat:'보통예금',account:'계좌 이체',party:row.bank,memo:`계좌간 이체 ← ${row.bank}`,cur:tc,amount:amt,sub:amt,iva:'면세',factura:row.factura||'발행',uuid:'',xfer:row.id});
   if(tc==='USD'&&fc!=='USD'&&fx>0)P.fx=fx;else delete P.fx;row.xfer=P.id;return ` · ${to}에 ${tc==='USD'?'US$':'MXN'} ${nf2.format(amt)} 입금 전표를 만들었습니다`}
+// Credit Note 적용 Factura: 금액이 음수일 때만 보이고, 같은 고객사·통화의 미수 Factura를 고름
+function cnBox(r){return `<div class="lnbox cnbox" data-cnbox hidden data-init="${esc(r.cnFor||'')}" data-self="${esc(r.id||'')}"><div class="lnhead"><b>Credit Note 적용 Factura</b><span class="dim" data-cnnote>고른 Factura의 잔액에서 이 금액만큼 빠집니다</span></div>
+  <label>적용 Factura<select name="cnFor"></select></label></div>`}
+function cnSync(F){const B=F&&F.querySelector('[data-cnbox]');if(!B)return;const g=k=>(F.querySelector(`[name="${k}"]`)||{}).value||'';
+  const neg=pnum(g('amount'))<0||pnum(g('sub'))<0;B.hidden=!neg;const S=B.querySelector('select'),cur=S.value||B.dataset.init||'',cu=g('cur')||'MXN',nc=cnNm(g('customer')),self=B.dataset.self;
+  const L=DB.ar.filter(x=>x.id!==self&&+x.amount>0&&String(x.folio||'').trim()&&cnNm(x.customer)===nc&&(x.cur||'MXN')===cu).sort((a,b)=>a.date<b.date?1:-1);
+  const opt=x=>{const bal=arBal(x)/rate(x.cur||'MXN');return `<option value="${esc(String(x.folio).trim())}"${String(x.folio).trim()===cur?' selected':''}>${esc(x.folio)} · ${esc(x.date)} · 잔액 ${nf2.format(bal)}</option>`};
+  S.innerHTML='<option value="">(선택 안 함)</option>'+(cur&&!L.some(x=>String(x.folio).trim()===cur)?`<option value="${esc(cur)}" selected>${esc(cur)} (찾을 수 없음)</option>`:'')+L.map(opt).join('');
+  B.querySelector('[data-cnnote]').textContent=L.length?'고른 Factura의 잔액에서 이 금액만큼 빠집니다':'이 고객사·통화의 Factura가 없습니다. 고객사와 통화를 확인해 주세요'}
+document.addEventListener('change',e=>{const t=e.target,F=t.form;if(!F||(F.dataset.reg||F.dataset.edit)!=='ar')return;if(t.name!=='cnFor')setTimeout(()=>cnSync(F))});
+document.addEventListener('input',e=>{const t=e.target,F=t.form;if(!F||(F.dataset.reg||F.dataset.edit)!=='ar')return;if(t.name!=='cnFor')setTimeout(()=>cnSync(F))});
+new MutationObserver(()=>document.querySelectorAll('form [data-cnbox]:not([data-ci])').forEach(B=>{B.dataset.ci=1;cnSync(B.closest('form'))})).observe(document.body,{childList:true,subtree:true});
+function cnApply(F,row){const S=F.querySelector('[data-cnbox] select');if(!S)return;if(+row.amount<0&&S.value)row.cnFor=S.value;else delete row.cnFor;CNIX=null}
 // 외상매입 품목 내역: 품목 · 수량 · 단가 여러 줄 → 금액(공급가액) = Σ 수량 × 단가
 const lnRow=(x={})=>`<div class="lnrow"><input type="text" data-ln="item" placeholder="품목" value="${esc(x.item||'')}"><input type="text" inputmode="decimal" data-ln="qty" placeholder="수량" value="${x.qty===''||x.qty==null?'':esc(x.qty)}"><input type="text" inputmode="decimal" data-ln="price" placeholder="단가" value="${x.price===''||x.price==null?'':esc(x.price)}"><span class="lnamt">${(+x.qty||0)*(+x.price||0)?nf2.format(r2((+x.qty||0)*(+x.price||0))):''}</span><button type="button" class="lndel" data-lndel="1" title="이 품목 삭제">✕</button></div>`;
 function lnBox(r){const L=r.lines||[];return `<div class="lnbox" data-lines><div class="lnhead"><b>품목 내역</b><span class="dim">${L.length?'':'여러 품목을 넣으면 금액이 자동 합산됩니다'}</span><button type="button" class="btn" data-lnadd="1">＋ 품목 추가</button></div>
@@ -3830,7 +3851,7 @@ function renderModal(){
     host.innerHTML=`<div class="modal-bg"><div class="modal sm" role="dialog" aria-modal="true" aria-labelledby="mt"><form data-settle="${modal.mod}">
       <header><h3 id="mt">${isAR?'입금 완료 처리':'지급 완료 처리'}</h3><button type="button" class="x" data-close="1" aria-label="닫기">×</button></header>
       <div class="mbody" style="display:grid;gap:14px"><dl class="sum" style="margin:0"><dt>${isAR?'고객사':'공급사'}</dt><dd>${esc(isAR?r.customer:r.vendor)}</dd><dt>품목</dt><dd>${esc(r.item)}</dd>
-        <dt>${isAR?'청구액':'매입액'}</dt><dd>${fmtCur(r.amount,cur)}</dd><dt>${isAR?'기수금':'기지급'}</dt><dd>${fmtCur(isAR?r.received:r.paid,cur)}</dd><dt>잔액</dt><dd><b>${fmtCur(bal,cur)}</b></dd>
+        <dt>${isAR?'청구액':'매입액'}</dt><dd>${fmtCur(r.amount,cur)}</dd><dt>${isAR?'기수금':'기지급'}</dt><dd>${fmtCur(isAR?r.received:r.paid,cur)}</dd>${isAR&&arCreditN(r)>0.004?`<dt>Credit Note</dt><dd>−${fmtCur(arCreditN(r),cur)}</dd>`:''}<dt>잔액</dt><dd><b>${fmtCur(bal,cur)}</b></dd>
         <dt>부가세 · Factura</dt><dd>${esc(r.iva||'–')} · ${esc(r.factura||'–')}</dd></dl>
         <div class="form"><label>${isAR?'입금일':'지급일'}<input type="date" name="sdate" value="${TODAY}" required></label>
           <label>${isAR?'입금 은행':'지급 은행'}<select name="sbank" required>${(bankNames(cur).length?bankNames(cur):bankNames()).map(n=>`<option${n===bankFor(cur)?' selected':''}>${esc(n)}</option>`).join('')}</select></label>
@@ -4862,7 +4883,7 @@ document.addEventListener('submit',e=>{
   if(f.dataset.reg){
     const id=f.dataset.reg, m=MODS[id], row=fixRow(m,Object.assign({id:uid()},m.blank(curPeriod()),readForm(f,m)));
     if(id==='sever'){const e=DB.employees.find(x=>x.name===row.emp);if(e&&!validD(e.leave)&&validD(row.date))e.leave=row.date}
-    DB[m.data].unshift(row);const xm=id==='cash'?xfApply(f,row):'';flashId=row.id;UI.q='';save();if(modal&&modal.type==='add')closeModal();renderMain();
+    DB[m.data].unshift(row);if(id==='ar')cnApply(f,row);const xm=id==='cash'?xfApply(f,row):'';flashId=row.id;UI.q='';save();if(modal&&modal.type==='add')closeModal();renderMain();
     const tr=document.querySelector(`[data-row="${row.id}"]`);
     toast((tr?'등록했습니다':'등록했습니다. 선택한 기간 밖의 날짜라 지금 목록에는 보이지 않습니다')+xm);
     return;
@@ -4917,7 +4938,7 @@ document.addEventListener('submit',e=>{
     // 외상매입·외상매출의 품목(적요)·거래처·분류를 고치면 연결된 경리자료 지급·수금 전표도 같이 바뀜
     if(m.data==='ap'||m.data==='ar'){const isAR=m.data==='ar',it=String(r.item||''),pty=String((isAR?r.customer:r.vendor)||'');DB.cash.filter(c=>c.link===r.id&&c.linkMod===m.data).forEach(c=>{
       if(it!==oldItem){const mm=String(c.memo||'');c.memo=oldItem&&mm.startsWith(oldItem)?it+mm.slice(oldItem.length):`${it} ${isAR?'대금 수금':'대금 지급'} (외상${isAR?'매출':'매입'} 연계${r.folio?' · Factura '+r.folio:''})`}
-      if(pty!==oldParty&&(!c.party||c.party===oldParty))c.party=pty;if(!isAR&&r.cat)c.cat=r.cat==='차입금'?'판관비용':r.cat})}if(m.data==='cash'){if(r.xfer&&!xfOn(f)){const P=DB.cash.find(x=>x.id===r.xfer);if(P&&P.xfer===r.id)Object.assign(P,{date:r.date})}else xfApply(f,r)}
+      if(pty!==oldParty&&(!c.party||c.party===oldParty))c.party=pty;if(!isAR&&r.cat)c.cat=r.cat==='차입금'?'판관비용':r.cat})}if(m.data==='ar')cnApply(f,r);if(m.data==='cash'){if(r.xfer&&!xfOn(f)){const P=DB.cash.find(x=>x.id===r.xfer);if(P&&P.xfer===r.id)Object.assign(P,{date:r.date})}else xfApply(f,r)}
     // 입금·지급 완료로 만든 경리자료 전표를 고치면 연결된 외상매출 수금액·외상매입 지급액도 같은 차이만큼 바뀜 (대쉬보드·잔액 자동 반영)
     if(m.data==='cash'&&r.link&&(r.linkMod==='ar'||r.linkMod==='ap')){const L=DB[r.linkMod].find(x=>x.id===r.link),k=r.linkMod==='ar'?'received':'paid';if(L)L[k]=Math.max(0,r2((+L[k]||0)+(+r.amount||0)-oldAmt))}flashId=r.id;save();closeModal();renderMain();toast('수정했습니다');
   }
