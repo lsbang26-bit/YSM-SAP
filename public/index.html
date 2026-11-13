@@ -220,6 +220,7 @@ input.kdate.kdate{font-variant-numeric:tabular-nums;padding-right:30px!important
 .stmt tr.fsd{cursor:pointer}.stmt tr.fsd:hover td{background:color-mix(in srgb,var(--accent,#0070f2) 8%,transparent)}.stmt tr.fsd td:first-child{text-decoration:underline dotted var(--muted);text-underline-offset:3px}.fsdhd{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;color:var(--muted)}.fsdhd b{color:var(--fg)}.fsdsum{max-width:640px}.fsdsum tr.lgsum td{font-weight:700;background:var(--surface-2)}.fsdtw{max-height:52vh;overflow:auto}
 .lggrid{display:grid;grid-template-columns:minmax(240px,290px) minmax(0,1fr);gap:14px;align-items:start}.lggrid .card{margin:0}.lgtb tr.lggrp td{background:var(--soft,#f5f6f7);font-weight:700;font-size:12px}.lgtb tr.lggrp small{font-weight:400;color:var(--muted);margin-left:6px}.lgtb tr.click{cursor:pointer}.lgtb tr.on td{background:color-mix(in srgb,var(--accent,#0070f2) 12%,transparent);font-weight:600}.lgtools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-left:auto}.lgtools select{max-width:260px}.lgtools input{width:170px}.lgled td.w{min-width:150px;max-width:240px}.lgled td.wr{white-space:normal;min-width:90px;max-width:150px;line-height:1.35}.lgled td{vertical-align:top}.lgled tr.lgopen td,.lgled tr.lgsum td{font-weight:700;background:var(--soft,#f5f6f7)}.lgled .lnk{background:none;border:0;padding:0;color:var(--accent,#0070f2);cursor:pointer;font:inherit;text-decoration:underline}.lgled tr[hidden]{display:none}@media(max-width:1100px){.lggrid{grid-template-columns:1fr}}
 .cnto{font-size:11px;color:var(--muted);white-space:nowrap}.cnto.bad{color:var(--danger,#dc2626)}.cnbox[hidden]{display:none!important}.cnbox label{display:grid;gap:4px;font-size:12px;color:var(--muted)}.cnbox .cngrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}@media(max-width:700px){.cnbox .cngrid{grid-template-columns:1fr}}
+.stpill{background:none;border:0;padding:0;cursor:pointer;font:inherit}.stpill:hover .pill{outline:2px solid color-mix(in srgb,var(--accent,#0070f2) 35%,transparent);outline-offset:1px}
 .pygrid{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:12px}.modal.lg:has(.pygrid){width:min(1180px,100%)}.pygrid>.lnbox{grid-column:auto;margin:0;min-width:0}.pygrid .lnhead{flex-wrap:wrap}.pygrid .lnhead b{white-space:nowrap}.pygrid .lnhead .dim{flex:1 1 100%;order:3}@media(max-width:860px){.pygrid{grid-template-columns:1fr}}
 .plcols,.plrow{display:grid;grid-template-columns:minmax(64px,.7fr) minmax(130px,1.2fr) minmax(0,1fr) minmax(0,1.5fr) 28px;gap:8px;align-items:center}.plcols{font-size:12px;color:var(--muted,#6b7280);margin-top:8px}.plrow{margin-top:6px}.plrow input[data-pl=amount]{text-align:right}
 .plst{font-size:12px;white-space:nowrap;overflow:hidden;display:flex;align-items:center;gap:6px;min-width:0}.plst em{font-style:normal;overflow:hidden;text-overflow:ellipsis;min-width:0}.plok{flex:none;margin-left:auto;border:1px solid var(--accent,#2563eb);color:var(--accent,#2563eb);background:var(--surface);border-radius:7px;padding:2px 8px;font-size:11.5px;font-weight:600;cursor:pointer}.plok:hover{background:var(--accent,#2563eb);color:#fff}.pyrow.pynew input,.pyrow.pynew select{border-color:var(--accent,#2563eb)}.plst.ok{color:var(--ok,#15803d)}.plst.bad{color:var(--danger,#dc2626);font-weight:600}.plst.late{color:var(--warn,#b45309)}.plst.fut{color:var(--muted,#6b7280)}
@@ -1851,7 +1852,7 @@ const isMoney=c=>c.t==='money'||c.t==='money2';
 function cellView(c,r,p,m){
   if(c.view)return c.view(r);
   let v=c.calc?c.calc(r,p):r[c.k];
-  if(c.pill){const h=pill(v);return c.act&&c.act.show(r)?`<span class="stcell">${h}<button class="act settle" data-settle="${r.id}" data-m="${c.act.mod}">${c.act.label}</button></span>`:h}
+  if(c.pill){const h0=pill(v),h=c.act?`<button type="button" class="stpill" data-stedit="${r.id}" data-m="${c.act.mod}" title="눌러서 ${c.act.mod==='ar'?'입금':'지급'} 내역 보기·취소">${h0}</button>`:h0;return c.act&&c.act.show(r)?`<span class="stcell">${h}<button class="act settle" data-settle="${r.id}" data-m="${c.act.mod}">${c.act.label}</button></span>`:h}
   if(c.calc&&v==='')return '<span class="dim">–</span>';
   if(c.cls==='cur')return v==='USD'?'<span class="cur-tag usd">US$</span>':'<span class="dim">MXN</span>';
   if(isMoney(c)){
@@ -3854,6 +3855,15 @@ function renderModal(){
         ${B.map((b,i)=>`<label>${esc(b.name)}${b.cur==='USD'?' (US$)':' (MXN)'}<input type="number" step="any" name="open${i}" value="${+b.open||0}" required></label>`).join('')}</div></div>
       <footer><button type="button" class="btn" data-close="1">취소</button><button type="submit" class="btn primary">저장</button></footer></form></div></div>`;
     host.querySelector('[name="open0"]').focus();return}
+  if(modal&&modal.type==='stedit'){const mod=modal.mod,isAR=mod==='ar',r=DB[mod].find(x=>x.id===modal.id);if(!r){modal=null;host.innerHTML='';return}
+    const cur=r.cur||'MXN',k=isAR?'received':'paid',L=DB.cash.filter(c=>c.link===r.id&&c.linkMod===mod).sort((a,b)=>a.date<b.date?-1:1),lk=r2(sumBy(L,c=>+c.amount||0)),rest=r2((+r[k]||0)-lk),bal=(isAR?arBal(r):apBal(r))/rate(cur),W=isAR?'입금':'지급';
+    host.innerHTML=`<div class="modal-bg"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mt"><header><h3 id="mt">${W} 상태 · ${esc(r.folio?'Factura '+r.folio:r.item||'')}</h3><button type="button" class="x" data-close="1" aria-label="닫기">×</button></header>
+      <div class="mbody" style="display:grid;gap:12px"><dl class="sum" style="margin:0"><dt>${isAR?'고객사':'공급사'}</dt><dd>${esc(isAR?r.customer:r.vendor)}</dd><dt>${isAR?'청구액':'매입액'}</dt><dd>${fmtCur(r.amount,cur)}</dd><dt>${isAR?'수금액':'지급액'}</dt><dd>${fmtCur(+r[k]||0,cur)}</dd>${isAR&&arCreditN(r)>0.004?`<dt>Credit Note</dt><dd>−${fmtCur(arCreditN(r),cur)}</dd>`:''}<dt>잔액</dt><dd><b>${fmtCur(bal,cur)}</b></dd></dl>
+      ${L.length||rest>0.004?`<p class="note" style="margin:0">잘못 처리한 ${W}을 골라 취소하면 ${isAR?'수금액':'지급액'}이 줄고, 연결된 경리자료 전표도 함께 지워집니다. 날짜·금액·은행만 고치려면 경리자료에서 그 전표를 수정하세요 (자동 반영).</p>
+      <table class="tight"><thead><tr><th class="c">취소</th><th class="c">${W}일</th><th>은행</th><th class="n">금액</th><th></th></tr></thead><tbody>
+      ${L.map(c=>`<tr><td class="c"><input type="checkbox" data-stc value="${c.id}" aria-label="이 ${W} 취소"></td><td class="c">${esc(c.date)}</td><td>${esc(bankOf(c))}</td><td class="n">${fmtCur(+c.amount||0,c.cur||cur)}</td><td><button type="button" class="act" data-cashgo="${c.id}">경리자료에서 보기</button></td></tr>`).join('')}
+      ${rest>0.004?`<tr><td class="c"><input type="checkbox" data-strest value="${rest}" aria-label="연결 전표 없는 금액 취소"></td><td class="c">–</td><td class="muted">연결된 경리자료 전표 없음</td><td class="n">${fmtCur(rest,cur)}</td><td></td></tr>`:''}</tbody></table>`:`<p class="note" style="margin:0">아직 ${W} 처리된 금액이 없습니다.</p>`}</div>
+      <footer>${bal>0.5?`<button type="button" class="btn" data-stpay="1">${W} 완료 처리</button>`:''}${L.length||rest>0.004?`<button type="button" class="btn danger" data-stundo="1">선택한 ${W} 취소</button>`:''}<button type="button" class="btn primary" data-close="1">닫기</button></footer></div></div>`;return}
   if(modal&&modal.type==='settle'){
     const isAR=modal.mod==='ar', r=DB[modal.mod].find(x=>x.id===modal.id);if(!r){modal=null;host.innerHTML='';return}
     const cur=r.cur||'MXN', bal=Math.round((isAR?arBal(r):apBal(r))/rate(cur)*100)/100;
@@ -4685,7 +4695,7 @@ document.addEventListener('click',e=>{
   if(d.ledgo){const [mod,id]=d.ledgo.split('|'),M=MODS[mod],R=M&&M.data&&(DB[M.data]||[]).find(x=>x.id===id);if(!M)return;
     if(R&&M.dated){UI.flt=UI.flt||{};UI.flt[mod]={};const dt=R.date;if(validD(dt)){if(dt<UI.rs)UI.rs=dt;if(dt>UI.re)UI.re=dt}saveUI()}
     flashId=id;go(mod);setTimeout(()=>{const tr=document.querySelector(`[data-row="${id}"]`);if(tr)tr.scrollIntoView({block:'center'})},50);return}
-  if(d.cashgo){const r=DB.cash.find(x=>x.id===d.cashgo);if(r){UI.flt=UI.flt||{};UI.flt.cash={};if(r.date<UI.rs)UI.rs=r.date;if(r.date>UI.re)UI.re=r.date;saveUI();flashId=r.id;go('cash');setTimeout(()=>{const tr=document.querySelector(`tr[data-row="${r.id}"]`);if(tr)tr.scrollIntoView({block:'center'})},50)}return}
+  if(d.cashgo){if(modal)closeModal();const r=DB.cash.find(x=>x.id===d.cashgo);if(r){UI.flt=UI.flt||{};UI.flt.cash={};if(r.date<UI.rs)UI.rs=r.date;if(r.date>UI.re)UI.re=r.date;saveUI();flashId=r.id;go('cash');setTimeout(()=>{const tr=document.querySelector(`tr[data-row="${r.id}"]`);if(tr)tr.scrollIntoView({block:'center'})},50)}return}
   if(d.close){closeModal();return}
   if(d.confirmdel){delRow(modal.mod,modal.id);save();closeModal();renderMain();toast('삭제했습니다');return}
   if(d.armatch){const c=uniq(DB.ar.filter(r=>arBal(r)>0.5).map(r=>r.customer).filter(Boolean)).sort()[0]||'';modal={type:'armatch',cust:c,amt:'',cur:'',date:TODAY,terms:30,tol:1,run:0};
@@ -4714,6 +4724,12 @@ document.addEventListener('click',e=>{
   if(d.cfdiok){cfdiSaveRow(+d.cfdiok);renderCfdi();return}
   if(d.docfdi){if(cfdi&&cfdi.rows.some(x=>!x.err&&!x.dup))doCfdi();return}
   if(d.settle){modal={type:'settle',mod:d.m,id:d.settle};renderModal();return}
+  if(d.stedit){modal={type:'stedit',mod:d.m,id:d.stedit};renderModal();return}
+  if(d.stundo){const mod=modal.mod,isAR=mod==='ar',r=DB[mod].find(x=>x.id===modal.id);if(!r)return;const F=t.closest('.modal'),ids=[...F.querySelectorAll('[data-stc]:checked')].map(x=>x.value),rest=F.querySelector('[data-strest]:checked');
+    if(!ids.length&&!rest){toast('취소할 '+(isAR?'입금':'지급')+'을 골라 주세요');return}
+    ids.forEach(id=>delRow('cash',id));const k=isAR?'received':'paid';if(rest)r[k]=Math.max(0,r2((+r[k]||0)-(+rest.value||0)));
+    flashId=r.id;save();closeModal();renderMain();toast(`${isAR?'입금':'지급'} ${ids.length+(rest?1:0)}건을 취소했습니다${ids.length?` · 연결된 경리자료 전표 ${ids.length}건도 지웠습니다`:''}`);return}
+  if(d.stpay){modal={type:'settle',mod:modal.mod,id:modal.id};renderModal();return}
   if(d.bankopenm){modal={type:'bankopen'};renderModal();return}
   if(d.addrow){modal={type:'add',mod:d.addrow};renderModal();return}
   if(d.pdetail){modal={type:'emp',id:d.pdetail};renderModal();return}
@@ -4942,8 +4958,12 @@ document.addEventListener('submit',e=>{
     if(hasIvaAmt(r)&&((v.sub!=null&&+v.sub!==+r.sub)||(v.iva!=null&&v.iva!==r.iva)||(v.cur!=null&&v.cur!==r.cur)||(v.disc!=null&&+v.disc!==+(r.disc||0)))){delete r.ivaAmt;
       // 부가세 칸을 직접 고치지 않았으면 새 금액·세율로 다시 계산 (화면에 남은 예전 부가세로 덮어쓰지 않음)
       if(v.ivaAmt!=null&&v.ivaAmt!==''&&r2(+v.ivaAmt)===r2(+f.dataset.ivaOrig||0))v.ivaAmt=''}
-    const oldAmt=+r.amount||0,oldItem=String(r.item||''),oldParty=String(r.vendor||r.customer||'');
+    const oldAmt=+r.amount||0,oldItem=String(r.item||''),oldParty=String(r.vendor||r.customer||''),rk=m.data==='ar'?'received':m.data==='ap'?'paid':'',oldRec=rk?+r[rk]||0:0;
     Object.assign(r,v);fixRow(m,r);
+    // 수정 화면에서 수금액·지급액을 고치면 연결된 경리자료 전표도 맞춤: 0 이면 전표 삭제, 늘거나 줄면 마지막 전표 금액을 그만큼 조정
+    if(rk&&Math.abs((+r[rk]||0)-oldRec)>0.004){const nv=+r[rk]||0,L=DB.cash.filter(c=>c.link===r.id&&c.linkMod===m.data).sort((a,b)=>a.date<b.date?-1:1);
+      if(nv<=0.004)L.forEach(c=>{const j=DB.cash.indexOf(c);if(j>=0)DB.cash.splice(j,1)});
+      else if(L.length){const c=L[L.length-1],na=r2((+c.amount||0)+nv-oldRec);if(na<=0.004){const j=DB.cash.indexOf(c);if(j>=0)DB.cash.splice(j,1)}else{const k2=(+c.amount||0)?na/(+c.amount):1;c.amount=na;if(+c.sub)c.sub=r2(c.sub*k2);if(hasIvaAmt(c))c.ivaAmt=r2(c.ivaAmt*k2)}}}
     // 외상매입·외상매출의 품목(적요)·거래처·분류를 고치면 연결된 경리자료 지급·수금 전표도 같이 바뀜
     if(m.data==='ap'||m.data==='ar'){const isAR=m.data==='ar',it=String(r.item||''),pty=String((isAR?r.customer:r.vendor)||'');DB.cash.filter(c=>c.link===r.id&&c.linkMod===m.data).forEach(c=>{
       if(it!==oldItem){const mm=String(c.memo||'');c.memo=oldItem&&mm.startsWith(oldItem)?it+mm.slice(oldItem.length):`${it} ${isAR?'대금 수금':'대금 지급'} (외상${isAR?'매출':'매입'} 연계${r.folio?' · Factura '+r.folio:''})`}
