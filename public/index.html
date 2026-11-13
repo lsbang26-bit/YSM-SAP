@@ -217,6 +217,7 @@ input.kdate.kdate{font-variant-numeric:tabular-nums;padding-right:30px!important
 #kdpick{position:fixed;left:-9999px;top:-9999px;opacity:0;pointer-events:none;border:0;padding:0;margin:0;z-index:10000;cursor:pointer;background:none}#kdpick::-webkit-calendar-picker-indicator{position:absolute;inset:0;width:100%;height:100%;cursor:pointer}
 .xferbox[hidden]{display:none!important}.xferbox .xfgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.xferbox label{display:grid;gap:4px;font-size:12px;color:var(--muted)}.xferbox label[hidden]{display:none}@media(max-width:700px){.xferbox .xfgrid{grid-template-columns:1fr}}
 .armform{grid-template-columns:2fr 1.3fr .8fr 1.2fr .8fr .8fr auto!important}.armsol{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:10px}.armsol.best{border-color:var(--accent,#2563eb);box-shadow:0 0 0 1px var(--accent,#2563eb) inset}.armhd{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;font-size:12.5px}.armhd>span{flex:1;color:var(--muted)}.armhd .neg{color:var(--danger,#dc2626)}.armhd .good{color:var(--ok,#15803d);font-weight:600}.armres{max-height:56vh;overflow:auto}@media(max-width:800px){.armform{grid-template-columns:1fr 1fr!important}}
+.lggrid{display:grid;grid-template-columns:minmax(240px,290px) minmax(0,1fr);gap:14px;align-items:start}.lggrid .card{margin:0}.lgtb tr.lggrp td{background:var(--soft,#f5f6f7);font-weight:700;font-size:12px}.lgtb tr.lggrp small{font-weight:400;color:var(--muted);margin-left:6px}.lgtb tr.click{cursor:pointer}.lgtb tr.on td{background:color-mix(in srgb,var(--accent,#0070f2) 12%,transparent);font-weight:600}.lgtools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-left:auto}.lgtools select{max-width:260px}.lgtools input{width:170px}.lgled td.w{min-width:150px;max-width:240px}.lgled td.wr{white-space:normal;min-width:90px;max-width:150px;line-height:1.35}.lgled td{vertical-align:top}.lgled tr.lgopen td,.lgled tr.lgsum td{font-weight:700;background:var(--soft,#f5f6f7)}.lgled .lnk{background:none;border:0;padding:0;color:var(--accent,#0070f2);cursor:pointer;font:inherit;text-decoration:underline}.lgled tr[hidden]{display:none}@media(max-width:1100px){.lggrid{grid-template-columns:1fr}}
 .pygrid{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:12px}.modal.lg:has(.pygrid){width:min(1180px,100%)}.pygrid>.lnbox{grid-column:auto;margin:0;min-width:0}.pygrid .lnhead{flex-wrap:wrap}.pygrid .lnhead b{white-space:nowrap}.pygrid .lnhead .dim{flex:1 1 100%;order:3}@media(max-width:860px){.pygrid{grid-template-columns:1fr}}
 .plcols,.plrow{display:grid;grid-template-columns:minmax(64px,.7fr) minmax(130px,1.2fr) minmax(0,1fr) minmax(0,1.5fr) 28px;gap:8px;align-items:center}.plcols{font-size:12px;color:var(--muted,#6b7280);margin-top:8px}.plrow{margin-top:6px}.plrow input[data-pl=amount]{text-align:right}
 .plst{font-size:12px;white-space:nowrap;overflow:hidden;display:flex;align-items:center;gap:6px;min-width:0}.plst em{font-style:normal;overflow:hidden;text-overflow:ellipsis;min-width:0}.plok{flex:none;margin-left:auto;border:1px solid var(--accent,#2563eb);color:var(--accent,#2563eb);background:var(--surface);border-radius:7px;padding:2px 8px;font-size:11.5px;font-weight:600;cursor:pointer}.plok:hover{background:var(--accent,#2563eb);color:#fff}.pyrow.pynew input,.pyrow.pynew select{border-color:var(--accent,#2563eb)}.plst.ok{color:var(--ok,#15803d)}.plst.bad{color:var(--danger,#dc2626);font-weight:600}.plst.late{color:var(--warn,#b45309)}.plst.fut{color:var(--muted,#6b7280)}
@@ -1508,7 +1509,7 @@ const kv=(l,v,s,tone,go)=>({l,v,s,tone,go});
 /* ---------- modules ---------- */
 const GROUPS=[
   {id:'dash',name:'대쉬보드',items:['dash-all']},
-  {id:'fin',name:'재무회계',items:['bank','cf','cash','fs','fscons','hq','ap','ar','assets','loans','stock','mfg','cost','ped']},
+  {id:'fin',name:'재무회계',items:['bank','cf','cash','fs','fscons','ledger','hq','ap','ar','assets','loans','stock','mfg','cost','ped']},
   {id:'tax',name:'세금',items:['cit','vat']},
   {id:'in',name:'입고관리',items:['vendors','inbound']},
   {id:'prod',name:'생산관리',items:['production']},
@@ -1631,6 +1632,7 @@ const MODS={
     trend:{l:'기간별 이자',fn:(rows,p)=>sumBy(rows,r=>loanInt(r,p)),money:1},
     blank:p=>({date:TODAY,bank:'',type:'운전자금',cur:'MXN',principal:0,rate:10,due:addDs(TODAY,365),repaid:0})},
   fscons:{importMod:'entfs',name:'재무제표(연결)',desc:'연결 대상 법인을 골라 내부거래와 투자·자본을 상계한 연결 손익계산서와 재무상태표',page:consPage,toolbar:()=>fsToolbar('선택한 기간을 합산해 연결합니다')},
+  ledger:{name:'계정원장',desc:'경리자료·외상매입·외상매출·출고·입고·급여·자산·차입금·본사관리비 데이터를 계정과목별로 모아 차변·대변·잔액을 보여줍니다. 재무제표가 쓰는 출처와 같아 잔액이 재무제표와 맞습니다',page:()=>ledgerPage(),toolbar:()=>fsToolbar('선택한 기간을 이어서 한 원장으로 보여줍니다')},
   stock:{name:'재고조사',desc:'월별 재고 수불과 실사 차이',data:'stock',dated:true,noImport:1,monthNav:1,singleMonth:1,toolbar:monthToolbar,page:p=>stockPage(p),dash:p=>kpiHTML(stockKpis(stockRoll(monthOf(minS(p.end,TODAY))))),
     cols:[C('date','조사일','date'),C('kind','구분','sel',{opts:['원자재','부자재','제품'],pill:1}),C('item','품목','text',{sug:'stockitems',wide:1}),C('unit','단위','sel',{opts:['kg','EA','m','L','롤']}),C('qty','실사수량','num')],
     blank:p=>({date:TODAY,kind:'원자재',item:'',unit:'kg',qty:0})},
@@ -2194,6 +2196,99 @@ function bankPage(){
 }
 
 /* ---------- financial statements ---------- */
+/* ---------- 계정원장: 각 화면의 데이터를 계정과목별로 모음. 재무제표가 계산에 쓰는 출처와 같은 곳에서 가져와 잔액이 재무제표와 맞도록 함 ---------- */
+const LG_GROUPS=['자산','부채','매출','제조원가','판매비와관리비','영업외수익','영업외비용','세금납부','기타'],LG_BAL=['자산','부채'];
+const LG_NOTE={'기타':'재무제표 계산에 들어가지 않는 경리자료 계정','세금납부':'경리자료에서 낸 세금 (부가세·법인세 화면과 대조)'};
+const LG_SRC={cash:'경리자료',ap:'외상매입',ar:'외상매출',outbound:'출고현황',inbound:'입고현황',payroll:'급여지급내역',payables:'미지급금',hq:'본사관리비용',assets:'자산현황',loans:'차입금현황',fs:'재무제표'};
+function ledgerData(p){
+  const A=new Map(),acc=(g,n,side)=>{const id=g+'|'+n;let a=A.get(id);if(!a){a={id,g,n,side:side||(['자산','제조원가','판매비와관리비','영업외비용','세금납부'].includes(g)?'dr':'cr'),open:0,E:[]};A.set(id,a)}return a};
+  const post=(a,date,dr,cr,o)=>{if(!validD(date)||date>p.end||(Math.abs(dr)<0.005&&Math.abs(cr)<0.005))return;if(date<p.start){if(LG_BAL.includes(a.g)&&!a.fixOpen)a.open+=a.side==='dr'?dr-cr:cr-dr;return}a.E.push(Object.assign({date,dr,cr},o))};
+  const fc=(r,v)=>r.cur==='USD'?'US$ '+nf2.format(v):'';
+  const MS=[];for(let d=new Date(+p.start.slice(0,4),+p.start.slice(5,7)-1,1);ds(d)<=p.end;d=new Date(d.getFullYear(),d.getMonth()+1,1))MS.push({start:maxS(ds(d),p.start),end:minS(ds(new Date(d.getFullYear(),d.getMonth()+1,0)),p.end)});
+  const MFGX=new Set([...MFG_EXP,'노무비']),SGAX=new Set(ACCOUNTS['판관비용'].filter(a=>!['급여','외상매입금 지급','미지급금 지급','본사관리비 지급'].includes(a)));
+  const expAcc=r=>{const k=r.account||'';return r.cat==='제조비용'&&MFGX.has(k)?acc('제조원가',k,'dr'):r.cat==='판관비용'&&SGAX.has(k)?acc('판매비와관리비',k,'dr'):null};
+  const apIds=new Set(DB.ap.map(r=>r.id)),arIds=new Set(DB.ar.map(r=>r.id)),cix=new Map(DB.cash.map(c=>[c.id,c]));
+  // 보통예금: 설정의 계좌는 기초 잔액(설정 기초 + 그 전 거래)을 그대로 씀
+  BANKS().forEach(b=>{const a=acc('자산','보통예금 · '+b.name,'dr');a.fixOpen=1;a.open=bankBefore(b,p.start);a.cur=b.cur||'MXN'});
+  const ctrOf=c=>{const out=c.type==='출금',k=c.account||'',cat=c.cat||'',A0=mx(c,'amount'),net=A0-ivaPart(c);
+    if(c.link&&c.linkMod==='ap'&&apIds.has(c.link))return {a:acc('부채','외상매입금','cr'),l:'외상매입금',v:A0};
+    if(c.link&&c.linkMod==='ar'&&arIds.has(c.link))return {a:acc('자산','외상매출금','dr'),l:'외상매출금',v:A0};
+    if(cat==='보통예금'){const P=c.xfer&&cix.get(c.xfer);return {l:P?'보통예금 · '+bankOf(P):k||'보통예금'}}
+    if(cat==='유동부채')return {a:acc('부채',k||'단기차입금','cr'),l:k||'단기차입금',v:A0};
+    if(cat==='세금납부')return {a:acc('세금납부',k||'세금 납부','dr'),l:k||'세금 납부',v:A0};
+    if(k==='이자비용')return {l:'이자비용 (차입금현황의 기간 이자로 계산)'};
+    if(cat==='차입금')return {l:'차입금 (차입금현황 기준)'};
+    if(k==='외상매입금 지급')return {l:'외상매입금 (연계된 외상매입 없음)'};
+    if(k==='매출대금 수금')return {l:'외상매출금 (연계된 외상매출 없음)'};
+    if(k==='이자수익'&&!out)return {a:acc('영업외수익','이자수익','cr'),l:'이자수익',v:net};
+    if(cat==='영업외수익'&&!out)return {a:acc('영업외수익',k||'기타','cr'),l:k,v:net};
+    if(cat==='영업외비용'&&out)return {a:acc('영업외비용',k||'기타','dr'),l:k,v:net};
+    if(out){const e=expAcc(c);if(e)return {a:e,l:k,v:expAmt(c)}}
+    if(cat==='자산매입')return {l:k+' (유형자산은 자산현황 기준)'};
+    if(k==='급여')return {l:'급여 (급여지급내역 기준 비용)'};
+    if(k==='미지급금 지급')return {l:'미지급금 (미지급금 화면)'};
+    if(k==='본사관리비 지급')return {l:'본사관리비 (본사관리비용 화면 기준 비용)'};
+    return {a:acc('기타',(k||cat||'미분류')+(out?' · 출금':' · 입금'),out?'dr':'cr'),l:k||cat||'미분류',v:A0}};
+  DB.cash.forEach(c=>{if(!validD(c.date)||c.date>p.end)return;const out=c.type==='출금',A0=mx(c,'amount'),bn=bankOf(c),X=ctrOf(c),o={src:'cash',rid:c.id,memo:c.memo||'',party:c.party||'',fc:fc(c,+c.amount||0)};
+    const ba=acc('자산','보통예금 · '+bn,'dr');if(!(ba.fixOpen&&c.date<p.start))post(ba,c.date,out?0:A0,out?A0:0,Object.assign({ctr:X.l},o));
+    if(X.a)post(X.a,c.date,out?X.v:0,out?0:X.v,Object.assign({ctr:'보통예금 · '+bn},o))});
+  // 외상매입: 외상매입금 대변 + 비용 계정 차변 (재무제표에 들어가는 계정만). 지급 처리됐지만 연계 전표가 없는 금액은 발생일에 차변
+  DB.ap.forEach(r=>{if(!validD(r.date))return;const A0=mx(r,'amount'),k=r.account||'',e=expAcc(r),o={src:'ap',rid:r.id,memo:r.item||'',party:r.vendor||'',fc:fc(r,+r.amount||0)};
+    post(acc('부채','외상매입금','cr'),r.date,0,A0,Object.assign({ctr:!k?'–':e?k:['원재료비','부재료비'].includes(k)?k+' (재무제표는 입고현황 기준)':r.cat==='자산매입'?k+' (자산현황 기준)':k+' (재무제표 미반영)'},o));
+    if(e)post(e,r.date,expAmt(r),0,Object.assign({ctr:'외상매입금'},o));
+    const rest=mx(r,'paid')-sumBy(cashByLink(r.id).filter(c=>c.linkMod==='ap'),c=>mx(c,'amount'));
+    if(rest>0.005)post(acc('부채','외상매입금','cr'),r.date,rest,0,Object.assign({},o,{memo:(r.item||'')+' · 지급 처리분 (연계된 경리자료 없음)',ctr:'–',fc:''}))});
+  DB.ar.forEach(r=>{if(!validD(r.date))return;const A0=mx(r,'amount'),o={src:'ar',rid:r.id,memo:r.item||'',party:r.customer||'',fc:fc(r,+r.amount||0)};
+    post(acc('자산','외상매출금','dr'),r.date,A0,0,Object.assign({ctr:'매출·부가세'+(r.folio?' (Factura '+r.folio+')':'')},o));
+    const rest=mx(r,'received')-sumBy(cashByLink(r.id).filter(c=>c.linkMod==='ar'),c=>mx(c,'amount'));
+    if(rest>0.005)post(acc('자산','외상매출금','dr'),r.date,0,rest,Object.assign({},o,{memo:(r.item||'')+' · 수금 처리분 (연계된 경리자료 없음)',ctr:'–',fc:''}))});
+  // 손익 계정: 기간 안의 것만
+  DB.outbound.forEach(r=>{if(!inP(r,p))return;const v=lineAmt(r);post(acc('매출','제품매출','cr'),r.date,0,v,{src:'outbound',rid:r.id,memo:[r.pn,r.item].filter(Boolean).join(' ')+(+r.qty?` · ${nf0.format(+r.qty)}${r.unit?' '+r.unit:''}`:''),party:r.customer||'',ctr:'외상매출금',fc:fc(r,(+r.qty||0)*(+r.price||0))})});
+  DB.inbound.forEach(r=>{if(!inP(r,p)||r.check==='반품')return;const v=lineAmt(r)+(+r.igi||0)+(+r.dta||0);post(acc('제조원가','원·부재료 매입 (입고)','dr'),r.date,v,0,{src:'inbound',rid:r.id,memo:(r.kind?r.kind+' · ':'')+(r.item||''),party:r.vendor||'',ctr:'외상매입금 (외상매입 화면)',fc:fc(r,(+r.qty||0)*(+r.price||0))})});
+  const PG=new Map();(DB.payroll||[]).forEach(r=>{if(!inP(r,p))return;const g=MFG_DEPTS.includes(r.dept)?'제조원가':SGA_DEPTS.includes(r.dept)?'판매비와관리비':null;if(!g)return;const k=g+'|'+r.date+'|'+(r.ptype||'')+'|'+(r.per||'');let x=PG.get(k);if(!x)PG.set(k,x={g,date:r.date,lab:[r.ptype,r.per].filter(Boolean).join(' ')||'급여',n:new Set(),w:0,s:0});x.n.add(r.emp);x.w+=payGross(r);x.s+=payER(r)});
+  PG.forEach(x=>{const o={src:'payroll',memo:`${x.lab} · ${x.n.size}명`,party:'',ctr:'급여지급내역'};post(acc(x.g,x.g==='제조원가'?'노무비 (급여)':'급여','dr'),x.date,x.w,0,o);post(acc(x.g,'법정복리비','dr'),x.date,x.s,0,Object.assign({},o,{ctr:'회사부담금 (IMSS·RCV·Infonavit·ISN)'}))});
+  (DB.hq||[]).forEach(r=>{if(!inP(r,p))return;const t=mx(r,'amount'),m=t*hqPct(r),o={src:'hq',rid:r.id,memo:r.item||'',party:r.payee||'',ctr:'본사 청구',fc:fc(r,+r.amount||0)};post(acc('제조원가','본사관리비 배부','dr'),r.date,m,0,o);post(acc('판매비와관리비','본사관리비 배부','dr'),r.date,t-m,0,o)});
+  // 월별 계산분: 감가상각 · 제수당 · 이자
+  const fa=acc('자산','감가상각누계액','cr');fa.fixOpen=1;fa.open=sumBy(DB.assets.filter(r=>validD(r.acq)&&r.acq<p.start),r=>assetAccum(r,addDs(p.start,-1)));
+  DB.assets.forEach(r=>{if(validD(r.acq))post(acc('자산','유형자산 · '+(r.cat||'기타'),'dr'),r.acq,mx(r,'cost'),0,{src:'assets',rid:r.id,memo:r.name||'',party:'',ctr:'자산 취득',fc:fc(r,+r.cost||0)})});
+  MS.forEach(m=>{const G=new Map();DB.assets.forEach(r=>{const v=assetDep(r,m);if(!(v>0.005))return;const mf=isMfgAsset(r),k=(mf?1:0)+'|'+(r.cat||'기타');let x=G.get(k);if(!x)G.set(k,x={mf,cat:r.cat||'기타',n:0,v:0});x.n++;x.v+=v});
+    G.forEach(x=>{const o={src:'assets',memo:`${x.cat} 감가상각 · ${x.n}건 (${m.start.slice(0,7)})`,party:''};post(acc(x.mf?'제조원가':'판매비와관리비','감가상각비','dr'),m.end,x.v,0,Object.assign({ctr:'감가상각누계액'},o));post(fa,m.end,0,x.v,Object.assign({ctr:'감가상각비'+(x.mf?' (제조)':' (판관)')},o))});
+    const am=deptAllow(MFG_DEPTS,m),as=deptAllow(SGA_DEPTS,m),o={src:'payables',memo:`Aguinaldo·휴가수당·저축기금 적립 (${m.start.slice(0,7)})`,party:'',ctr:'미지급 인건비'};post(acc('제조원가','제수당','dr'),m.end,am,0,o);post(acc('판매비와관리비','제수당','dr'),m.end,as,0,o);
+    DB.loans.forEach(r=>{const v=loanInt(r,m);post(acc('영업외비용','이자비용','dr'),m.end,v,0,{src:'loans',rid:r.id,memo:`${r.type||''} 이자 ${+r.rate||0}% (${m.start.slice(0,7)})`,party:r.bank||'',ctr:'차입금 이자',fc:r.cur==='USD'&&v?'US$ '+nf2.format(v/rate('USD')):''})})});
+  // 차입금: 차입 대변, 원금 상환 차변 (상환 내역이 없는 상환액은 차입일에)
+  DB.loans.forEach(r=>{if(!validD(r.date))return;const a=acc('부채','차입금','cr'),o={src:'loans',rid:r.id,party:r.bank||''},R=rate(r.cur);post(a,r.date,0,mx(r,'principal'),Object.assign({memo:(r.type||'')+' 차입',ctr:'보통예금',fc:fc(r,+r.principal||0)},o));
+    const P=(r.pays||[]).filter(x=>x.kind==='원금'&&validD(x.date));P.forEach(x=>post(a,x.date,(+x.amount||0)*R,0,Object.assign({memo:'원금 상환',ctr:'보통예금',fc:fc(r,+x.amount||0)},o)));
+    const rest=mx(r,'repaid')-sumBy(P,x=>(+x.amount||0)*R);if(rest>0.005)post(a,r.date,rest,0,Object.assign({memo:'상환액 (상환 내역 없음)',ctr:'–'},o))});
+  // 환율 차이: 재무제표와 같은 기간 합계
+  const X=fxRealized(p),V=fxReval(p),fo=m=>({src:'fs',memo:m+' · 기간 합계',party:'',ctr:'US$ 외상매출·외상매입·차입금'});
+  post(acc('영업외수익','외환차익','cr'),p.end,0,X.gain,fo('US$ 외상 결제 환율 차이'));post(acc('영업외비용','외환차손','dr'),p.end,X.loss,0,fo('US$ 외상 결제 환율 차이'));
+  post(acc('영업외수익','외화환산이익','cr'),p.end,0,V.gain,fo('기말 환율 평가'));post(acc('영업외비용','외화환산손실','dr'),p.end,V.loss,0,fo('기말 환율 평가'));
+  A.forEach(a=>{a.E.sort((x,y)=>x.date<y.date?-1:x.date>y.date?1:0);let b=a.open;a.E.forEach(e=>{b+=a.side==='dr'?e.dr-e.cr:e.cr-e.dr;e.bal=b});a.dr=sumBy(a.E,'dr');a.cr=sumBy(a.E,'cr');a.end=b});
+  return A;
+}
+const ledgerList=A=>[...A.values()].filter(a=>a.E.length||Math.abs(a.open)>0.005).sort((a,b)=>LG_GROUPS.indexOf(a.g)-LG_GROUPS.indexOf(b.g)||(a.n<b.n?-1:a.n>b.n?1:0));
+function ledgerPeriod(){const P=fsPeriods();return P.length?{start:P[0].start,end:P[P.length-1].end,label:P.length>1?P[0].label+' ~ '+P[P.length-1].label:P[0].label}:null}
+let LGC=null;
+function ledgerPage(){const p=ledgerPeriod();if(!p)return '<div class="content"><div class="empty">위에서 기간을 골라 주세요</div></div>';
+  const A=ledgerData(p),L=ledgerList(A),S=UI.led||(UI.led={acc:''}),a=A.get(S.acc)&&(A.get(S.acc).E.length||A.get(S.acc).open)?A.get(S.acc):L[0];LGC={p,a};
+  const m=v=>Math.abs(v)<0.005?'':money(v),mz=v=>money(Math.abs(v)<0.005?0:v);
+  const tb=LG_GROUPS.map(g=>{const G=L.filter(x=>x.g===g);if(!G.length)return '';return `<tr class="lggrp"><td colspan="2">${esc(g)}${LG_NOTE[g]?` <small>${esc(LG_NOTE[g])}</small>`:''}</td></tr>`+G.map(x=>`<tr class="click${a&&x.id===a.id?' on':''}" data-ledacc="${esc(x.id)}" title="${esc(`${LG_BAL.includes(g)?'기초 '+mz(x.open)+' · ':''}차변 ${mz(x.dr)} · 대변 ${mz(x.cr)}`)}"><td>${esc(x.n)}</td><td class="n${x.end<-0.005?' neg':''}">${mz(x.end)}</td></tr>`).join('')}).join('');
+  const opts=LG_GROUPS.map(g=>{const G=L.filter(x=>x.g===g);return G.length?`<optgroup label="${esc(g)}">${G.map(x=>`<option value="${esc(x.id)}"${a&&x.id===a.id?' selected':''}>${esc(x.n)}</option>`).join('')}</optgroup>`:''}).join('');
+  const MAX=2000,E=a?a.E:[],show=E.length>MAX?E.slice(-MAX):E,bal=a&&LG_BAL.includes(a.g);
+  const rows=show.map(e=>`<tr data-lgs="${esc((e.memo+' '+e.party+' '+e.ctr+' '+e.date).toLowerCase())}"><td class="c mono">${esc(e.date)}</td><td>${e.rid&&e.src!=='fs'?`<button class="lnk" data-ledgo="${e.src}|${esc(e.rid)}" title="${esc(LG_SRC[e.src]||'')}에서 이 거래 보기">${esc(LG_SRC[e.src]||e.src)}</button>`:`<span class="muted">${esc(LG_SRC[e.src]||e.src)}</span>`}</td><td class="w" title="${esc(e.memo)}">${esc(e.memo||'–')}</td><td class="wr">${esc(e.party||'')}</td><td class="wr">${esc(e.ctr||'')}</td><td class="n muted">${esc(e.fc||'')}</td><td class="n">${m(e.dr)}</td><td class="n">${m(e.cr)}</td><td class="n${e.bal<-0.005?' neg':''}">${mz(e.bal)}</td></tr>`).join('');
+  return `<div class="content"><div class="lggrid">
+    <div class="card"><header><h2>계정별 잔액</h2><span class="meta">${esc(p.label)} · 계정을 누르면 원장이 열립니다</span></header><div class="tw"><table class="tight lgtb"><thead><tr><th>계정과목</th><th class="n">${p.end>TODAY?'기간 말':'잔액'}</th></tr></thead><tbody>${tb||'<tr><td colspan="2" class="empty">이 기간의 거래가 없습니다</td></tr>'}</tbody></table></div></div>
+    <div class="card"><header><h2>${a?esc(a.n):'계정원장'}</h2><span class="meta">${a?esc(a.g)+' · '+esc(p.start)+' ~ '+esc(p.end)+' · '+E.length+'건'+(LG_BAL.includes(a.g)?' · 기초 '+mz(a.open):'')+' · 차변 '+mz(a.dr)+' · 대변 '+mz(a.cr):''}</span>
+      <div class="lgtools"><select class="fsel" data-ledsel="1" aria-label="계정과목">${opts}</select> <input type="search" class="fsel" data-ledq="1" placeholder="적요·거래처 검색" aria-label="원장 검색"><button class="btn" data-ledxls="1">⇩ 엑셀</button></div></header>
+      <div class="tw"><table class="tight lgled"><thead><tr><th class="c">날짜</th><th>출처</th><th>적요</th><th>거래처</th><th>상대계정</th><th class="n">외화</th><th class="n">차변</th><th class="n">대변</th><th class="n">잔액</th></tr></thead><tbody>
+      ${bal?`<tr class="lgopen"><td class="c mono">${esc(p.start)}</td><td colspan="7">기초 잔액</td><td class="n">${mz(a.open)}</td></tr>`:''}
+      ${E.length>MAX?`<tr><td colspan="9" class="muted">거래가 많아 최근 ${MAX}건만 보여줍니다. 엑셀에는 전부 들어갑니다</td></tr>`:''}${rows||'<tr><td colspan="9" class="empty">이 기간의 거래가 없습니다</td></tr>'}</tbody>
+      ${a?`<tfoot><tr class="lgsum"><td colspan="6">합계${bal?' · 기말 잔액':' · 기간 합계'}</td><td class="n">${mz(a.dr)}</td><td class="n">${mz(a.cr)}</td><td class="n">${mz(a.end)}</td></tr></tfoot>`:''}</table></div></div>
+  </div></div>`}
+function ledgerXls(){if(!LGC||!LGC.a)return;if(!window.XLSX){toast('엑셀 기능을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.');return}
+  const {p,a}=LGC,r=v=>Math.round(v*100)/100,H=['날짜','출처','적요','거래처','상대계정','외화','차변','대변','잔액'],bal=LG_BAL.includes(a.g);
+  const aoa=[['계정원장 · '+a.n+' ('+a.g+')'],[p.start+' ~ '+p.end],[],H].concat(bal?[[p.start,'','기초 잔액','','','','','',r(a.open)]]:[],a.E.map(e=>[e.date,LG_SRC[e.src]||e.src,e.memo||'',e.party||'',e.ctr||'',e.fc||'',e.dr?r(e.dr):'',e.cr?r(e.cr):'',r(e.bal)]),[['','','합계','','','',r(a.dr),r(a.cr),r(a.end)]]);
+  try{const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=[12,12,40,24,26,14,14,14,14].map(w=>({wch:w}));const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'계정원장');XLSX.writeFile(wb,`계정원장_${a.n.replace(/[\\/:*?"<>|]/g,'_')}_${p.start}_${p.end}.xlsx`)}catch(e){toast('엑셀 파일을 만들지 못했습니다')}}
 function fsToolbar(hint){
   const F=UI.fs, years=[];for(let y=THIS_YEAR-4;y<=THIS_YEAR;y++)years.push(y);
   const opts=F.unit==='year'?years.map(y=>[y,y+'년']):F.unit==='quarter'?[1,2,3,4].map(q=>[q,q+'분기']):Array.from({length:12},(_,i)=>[i+1,(i+1)+'월']);
@@ -4514,6 +4609,11 @@ document.addEventListener('click',e=>{
   if(d.stkgo&&modal&&modal.type==='stkprod'){const x=modal;UI.rs=x.s;UI.re=x.e;UI.flt=UI.flt||{};UI.flt.production={};saveUI();closeModal();go('production');return}
   if(d.pdetail){modal={type:'emp',id:d.pdetail};renderModal();return}
   if(d.bankgo){const rs=DB.cash.filter(r=>bankOf(r)===d.bankgo);UI.flt=UI.flt||{};UI.flt.cash={bank:d.bankgo};rs.forEach(r=>{if(r.date<UI.rs)UI.rs=r.date;if(r.date>UI.re)UI.re=r.date});saveUI();go('cash');return}
+  if(d.ledacc){UI.led={acc:d.ledacc};renderMain();return}
+  if(d.ledxls){ledgerXls();return}
+  if(d.ledgo){const [mod,id]=d.ledgo.split('|'),M=MODS[mod],R=M&&M.data&&(DB[M.data]||[]).find(x=>x.id===id);if(!M)return;
+    if(R&&M.dated){UI.flt=UI.flt||{};UI.flt[mod]={};const dt=R.date;if(validD(dt)){if(dt<UI.rs)UI.rs=dt;if(dt>UI.re)UI.re=dt}saveUI()}
+    flashId=id;go(mod);setTimeout(()=>{const tr=document.querySelector(`[data-row="${id}"]`);if(tr)tr.scrollIntoView({block:'center'})},50);return}
   if(d.cashgo){const r=DB.cash.find(x=>x.id===d.cashgo);if(r){UI.flt=UI.flt||{};UI.flt.cash={};if(r.date<UI.rs)UI.rs=r.date;if(r.date>UI.re)UI.re=r.date;saveUI();flashId=r.id;go('cash');setTimeout(()=>{const tr=document.querySelector(`tr[data-row="${r.id}"]`);if(tr)tr.scrollIntoView({block:'center'})},50)}return}
   if(d.close){closeModal();return}
   if(d.confirmdel){delRow(modal.mod,modal.id);save();closeModal();renderMain();toast('삭제했습니다');return}
@@ -4712,6 +4812,8 @@ document.addEventListener('dblclick',e=>{const h=e.target.closest&&e.target.clos
 cwCSS();
 document.addEventListener('focusout',e=>{const t=e.target;if(!t.dataset||!t.dataset.numin||t.value.trim()==='')return;const x=pnum(t.value);if(isFinite(x))t.value=t.dataset.numin==='money'?x.toFixed(2):String(x)});
 document.addEventListener('change',e=>{const t=e.target;if(t.name!=='am_cust'||!t.form)return;const o=t.selectedOptions[0];if(o&&o.dataset.cur)t.form.querySelector('[name="am_cur"]').value=o.dataset.cur;t.form.querySelector('[name="am_terms"]').value=partyTerms('ar',{customer:t.value})});
+document.addEventListener('change',e=>{const t=e.target;if(t.dataset&&t.dataset.ledsel){UI.led={acc:t.value};renderMain()}});
+document.addEventListener('input',e=>{const t=e.target;if(!t.dataset||!t.dataset.ledq)return;const q=t.value.trim().toLowerCase();document.querySelectorAll('.lgled tbody tr[data-lgs]').forEach(tr=>{tr.hidden=!!q&&!tr.dataset.lgs.includes(q)})});
 document.addEventListener('submit',e=>{
   const f=e.target;e.preventDefault();
   if(f.dataset.armform){const g=k=>(f.querySelector(`[name="am_${k}"]`)||{}).value;Object.assign(modal,{cust:g('cust'),amt:pnum(g('amt'))||0,cur:g('cur'),date:validD(g('date'))?g('date'):TODAY,terms:pnum(g('terms'))||30,tol:pnum(g('tol'))||0,run:1});renderModal();return}
@@ -4790,7 +4892,7 @@ const TXT_SEL='h1,.desc,.card>header h2,.card>header .meta,.sechead h2,.kpi .l,t
 const LAY_COLORS=['#0070F2','#107E3E','#E9730C','#BB0000','#5D36FF','#1D2D3E','#6A6D70'];
 function layApplyGroups(){
   const base=LAY_BASE.groups.map(g=>({id:g.id,name:LAY.gnames[g.id]||g.name,items:g.items.slice()}));
-  base.forEach(g=>{const o=LAY.iorder[g.id];if(Array.isArray(o)){const known=o.filter(i=>g.items.includes(i));g.items=known.concat(g.items.filter(i=>!known.includes(i)))}});
+  base.forEach(g=>{const o=LAY.iorder[g.id];if(Array.isArray(o)){const known=o.filter(i=>g.items.includes(i)),out=known.slice();g.items.forEach((i,j)=>{if(known.includes(i))return;const k=j?out.indexOf(g.items[j-1]):-1;out.splice(k+1,0,i)});g.items=out}});
   const go=(LAY.gorder||[]).filter(id=>base.some(g=>g.id===id));
   // a group added after the order was saved goes right after the group it follows in the base order
   if(go.length)base.forEach((g,i)=>{if(!go.includes(g.id)){const k=i?go.indexOf(base[i-1].id):-1;go.splice(k+1,0,g.id)}});
