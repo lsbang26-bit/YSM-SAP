@@ -1227,7 +1227,7 @@ function syncFromAR(D){
   return res;
 }
 function save(){VCACHE.clear();calcReset();syncLinkedCash(DB);LS.set('ysm-sap-saved-at',Date.now());bkQueue();syncFromAR(DB);if(BANKS().length)DB.cash.forEach(r=>{if(!r.bank)r.bank=bankFor(r.cur)});if(LS.set(KEY,DB))savedAt=new Date();const el=$('#saved');if(el)el.textContent=savedText()}
-function saveUI(){LS.set(UKEY,{pm:UI.pm,cfu:UI.cfu,cfx:UI.cfx,cw:UI.cw,vlang:UI.vlang,lastBank:UI.lastBank,cons:UI.cons,mod:UI.mod,dtab:UI.dtab,flt:UI.flt,rs:UI.rs,re:UI.re,pf:UI.pf,fm:UI.fm,mq:UI.mq,open:UI.open,fs:UI.fs})}
+function saveUI(){LS.set(UKEY,{pm:UI.pm,cfu:UI.cfu,cfc:UI.cfc,cfx:UI.cfx,cw:UI.cw,vlang:UI.vlang,lastBank:UI.lastBank,cons:UI.cons,mod:UI.mod,dtab:UI.dtab,flt:UI.flt,rs:UI.rs,re:UI.re,pf:UI.pf,fm:UI.fm,mq:UI.mq,open:UI.open,fs:UI.fs})}
 const savedText=()=>savedAt?`저장됨 ${pad(savedAt.getHours())}:${pad(savedAt.getMinutes())}`:'이 브라우저에 자동 저장';
 
 /* ---------- domain calcs (all return MXN) ---------- */
@@ -2074,37 +2074,40 @@ const CF_SKIP_ACC=['외상매입금 지급','매출대금 수금','차입금 입
 // 경리자료에서 반복되는 입출금 찾기: 같은 구분·계정과목·거래처가 최근 6개월 중 2개월 이상, 최근 2개월 안에 있으면 반복으로 봄
 function cfRecurring(){const from=ds(new Date(pd(TODAY).getFullYear(),pd(TODAY).getMonth()-6,1)),recent=ds(new Date(pd(TODAY).getFullYear(),pd(TODAY).getMonth()-1,1)),G=new Map();
   DB.cash.forEach(r=>{if(!validD(r.date)||r.date<from||r.date>TODAY||r.link||r.cat==='보통예금'||r.cat==='유동부채'||CF_SKIP_ACC.includes(r.account)||!(+r.amount))return;
-    const key=[r.type,r.account||'',String(r.party||'').trim()].join('|');if(!G.has(key))G.set(key,[]);G.get(key).push(r)});
+    const key=[r.type,r.account||'',String(r.party||'').trim(),r.cur==='USD'?'USD':'MXN'].join('|');if(!G.has(key))G.set(key,[]);G.get(key).push(r)});
   const out=[];G.forEach((rs,key)=>{rs.sort((a,b)=>a.date<b.date?-1:1);const months=[...new Set(rs.map(r=>r.date.slice(0,7)))];if(months.length<2||rs[rs.length-1].date<recent)return;
-    const [type,account,party]=key.split('|'),perM=rs.length/months.length,weekly=perM>=3;
+    const [type,account,party,cur]=key.split('|'),perM=rs.length/months.length,weekly=perM>=3;
     if(weekly){const last=rs.slice(-4),amt=sumBy(last,M('amount'))/last.length,wd=[0,1,2,3,4,5,6].map(i=>rs.filter(r=>pd(r.date).getDay()===i).length),dow=wd.indexOf(Math.max(...wd));
-      out.push({type,account,party,weekly:1,amt,dow,last:rs[rs.length-1].date,n:rs.length,months:months.length})}
+      out.push({type,account,party,cur,weekly:1,amt,dow,last:rs[rs.length-1].date,n:rs.length,months:months.length})}
     else{const lm=months.slice(-3),amt=lm.reduce((a,m)=>a+sumBy(rs.filter(r=>r.date.slice(0,7)===m),M('amount')),0)/lm.length,days=rs.map(r=>+r.date.slice(8)).sort((a,b)=>a-b),dom=days[Math.floor(days.length/2)];
-      out.push({type,account,party,weekly:0,amt,dom,last:rs[rs.length-1].date,n:rs.length,months:months.length})}});
+      out.push({type,account,party,cur,weekly:0,amt,dom,last:rs[rs.length-1].date,n:rs.length,months:months.length})}});
   return out}
 function cfPeriods(u){const t=pd(TODAY),P=[];
   if(u==='week'){const m=addD(t,-((t.getDay()+6)%7));for(let i=0;i<13;i++){const a=addD(m,i*7),b=addD(a,6);P.push({start:ds(a),end:ds(b),label:`${pad(a.getMonth()+1)}/${pad(a.getDate())}~${pad(b.getMonth()+1)}/${pad(b.getDate())}`})}}
   else for(let i=0;i<6;i++){const a=new Date(t.getFullYear(),t.getMonth()+i,1),b=new Date(t.getFullYear(),t.getMonth()+i+1,0);P.push({start:ds(a),end:ds(b),label:`${a.getFullYear()}-${pad(a.getMonth()+1)}`})}
   return P}
-function cfData(){const u=UI.cfu==='month'?'month':'week',P=cfPeriods(u),end=P[P.length-1].end,items=[];
-  const open=sumBy(BANKS(),b=>bankBefore(b,addDs(TODAY,1)));
+const cfCur=()=>['MXN','USD'].includes(UI.cfc)?UI.cfc:'all';
+function cfData(){const u=UI.cfu==='month'?'month':'week',P=cfPeriods(u),end=P[P.length-1].end,C=cfCur(),cu=c=>c==='USD'?'USD':'MXN';let items=[];
+  // 통화 보기: 전체는 MXN 환산, MXN · US$ 는 그 통화의 계좌·거래만 원래 통화로
+  const open=sumBy(BANKS().filter(b=>C==='all'||cu(b.cur)===C),b=>bankBefore(b,addDs(TODAY,1)))/(C==='all'?1:rate(C));
   const dueOf=(r,md)=>validD(r.due)?r.due:addDs(validD(r.date)?r.date:TODAY,partyTerms(md,r));
-  DB.ar.forEach(r=>{const v=arBal(r);if(v<=0.5)return;const d=dueOf(r,'ar');items.push({sec:'ar',kind:'입금',date:d,od:d<TODAY,party:r.customer||'',memo:[r.folio?'Factura '+r.folio:'',r.item||''].filter(Boolean).join(' · '),amt:v,src:'외상매출 수금기일'})});
-  DB.ap.forEach(r=>{const v=apBal(r);if(v<=0.5)return;const d=dueOf(r,'ap');items.push({sec:'ap',kind:'출금',date:d,od:d<TODAY,party:r.vendor||'',memo:[r.folio?'Factura '+r.folio:'',r.item||''].filter(Boolean).join(' · '),amt:v,src:'외상매입 지급기일'})});
-  DB.loans.forEach(r=>loanCfItems(r).forEach(x=>{const fx=rate(r.cur);items.push({sec:'loan',kind:'출금',date:x.date,od:!!x.od,party:r.bank||'',name:(r.bank||'차입금')+' '+x.kind+(r.cur==='USD'?' (US$)':''),memo:(r.type||'')+' '+x.kind+(r.cur==='USD'?` · US$ ${nf2.format(x.amt)}`:''),amt:x.amt*fx,src:x.src})}));
+  DB.ar.forEach(r=>{const v=arBal(r);if(v<=0.5)return;const d=dueOf(r,'ar');items.push({sec:'ar',cur:cu(r.cur),kind:'입금',date:d,od:d<TODAY,party:r.customer||'',memo:[r.folio?'Factura '+r.folio:'',r.item||''].filter(Boolean).join(' · '),amt:v,src:'외상매출 수금기일'})});
+  DB.ap.forEach(r=>{const v=apBal(r);if(v<=0.5)return;const d=dueOf(r,'ap');items.push({sec:'ap',cur:cu(r.cur),kind:'출금',date:d,od:d<TODAY,party:r.vendor||'',memo:[r.folio?'Factura '+r.folio:'',r.item||''].filter(Boolean).join(' · '),amt:v,src:'외상매입 지급기일'})});
+  DB.loans.forEach(r=>loanCfItems(r).forEach(x=>{const fx=rate(r.cur);items.push({sec:'loan',cur:cu(r.cur),kind:'출금',date:x.date,od:!!x.od,party:r.bank||'',name:(r.bank||'차입금')+' '+x.kind+(r.cur==='USD'?' (US$)':''),memo:(r.type||'')+' '+x.kind+(r.cur==='USD'?` · US$ ${nf2.format(x.amt)}`:''),amt:x.amt*fx,src:x.src})}));
   const rec=cfRecurring();rec.forEach(x=>{const sec=x.type==='입금'?'rin':'rout',nm=x.account+(x.party?' · '+x.party:'');
-    if(x.weekly){let d=addD(pd(TODAY),(x.dow-pd(TODAY).getDay()+7)%7);if(diffD(x.last,ds(d))<4)d=addD(d,7);for(;ds(d)<=end;d=addD(d,7))items.push({sec,kind:x.type,date:ds(d),party:x.party,name:nm,memo:x.account,amt:x.amt,src:`반복 (매주, 최근 ${Math.min(4,x.n)}회 평균)`})}
+    if(x.weekly){let d=addD(pd(TODAY),(x.dow-pd(TODAY).getDay()+7)%7);if(diffD(x.last,ds(d))<4)d=addD(d,7);for(;ds(d)<=end;d=addD(d,7))items.push({sec,cur:cu(x.cur),kind:x.type,date:ds(d),party:x.party,name:nm,memo:x.account,amt:x.amt,src:`반복 (매주, 최근 ${Math.min(4,x.n)}회 평균)`})}
     else{const t=pd(TODAY);for(let i=0;i<7;i++){const y=t.getFullYear(),mo=t.getMonth()+i,ld=new Date(y,mo+1,0).getDate(),d=ds(new Date(y,mo,Math.min(x.dom,ld)));if(d>end)break;
-      const ym=d.slice(0,7);if(ym===TODAY.slice(0,7)&&x.last.slice(0,7)===ym)continue;if(d<TODAY&&ym!==TODAY.slice(0,7))continue;items.push({sec,kind:x.type,date:d<TODAY?TODAY:d,party:x.party,name:nm,memo:x.account,amt:x.amt,src:`반복 (매월 ${x.dom}일경, 최근 ${Math.min(3,x.months)}개월 평균)`})}}});
+      const ym=d.slice(0,7);if(ym===TODAY.slice(0,7)&&x.last.slice(0,7)===ym)continue;if(d<TODAY&&ym!==TODAY.slice(0,7))continue;items.push({sec,cur:cu(x.cur),kind:x.type,date:d<TODAY?TODAY:d,party:x.party,name:nm,memo:x.account,amt:x.amt,src:`반복 (매월 ${x.dom}일경, 최근 ${Math.min(3,x.months)}개월 평균)`})}}});
+  if(C!=='all'){const R=rate(C);items=items.filter(x=>x.cur===C);items.forEach(x=>x.amt=x.amt/R)}
   const pi=d=>{if(d<P[0].start)return 0;const i=P.findIndex(p=>d>=p.start&&d<=p.end);return i};
   items.forEach(x=>x.p=pi(x.date<TODAY?TODAY:x.date));
   const inH=items.filter(x=>x.p>=0),later=items.filter(x=>x.p<0);
   let bal=open;const per=P.map((p,i)=>{const I=inH.filter(x=>x.p===i&&x.kind==='입금'),O=inH.filter(x=>x.p===i&&x.kind==='출금'),inn=sumBy(I,x=>x.amt),out=sumBy(O,x=>x.amt),o=bal;bal=o+inn-out;return Object.assign({},p,{open:o,inn,out,net:inn-out,close:bal})});
-  return {u,P:per,items:inH,later,open,rec}}
-function cfKpis(D){const inn=sumBy(D.P,p=>p.inn),out=sumBy(D.P,p=>p.out),last=D.P[D.P.length-1],low=D.P.reduce((a,p)=>p.close<a.close?p:a,D.P[0]);
+  return {u,C,P:per,items:inH,later,open,rec}}
+function cfKpis(D){const money=v=>fmtCur(v,D.C==='USD'?'USD':'MXN'),inn=sumBy(D.P,p=>p.inn),out=sumBy(D.P,p=>p.out),last=D.P[D.P.length-1],low=D.P.reduce((a,p)=>p.close<a.close?p:a,D.P[0]);
   return [kv('현재 은행 잔고',money(D.open),TODAY+' 기준'),kv('예상 입금',money(inn),D.items.filter(x=>x.kind==='입금').length+'건','good'),kv('예상 출금',money(out),D.items.filter(x=>x.kind==='출금').length+'건','bad'),
     kv('기말 예상 잔고',money(last.close),last.end+' 기준',last.close<0?'bad':''),kv('최저 잔고',money(low.close),low.label,low.close<0?'bad':'warn')]}
-function cfToolbar(){const u=UI.cfu==='month'?'month':'week';return `<div class="seg"><button data-cfu="week" class="${u==='week'?'on':''}">주간</button><button data-cfu="month" class="${u==='month'?'on':''}">월간</button></div>`}
+function cfToolbar(){const u=UI.cfu==='month'?'month':'week',c=cfCur();return `<div class="seg"><button data-cfu="week" class="${u==='week'?'on':''}">주간</button><button data-cfu="month" class="${u==='month'?'on':''}">월간</button></div><div class="seg" role="group" aria-label="통화"><button data-cfc="all" class="${c==='all'?'on':''}">전체 (MXN 환산)</button><button data-cfc="MXN" class="${c==='MXN'?'on':''}">MXN</button><button data-cfc="USD" class="${c==='USD'?'on':''}">US$</button></div>`}
 function cfPage(){const D=cfData(),P=D.P,n=P.length,od=D.items.filter(x=>x.od);UI.cfx=UI.cfx||{};const cx=k=>!!UI.cfx[k],tg=(k,l)=>`<button type="button" class="cfx" data-cfx="${k}" aria-expanded="${!cx(k)}" title="${cx(k)?'펼치기':'접기'}">${cx(k)?'+':'−'}</button>`;
   const cell=v=>`<td class="n${v<0?' neg':''}">${Math.abs(v)>0.004?plain(v):'<span class="muted">–</span>'}</td>`;
   const sec=(k,l)=>{const L=D.items.filter(x=>x.sec===k);if(!L.length)return '';const keys=[...new Set(L.map(x=>x.name||x.party||'(거래처 없음)'))];
@@ -2114,7 +2117,7 @@ function cfPage(){const D=cfData(),P=D.P,n=P.length,od=D.items.filter(x=>x.od);U
   const line=(l,f,cls)=>`<tr class="${cls||''}"><td><b>${l}</b></td>${P.map(p=>cell(f(p))).join('')}<td class="n">${cls==='cfnet'||cls==='cftot'?`<b>${plain(sumBy(P,f))}</b>`:''}</td></tr>`;
   const list=D.items.slice().sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
   return `<div class="content">${kpiHTML(cfKpis(D))}
-    <div class="card"><header><h2>${D.u==='week'?'주간':'월간'} 자금 계획</h2><span class="meta">MXN 환산 · ${esc(P[0].start)} ~ ${esc(P[n-1].end)}${od.length?` · 연체 ${od.length}건은 첫 ${D.u==='week'?'주':'달'}에 포함`:''}</span></header>
+    <div class="card"><header><h2>${D.u==='week'?'주간':'월간'} 자금 계획</h2><span class="meta">${D.C==='USD'?'US$ 계좌·거래만 (US$)':D.C==='MXN'?'MXN 계좌·거래만 (MXN)':'MXN 환산'} · ${esc(P[0].start)} ~ ${esc(P[n-1].end)}${od.length?` · 연체 ${od.length}건은 첫 ${D.u==='week'?'주':'달'}에 포함`:''}</span></header>
       <div class="tw cfw"><table class="tight cft"><thead><tr><th>항목</th>${P.map(p=>`<th class="n">${esc(p.label)}</th>`).join('')}<th class="n">합계</th></tr></thead><tbody>
       ${line('기초 잔고',p=>p.open,'cfbal')}
       <tr class="cfhd"><td colspan="${n+2}">${tg('in')}입금</td></tr>${cx('in')?'':sec('ar','외상매출 수금')+sec('rin','반복 입금 (경리자료)')}${line('입금 합계',p=>p.inn,'cftot')}
@@ -4709,6 +4712,7 @@ document.addEventListener('click',e=>{
   if(d.pmv){PMSEL.clear();UI.pm=Object.assign(UI.pm||{},{view:d.pmv});saveUI();renderMain();return}
   if(d.pmx){UI.pmo=UI.pmo||{};if(d.pmx==='*'){const ks=uniq(DB.payroll.map(payDeptOf)),on=!ks.every(k=>UI.pmo[k]);ks.forEach(k=>UI.pmo[k]=on)}else UI.pmo[d.pmx]=!UI.pmo[d.pmx];renderMain();return}
   if(d.cfu){UI.cfu=d.cfu;saveUI();renderMain();return}
+  if(d.cfc){UI.cfc=d.cfc;saveUI();renderMain();return}
   if(d.bday){BDAY=d.bday==='0'?TODAY:addDs(BDAY,+d.bday);renderMain();return}
   if(d.bankadd){const B=BANKS();let k=B.length+1;while(B.some(b=>b.name==='은행 '+k))k++;B.push({name:'은행 '+k,cur:'MXN',open:0});BKED=B.length-1;save();renderMain();const el=document.querySelector(`[data-bankname="${BKED}"]`);if(el){el.focus();el.select()}return}
   if(d.bankedit!=null){BKED=+d.bankedit;renderMain();const el=document.querySelector(`[data-bankname="${BKED}"]`);if(el){el.focus();el.select()}return}
