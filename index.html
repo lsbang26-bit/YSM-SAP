@@ -3363,8 +3363,8 @@ function fdUpload(file){if(!window.XLSX){toast('엑셀 기능을 불러오지 �
     A.forEach(a=>{const x=F.acc[a.name]=F.acc[a.name]||{cur:a.cur,months:{}};x.cur=a.cur;if(!F.order.includes(a.name))F.order.push(a.name);
       const by={};a.rows.forEach(r=>{(by[r.date.slice(0,7)]=by[r.date.slice(0,7)]||[]).push(r)});if(!by[ym])by[ym]=[];
       Object.keys(by).forEach(k=>{x.months[k]={open:k===ym?(a.open==null?(x.months[k]?x.months[k].open:0):a.open):(x.months[k]?x.months[k].open:null),rows:by[k]}})});
-    const nAll=all.length,last=all.sort().pop();UI.rpw=last;save();saveUI();if(UI.mod!=='repw')go('repw');else renderMain();
-    toast(`자금 자료 ${A.length}개 계좌 · ${nAll}건을 올렸습니다 (${ym}, 마지막 거래 ${last}). 마지막 거래가 있는 주를 보여줍니다`)}catch(e){toast('파일을 읽지 못했습니다. 엑셀(.xlsx, .xls) 파일인지 확인해 주세요.')}};
+    const nAll=all.length,last=all.sort().pop(),nb=bankAddMissing(A.filter(a=>a.rows.length||+a.open).map(a=>[a.name,a.cur]));UI.rpw=last;save();saveUI();if(UI.mod!=='repw')go('repw');else renderMain();
+    toast(`자금 자료 ${A.length}개 계좌 · ${nAll}건을 올렸습니다 (${ym}, 마지막 거래 ${last}). 마지막 거래가 있는 주를 보여줍니다${nb.length?` · 은행 설정에 ${nb.join(', ')} 추가`:''}`)}catch(e){toast('파일을 읽지 못했습니다. 엑셀(.xlsx, .xls) 파일인지 확인해 주세요.')}};
   rd.readAsArrayBuffer(file)}
 // d 날짜 시작 시점의 계좌 잔고 (그 달 전월 잔고 + d 이전 거래)
 function fdOpen(x,K,i){const m=x.months[K[i]];if(m.open!=null&&m.open!=='')return +m.open;return i>0?fdOpen(x,K,i-1)+sumBy(x.months[K[i-1]].rows,r=>r.inn-r.out):0}
@@ -4851,7 +4851,12 @@ let LSYNC=0;
 // 예시 종속기업 2곳 (YSM USA · YSM Querétaro)과 그 재무자료·내부거래를 한 번만 지움
 function dropSampleEnt(D){if(D.entDrop1)return 0;D.entDrop1=1;const N=['YSM USA Inc.','YSM Querétaro S.A. de C.V.'],gone=new Set((D.entities||[]).filter(e=>N.includes(e.name)).map(e=>e.name));
   if(!gone.size)return 1;D.entities=D.entities.filter(e=>!gone.has(e.name));D.entfs=(D.entfs||[]).filter(x=>!gone.has(x.entity));D.ic=(D.ic||[]).filter(x=>!gone.has(x.seller)&&!gone.has(x.buyer));return 1}
-function renderMain(){calcReset();if(!LSYNC){LSYNC=1;try{syncLinkedCash(DB)}catch(_){}try{if(dropSampleEnt(DB))save()}catch(_){}}
+// 자금일보 계좌 중 은행 설정에 없는 계좌를 은행으로 추가 (계좌번호 4자리 또는 은행명+통화로 같은 계좌인지 판단). 기초 잔액 0, 운영 시작일부터
+function bankHas(name,cur){const n=String(name),num=(n.match(/\b\d{4}\b/)||[])[0],w=n.trim().split(/\s+/)[0].toLowerCase(),B=BANKS().filter(b=>(b.cur||'MXN')===cur).map(b=>String(b.name).toLowerCase());
+  if(B.includes(n.toLowerCase()))return true;if(num&&B.some(bn=>bn.includes(num)))return true;return B.some(bn=>bn.includes(w)&&!/\b\d{4}\b/.test(bn))}
+function bankAddMissing(list){const S=SET();if(!S.banks)S.banks=[];const add=[];list.forEach(([name,cur])=>{if(!bankHas(name,cur)){S.banks.push({name,cur,open:0,since:OP_START()});add.push(name)}});return add}
+function bankFix2031(D){if(D.bank2031)return 0;D.bank2031=1;bankAddMissing([['Banco Base US$ - 2031','USD']]);return 1}
+function renderMain(){calcReset();if(!LSYNC){LSYNC=1;try{syncLinkedCash(DB)}catch(_){}try{if(dropSampleEnt(DB))save()}catch(_){}try{if(bankFix2031(DB))save()}catch(_){}}
   const openD=[...document.querySelectorAll('details.mgmt[open]')].map(d=>d.querySelector('summary').textContent);
   const id=UI.mod, m=MODS[id];
   if(m.singleMonth&&UI.fm.sel.length>1)UI.fm.sel=[Math.max(...UI.fm.sel)];
