@@ -3433,13 +3433,13 @@ function hcFromRaya(aoa){const R=rayaContpaq(aoa);if(!R||!R.rows.length)return [
 function hcSel(p){const W=hcWeeks();if(!W.length)return '';if(W.includes(UI.hcw))return UI.hcw;const iw=p?W.find(w=>hcWkN(w)===isoWeek(pd(p.start))):'';return iw||W[W.length-1]}
 const hcKrw=r=>+r.krw||(+r.mxn||0)*KRW();
 // 캡처 양식: 'W1' 제목 아래 부서 | 인원 | MXN | 원화. 여러 주가 옆으로(또는 아래로) 이어져도 '부서' 머리글마다 한 주로 읽음
-function hcParse(aoa,sheetName){const out=[],S=v=>String(v==null?'':v).trim(),isWk=v=>/^(w|wk|week)\s*\d+$|^\d+\s*주(차)?$/i.test(S(v));
+function hcParse(aoa,sheetName){const out=[],S=v=>String(v==null?'':v).trim(),isWk=v=>/^(w|wk|week|c|m)\s*\d+$|^\d+\s*주(차)?$/i.test(S(v));
   for(let r=0;r<aoa.length;r++)for(let c=0;c<(aoa[r]||[]).length;c++){if(!/^(부서|departamento)$/i.test(S(aoa[r][c])))continue;
     const H=aoa[r],find=re=>{for(let k=c+1;k<H.length&&k<c+8;k++){if(/^(부서|departamento)$/i.test(S(H[k])))break;if(re.test(S(H[k])))return k}return -1};
     const ci=find(/^(인원|인원수|headcount|personal)$/i),cm=find(/^(mxn|금액|급여)/i),ck=find(/^(원화|krw|원)$/i);if(ci<0&&cm<0)continue;
     let wk='';for(let rr=r-1;rr>=Math.max(0,r-3)&&!wk;rr--)for(let k=c;k<=Math.max(ci,cm,ck,c);k++){if(isWk((aoa[rr]||[])[k])){wk=S(aoa[rr][k]);break}}
     if(!wk&&rr0(aoa,r,c,isWk))wk=rr0(aoa,r,c,isWk);if(!wk&&isWk(sheetName))wk=S(sheetName);if(!wk)continue;
-    wk=/^\d/.test(wk)?'W'+hcWkN(wk):'W'+hcWkN(wk);
+    wk=(/^c/i.test(wk)?'C':/^m/i.test(wk)?'M':'W')+hcWkN(wk);
     for(let rr=r+1;rr<aoa.length;rr++){const R=aoa[rr]||[],d=S(R[c]);if(!d){if(S(R[ci])||S(R[cm]))continue;break}if(/^(부서|departamento)$/i.test(d)||isWk(d))break;if(/^(합계|합 계|계|총계|total)$/i.test(d))continue;
       out.push({wk,n:hcWkN(wk),dept:d,cnt:ci<0?0:hcNum(R[ci]),mxn:cm<0?0:hcNum(R[cm]),krw:ck<0?0:hcNum(R[ck])})}}
   return out}
@@ -3467,16 +3467,19 @@ function hcCard(p){const W=hcWeeks(),S=hcSels(p),won=v=>'₩'+nf0.format(Math.ro
   const sel=`<div class="chips" role="group" aria-label="주 선택" style="flex-wrap:wrap">${W.length>1?`<button class="chip${S.length===W.length?' on':''}" data-hcwt="*">전체</button>`:''}${W.map(x=>`<button class="chip${S.includes(x)?' on':''}" data-hcwt="${esc(x)}" aria-pressed="${S.includes(x)}"${S.includes(x)&&multi?` style="box-shadow:inset 0 -3px 0 ${col(x)}"`:''}>${esc(x)}</button>`).join('')}</div>`;
   const per=w=>{const r=BY[w][0];return r&&r.from?`<div style="font-weight:400;color:var(--faint);font-size:11px">${esc(r.from.slice(5))} ~ ${esc(r.to.slice(5))}</div>`:''};
   const sumW=(w,k)=>sumBy(BY[w],k),sumK=w=>sumBy(BY[w],hcKrw),avgC=S.length?sumBy(S,w=>sumW(w,'cnt'))/S.length:0;
-  // 전주 대비 증감: 선택한 마지막 주와 그 바로 앞 주(올린 자료 기준)
-  const pw=W[W.indexOf(last)-1]||'',PB=pw?(DB.hc||[]).filter(r=>r.wk===pw):[],pcell=d=>PB.find(r=>r.dept===d);
-  const dl=(v,f)=>Math.abs(v)<0.005?'<span class="muted">0</span>':`<span class="${v>0?'pos':'neg'}">${v>0?'+':'−'}${f(Math.abs(v))}</span>`;
-  const dCells=(c,q)=>pw?`<td class="n">${dl((c?+c.cnt||0:0)-(q?+q.cnt||0:0),nf0.format)}</td><td class="n">${dl((c?+c.mxn||0:0)-(q?+q.mxn||0:0),plain)}</td><td class="n">${dl((c?hcKrw(c):0)-(q?hcKrw(q):0),v=>'₩'+nf0.format(Math.round(v)))}</td>`:'<td class="n muted">–</td><td class="n muted">–</td><td class="n muted">–</td>';
-  const tbl=`<div class="tw"><table><thead><tr><th rowspan="2">부서</th>${S.map(w=>`<th colspan="3" style="text-align:center">${esc(w)}${per(w)}</th>`).join('')}<th colspan="3" style="text-align:center">전주 대비 증감<div style="font-weight:400;color:var(--faint);font-size:11px">${pw?esc(last)+' − '+esc(pw):'전주 자료 없음'}</div></th></tr>
-    <tr>${S.map(()=>'<th class="n">인원</th><th class="n">MXN</th><th class="n">원화</th>').join('')}<th class="n">인원</th><th class="n">MXN</th><th class="n">원화</th></tr></thead><tbody>
-    ${D.map(d=>{const sr=src(d);return `<tr><td${sr?` title="Contpaq: ${esc(sr)}"`:''}>${esc(d)}</td>${S.map(w=>{const c=cell(w,d);return c?`<td class="n">${nf0.format(+c.cnt||0)}</td><td class="n">${plain(+c.mxn||0)}</td><td class="n">${won(hcKrw(c))}</td>`:'<td class="n muted">–</td><td class="n muted">–</td><td class="n muted">–</td>'}).join('')}${dCells(cell(last,d),pcell(d))}</tr>`}).join('')}
-    ${pw?PB.filter(q=>!D.includes(q.dept)).map(q=>`<tr><td class="muted">${esc(q.dept)} <small>(${esc(pw)}에만 있음)</small></td>${S.map(()=>'<td class="n muted">–</td><td class="n muted">–</td><td class="n muted">–</td>').join('')}${dCells(null,q)}</tr>`).join(''):''}
-    <tr><td><b>합계</b></td>${S.map(w=>`<td class="n"><b>${nf0.format(sumW(w,'cnt'))}</b></td><td class="n"><b>${plain(sumW(w,'mxn'))}</b></td><td class="n"><b>${won(sumK(w))}</b></td>`).join('')}${pw?`<td class="n"><b>${dl(sumW(last,'cnt')-sumBy(PB,'cnt'),nf0.format)}</b></td><td class="n"><b>${dl(sumW(last,'mxn')-sumBy(PB,'mxn'),plain)}</b></td><td class="n"><b>${dl(sumK(last)-sumBy(PB,hcKrw),v=>'₩'+nf0.format(Math.round(v)))}</b></td>`:'<td class="n muted">–</td><td class="n muted">–</td><td class="n muted">–</td>'}</tr></tbody></table></div>`;
-  const note=`<div class="body" style="font-size:12px;color:var(--faint)">${D.length&&S.some(w=>BY[w].some(r=>r.src))?'MXN = Contpaq 총지급 (TOTAL PERCEPCIONES). 부서에 마우스를 올리면 Contpaq 부서명이 보입니다. ':''}주를 눌러 켜고 끕니다. 전주 대비 증감은 선택한 마지막 주(${esc(last)})를 바로 앞 주와 비교합니다.</div>`;
+  // 급여 구분(W 주급 · C 14일 급여 · M 월급)별로 묶고, 각 묶음 뒤에 그 구분의 직전 기간 대비 증감을 붙임
+  const pfx=w=>((String(w).match(/^[A-Za-z]+/)||['W'])[0]).toUpperCase(),PFX_L={W:['전주 대비 증감','주급'],C:['전기 대비 증감','14일 급여'],M:['전월 대비 증감','월급']};
+  const G=[];S.forEach(w=>{const k=pfx(w);let g=G.find(x=>x.k===k);if(!g){g={k,S:[]};G.push(g)}g.S.push(w)});
+  G.forEach(g=>{g.last=g.S[g.S.length-1];const same=W.filter(x=>pfx(x)===g.k);g.pw=same[same.indexOf(g.last)-1]||'';g.PB=g.pw?(DB.hc||[]).filter(r=>r.wk===g.pw):[];g.pc=d=>g.PB.find(r=>r.dept===d);const L=PFX_L[g.k]||['직전 대비 증감',g.k];g.lab=L[0];g.kind=G.length>1||g.k!=='W'?L[1]+' ':''});
+  G.forEach(g=>g.PB.forEach(q=>{if(!D.includes(q.dept))D.push(q.dept)}));
+  const dl=(v,f)=>Math.abs(v)<0.005?'<span class="muted">0</span>':`<span class="${v>0?'pos':'neg'}">${v>0?'+':'−'}${f(Math.abs(v))}</span>`,wf=v=>'₩'+nf0.format(Math.round(v)),dash3='<td class="n muted">–</td><td class="n muted">–</td><td class="n muted">–</td>';
+  const dCells=(g,c,q)=>g.pw?`<td class="n">${dl((c?+c.cnt||0:0)-(q?+q.cnt||0:0),nf0.format)}</td><td class="n">${dl((c?+c.mxn||0:0)-(q?+q.mxn||0:0),plain)}</td><td class="n">${dl((c?hcKrw(c):0)-(q?hcKrw(q):0),wf)}</td>`:dash3;
+  const wCells=(w,d)=>{const c=cell(w,d);return c?`<td class="n">${nf0.format(+c.cnt||0)}</td><td class="n">${plain(+c.mxn||0)}</td><td class="n">${won(hcKrw(c))}</td>`:dash3};
+  const tbl=`<div class="tw"><table><thead><tr><th rowspan="2">부서</th>${G.map(g=>g.S.map(w=>`<th colspan="3" style="text-align:center">${esc(w)}${per(w)}</th>`).join('')+`<th colspan="3" style="text-align:center;background:var(--sunken)">${esc(g.kind+g.lab)}<div style="font-weight:400;color:var(--faint);font-size:11px">${g.pw?esc(g.last)+' − '+esc(g.pw):'직전 자료 없음'}</div></th>`).join('')}</tr>
+    <tr>${G.map(g=>g.S.map(()=>'<th class="n">인원</th><th class="n">MXN</th><th class="n">원화</th>').join('')+'<th class="n">인원</th><th class="n">MXN</th><th class="n">원화</th>').join('')}</tr></thead><tbody>
+    ${D.map(d=>{const sr=src(d);return `<tr><td${sr?` title="Contpaq: ${esc(sr)}"`:''}>${esc(d)}</td>${G.map(g=>g.S.map(w=>wCells(w,d)).join('')+dCells(g,cell(g.last,d),g.pc(d))).join('')}</tr>`}).join('')}
+    <tr><td><b>합계</b></td>${G.map(g=>g.S.map(w=>`<td class="n"><b>${nf0.format(sumW(w,'cnt'))}</b></td><td class="n"><b>${plain(sumW(w,'mxn'))}</b></td><td class="n"><b>${won(sumK(w))}</b></td>`).join('')+(g.pw?`<td class="n"><b>${dl(sumW(g.last,'cnt')-sumBy(g.PB,'cnt'),nf0.format)}</b></td><td class="n"><b>${dl(sumW(g.last,'mxn')-sumBy(g.PB,'mxn'),plain)}</b></td><td class="n"><b>${dl(sumK(g.last)-sumBy(g.PB,hcKrw),wf)}</b></td>`:dash3)).join('')}</tr></tbody></table></div>`;
+  const note=`<div class="body" style="font-size:12px;color:var(--faint)">${D.length&&S.some(w=>BY[w].some(r=>r.src))?'MXN = Contpaq 총지급 (TOTAL PERCEPCIONES). 부서에 마우스를 올리면 Contpaq 부서명이 보입니다. ':''}주를 눌러 켜고 끕니다. 증감은 급여 구분(W 주급 · C 14일 급여)마다 선택한 마지막 기간을 같은 구분의 바로 앞 기간과 비교합니다.</div>`;
   // 막대(인원, 왼쪽 축) + 선(MXN, 오른쪽 축) 혼합 차트: 부서마다 선택한 주별 막대, 주별 MXN 선
   const combo=()=>{const n=D.length;if(!n)return '';const Wd=Math.max(1100,n*S.length*22+n*24+120),H=320,L=52,R=70,T=20,B=58,pw_=Wd-L-R,ph=H-T-B,g=pw_/n,bw=Math.min(28,(g-14)/S.length);
     const vc=(w,d)=>{const c=cell(w,d);return c?+c.cnt||0:0},vm=(w,d)=>{const c=cell(w,d);return c?+c.mxn||0:null};
