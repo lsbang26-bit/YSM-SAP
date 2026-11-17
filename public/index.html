@@ -813,6 +813,7 @@ function rangeP(){
 /* ---------- currency ---------- */
 // Amounts are stored in each row's own currency (r.cur). Totals are converted to MXN. MXN is shown without a unit, US$ with one.
 const FX=()=>(DB&&DB.settings&&+DB.settings.fx)||18.5;
+const OP_START=()=>(DB&&DB.settings&&validD(DB.settings.opStart)&&DB.settings.opStart)||'2026-11-01'; // 프로그램 운영 시작일: 이전 입금·지급은 경리자료에 전표를 만들지 않음
 const KRW=()=>(DB&&DB.settings&&+DB.settings.krw)||75; // 1 MXN = ? 원
 const rate=cur=>cur==='USD'?FX():1;
 const mx=(r,k)=>(+r[k]||0)*rate(r.cur);
@@ -3134,6 +3135,7 @@ function xfSync(F,src){const B=F&&F.querySelector('[data-xfer]');if(!B)return;co
   if(diff&&A.dataset.manual&&amt>0&&inA>0&&(src==='amt'||src==='sub')){const f=fc==='USD'?inA/amt:amt/inA;fxEl.value=String(Math.round(f*10000)/10000)}
   else if(!A.dataset.manual||src==='fx'||src==='to'||src==='bank'||(src==='sub'&&!diff)){A.dataset.manual='';const fx=pnum(fxEl.value)||0,v=!diff?amt:fc==='USD'?amt*fx:fx?amt/fx:0;A.value=v?r2(v).toFixed(2):''}
   B.querySelector('[data-xfcur]').textContent=`(${tc==='USD'?'US$':'MXN'})`;B.querySelector('[data-xfnote]').textContent=opts.length?`${T.value}에 ${tc==='USD'?'US$':'MXN'} ${nf2.format(pnum(A.value)||0)} 입금 전표가 자동으로 만들어집니다`:'받을 계좌가 없습니다. 설정에서 계좌를 추가해 주세요'}
+['input','change'].forEach(ev=>document.addEventListener(ev,e=>{const t=e.target,F=t.form;if(F&&F.dataset.settle&&t.name==='sdate'){const c=F.querySelector('[name="snocash"]');if(c&&validD(t.value))c.checked=t.value<OP_START()}}));
 document.addEventListener('input',e=>{const t=e.target,F=t.form;if(!F||(F.dataset.reg||F.dataset.edit)!=='cash')return;if(t.dataset.xf)xfSync(F,t.dataset.xf);else if(['sub','fx','bank'].includes(t.name))xfSync(F,t.name)});
 document.addEventListener('change',e=>{const t=e.target,F=t.form;if(!F||(F.dataset.reg||F.dataset.edit)!=='cash')return;if(t.dataset.xf)xfSync(F,t.dataset.xf);else if(['type','cat','account','bank','cur'].includes(t.name))setTimeout(()=>xfSync(F,t.name))});
 new MutationObserver(()=>document.querySelectorAll('form [data-xfer]:not([data-xi])').forEach(B=>{B.dataset.xi=1;xfSync(B.closest('form'))})).observe(document.body,{childList:true,subtree:true});
@@ -4108,6 +4110,7 @@ function renderModal(){
           <label>${isAR?'입금 은행':'지급 은행'}<select name="sbank" required>${(bankNames(cur).length?bankNames(cur):bankNames()).map(n=>`<option${n===bankFor(cur)?' selected':''}>${esc(n)}</option>`).join('')}</select></label>
           <label>${isAR?'입금액':'지급액'}${cur==='USD'?' (US$)':''}<input type="number" step="any" name="samt" value="${bal}" min="0.01" max="${bal}" required></label>
           ${cur==='USD'?`<label>${isAR?'입금':'지급'}일 환율 (장부 ${bookFx(r)})<input type="number" step="any" name="sfx" value="${FX()}" min="0.0001" required></label>`:''}</div>
+        <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px"><input type="checkbox" name="snocash" style="margin-top:2px"><span>${OP_START().replace(/-/g,'.')} 이전 ${isAR?'입금':'지급'} · 완료로 표시만 하고 경리자료에는 반영하지 않음<br><span class="muted">${isAR?'입금':'지급'}일이 운영 시작일 전이면 자동으로 체크됩니다.</span></span></label>
         <p class="note" style="margin:0">확인하면 경리자료에 ${isAR?'입금':'출금'} 전표가 만들어지고 ${isAR?'수금액':'지급액'}이 늘어납니다. 금액을 줄이면 일부만 처리되고 잔액이 남습니다. 부가세는 ${isAR?'매출세액':'매입세액'}으로 이 날짜에 잡힙니다.</p></div>
       <footer><button type="button" class="btn" data-close="1">취소</button><button type="submit" class="btn primary">${isAR?'입금 확인':'지급 확인'}</button></footer></form></div></div>`;
     host.querySelector('[name="samt"]').focus();return}
@@ -5174,6 +5177,8 @@ document.addEventListener('submit',e=>{
     const date=f.querySelector('[name="sdate"]').value, amt=Math.round(parseFloat(f.querySelector('[name="samt"]').value)*100)/100, bal=(isAR?arBal(r):apBal(r))/rate(r.cur||'MXN');
     if(!validD(date)||!(amt>0)||amt>bal+0.01){toast('날짜와 금액을 확인해 주세요. 금액은 잔액보다 클 수 없습니다');return}
     const k=isAR?'received':'paid';r[k]=Math.round(((+r[k]||0)+amt)*100)/100;
+    const nc=f.querySelector('[name="snocash"]');if(nc&&nc.checked){r.preSettle=(r.preSettle||[]).concat({date,amt});flashId=r.id;save();closeModal();renderMain();
+      toast(`${isAR?'입금':'지급'} 완료로 표시했습니다 (${date}, 운영 시작 전 ${isAR?'입금':'지급'} · 경리자료 전표 없음)`);return}
     const bank=(f.querySelector('[name="sbank"]')||{}).value||bankFor(r.cur);UI.lastBank=bank;
     DB.cash.unshift({id:uid(),date,bank,type:isAR?'입금':'출금',cat:isAR?'매출수입':(r.cat==='차입금'?'판관비용':r.cat),account:isAR?'매출대금 수금':'외상매입금 지급',party:isAR?r.customer:r.vendor,
       memo:`${r.item} ${isAR?'대금 수금':'대금 지급'} (외상${isAR?'매출':'매입'} 연계)`,cur:r.cur||'MXN',amount:amt,sub:r2(amt/(1+ivaRt(r))),iva:r.iva||'16%',factura:r.factura||'발행',uuid:r.uuid||'',link:r.id,linkMod:mod});
