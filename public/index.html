@@ -3519,6 +3519,20 @@ function repDue(p,md){const n=period(shift(p.start,md,1),md),L=[];
   const add=(kind,r,bal,party)=>{if(bal<=0.5||!validD(r.due))return;const od=r.due<TODAY;if(r.due>n.end)return;L.push({kind,od,party,folio:r.folio||'',due:r.due,bal,nat:bal/rate(r.cur),cur:r.cur||'MXN'})};
   DB.ar.filter(r=>r.date<=p.end).forEach(r=>add('수금',r,arBal(r),r.customer));DB.ap.filter(r=>r.date<=p.end).forEach(r=>add('지급',r,apBal(r),r.vendor));
   return {n,L:L.sort((a,b)=>a.od!==b.od?(a.od?-1:1):a.due<b.due?-1:a.due>b.due?1:0)}}
+// 주간 입금 예상 (고객사별): 선택한 주에 만기가 오는 미수 + 주 시작 전 만기가 지난 미수, 그리고 그 주에 실제 입금된 금액. 거래 통화로 표시
+function repArW(p){const C={},cur=r=>r.cur||'MXN',g=n=>C[n]=C[n]||{n,cnt:0,od:{},due:{},done:{},mx:0},ad=(o,c,v)=>{o[c]=(o[c]||0)+v};
+  DB.ar.forEach(r=>{const b=arBal(r);if(b<=0.5||!validD(r.due)||r.due>p.end)return;const x=g(r.customer||'–'),v=b/rate(cur(r));x.cnt++;x.mx+=b;ad(r.due<p.start?x.od:x.due,cur(r),v)});
+  DB.cash.filter(r=>r.type==='입금'&&inP(r,p)&&r.party&&!/차입금|보통예금/.test(r.account||'')).forEach(r=>{if(!C[r.party]&&!DB.ar.some(a=>a.customer===r.party))return;ad(g(r.party).done,cur(r),+r.amount||0)});
+  return Object.values(C).sort((a,b)=>b.mx-a.mx)}
+function repArCard(p){const L=repArW(p),cs=['MXN','USD'],tot=(o)=>{const t={};cs.forEach(c=>{const v=sumBy(L,x=>(x[o]||{})[c]||0);if(Math.abs(v)>0.004)t[c]=v});return t},
+  cell=o=>{const k=cs.filter(c=>Math.abs(o[c]||0)>0.004);return k.length?k.map(c=>fmtCur(o[c],c,1)).join('<br>'):'<span class="muted">–</span>'},
+  sum=x=>{const t={};cs.forEach(c=>{const v=(x.od[c]||0)+(x.due[c]||0);if(v)t[c]=v});return t};
+  const TO=tot('od'),TD=tot('due'),TS={};cs.forEach(c=>{const v=(TO[c]||0)+(TD[c]||0);if(v)TS[c]=v});
+  return `<div class="card"><header><h2>주간 입금 예상 · 고객사별</h2><span class="meta">${esc(p.label)} · ${L.length}곳</span></header>${L.length?`<div class="tw"><table>
+    <thead><tr><th>고객사</th><th class="n">건수</th><th class="n">이번 주 만기</th><th class="n">연체 (주 시작 전 만기)</th><th class="n">입금 예상 합계</th><th class="n">입금 예상 (MXN 환산)</th><th class="n">이번 주 입금 완료</th></tr></thead><tbody>
+    ${L.map(x=>`<tr><td>${esc(x.n)}</td><td class="n">${x.cnt||'<span class="muted">–</span>'}</td><td class="n">${cell(x.due)}</td><td class="n">${Object.keys(x.od).length?`<span class="neg">${cell(x.od)}</span>`:cell(x.od)}</td><td class="n"><b>${cell(sum(x))}</b></td><td class="n">${x.mx?money(x.mx):'<span class="muted">–</span>'}</td><td class="n">${cell(x.done)}</td></tr>`).join('')}
+    <tr><td><b>합계</b></td><td class="n"><b>${sumBy(L,'cnt')}</b></td><td class="n"><b>${cell(TD)}</b></td><td class="n"><b>${cell(TO)}</b></td><td class="n"><b>${cell(TS)}</b></td><td class="n"><b>${money(sumBy(L,'mx'))}</b></td><td class="n"><b>${cell(tot('done'))}</b></td></tr>
+    </tbody></table></div><div class="body" style="font-size:12px;color:var(--faint)">외상매출 미수 잔액 기준이며 금액은 거래 통화입니다. 연체는 이 주 시작 전에 만기가 지났는데 아직 입금되지 않은 건입니다. 입금 완료는 이 주 경리자료의 입금입니다.</div>`:'<div class="empty">이 주에 예상되는 입금이 없습니다.</div>'}</div>`}
 function repPage(md){
   const p=period(repAnchor(md),md),q=period(shift(p.start,md,-1),md),A=repData(p),B=repData(q),u=md==='week'?'전주':'전월',U=md==='week'?'주':'월';
   const chg=(a,b,m)=>{const d=a-b;return d===0?'<span class="muted">–</span>':`<span class="${d>0?'pos':'neg'}">${d>0?'+':'−'}${m?plain(Math.abs(d)):nf0.format(Math.abs(d))}</span>`};
@@ -3540,7 +3554,7 @@ function repPage(md){
   return `<div class="content">${kpiHTML([kv('매출액 (출고)',money(inc.sales),u+' '+rt(inc.sales,B.inc.sales),'good','outbound'),kv('영업이익',money(inc.op),'영업이익률 '+pct(inc.sales?inc.op/inc.sales:NaN),inc.op<0?'bad':'good','fs'),
       kv('입금',money(A.ci),A.I.length+'건','good','cash'),kv('출금',money(A.co),A.O.length+'건','bad','cash'),kv('기말 현금 잔액',money(A.close),p.end+' 기준',A.close<0?'bad':'','bank'),
       kv('미수 잔액',money(A.ar),'','warn','ar'),kv('미지급 잔액',money(A.ap),'','warn','ap'),kv('생산 달성률',pct(A.plan?A.act/A.plan:NaN),'실적 '+fq(A.act)+' EA',A.plan&&A.act/A.plan<0.9?'bad':'','production')])}
-    ${md==='week'?fundCard(p)+hcCard(p):''}
+    ${md==='week'?fundCard(p)+hcCard(p)+repArCard(p):''}
     ${table}
     <div class="duo even">${bars('매출액 추이',x=>income(x).sales)}${bars('기말 현금 잔액 추이',x=>cashBefore(addDs(x.end,1)))}</div>
     <div class="duo even">${groupSummary('고객사별 매출 (출고)',A.ob,'customer',[['출고 금액',lineAmt,money]])}${groupSummary('분류별 출금',A.O,'cat',[['금액',M('amount'),money]],r=>r.account)}</div>
@@ -3553,6 +3567,7 @@ function repXls(md){if(!window.XLSX){toast('엑셀 기능을 불러오지 못했
     ...repRows(A,B).map(([l,a,b])=>[l,r(a),r(b),r(a-b),b?r((a-b)/Math.abs(b)*100)+'%':'']),[],[(md==='week'?'다음 주':'다음 달')+'까지 수금·지급 예정 및 연체 (~ '+D.n.end+')'],
     ['구분','상태','거래처','Factura','만기일','통화','잔액 (거래 통화)','잔액 (MXN)'],...D.L.map(x=>[x.kind,x.od?'연체':'진행',x.party||'',x.folio,x.due,x.cur,r(x.nat),r(x.bal)])];
   const FW=md==='week'?fdWeek(p):null;if(FW&&FW.L.length){const B=fdBig(FW),k=c=>Math.round(sumBy(FW.L,a=>fdKRW(a[c],a.cur)));aoa.push([],['주간 자금 보고'],['','전주 잔고','입금','출금','잔고'],['원화 합계',k('open'),k('inn'),k('out'),k('close')],[],['계좌','전주 잔고','입금','출금','잔고','통화'],...FW.L.map(a=>[a.name,r(a.open),r(a.inn),r(a.out),r(a.close),a.cur]),[],['주요내용'],['구분','일자','계좌','거래처','내용','금액','통화'],...B.I.map(x=>['입금',x.date,x.acc,x.party,fdKo(x),r(x.v),x.cur]),...B.O.map(x=>['비용',x.date,x.acc,x.party,fdKo(x),r(x.v),x.cur]));const nt=(DB.fund.note||{})[p.start];if(nt)aoa.push(['메모',nt])}
+  if(md==='week'){const AW=repArW(p),rc=(o,c)=>r((o||{})[c]||0);if(AW.length)aoa.push([],['주간 입금 예상 · 고객사별 (거래 통화)'],['고객사','건수','통화','이번 주 만기','연체','입금 예상 합계','이번 주 입금 완료'],...AW.flatMap(x=>['MXN','USD'].filter(c=>x.due[c]||x.od[c]||x.done[c]).map(c=>[x.n,x.cnt,c,rc(x.due,c),rc(x.od,c),r(rc(x.due,c)+rc(x.od,c)),rc(x.done,c)])))}
   if(md==='week')hcSels(p).forEach(hw=>{const HR=(DB.hc||[]).filter(x=>x.wk===hw);if(HR.length)aoa.push([],['인원현황 '+hw+(HR[0].from?' ('+HR[0].from+' ~ '+HR[0].to+')':'')],['부서','인원','MXN','원화'],...HR.map(x=>[x.dept,+x.cnt||0,r(+x.mxn||0),Math.round(hcKrw(x))]),['합계',sumBy(HR,'cnt'),r(sumBy(HR,'mxn')),Math.round(sumBy(HR,hcKrw))])});
   try{const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=[26,16,16,16,12,8,16,16].map(w=>({wch:w}));const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,nm+' 보고');XLSX.writeFile(wb,`${nm}보고_${p.start}_${p.end}.xlsx`)}catch(e){toast('엑셀 파일을 만들지 못했습니다')}}
 Object.assign(MODS,{
