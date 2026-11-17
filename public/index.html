@@ -1962,6 +1962,9 @@ function syncSel(){
   document.querySelectorAll('[data-delsel]').forEach(b=>{const n=selVisible(b.dataset.delsel).length;b.disabled=!n;b.textContent=n?`선택삭제 (${n})`:'선택삭제'});
   // 외상매입·매출: 체크한 줄의 합계·잔액 (MXN 환산)
   document.querySelectorAll('[data-selsum]').forEach(el=>{const id=el.dataset.selsum,rs=selVisible(id),isAP=id==='ap';if(!rs.length){el.innerHTML='';return}
+    // 경리자료: 체크한 전표의 입금·출금 합계와 순액 (MXN 환산). 모두 US$ 이면 US$ 금액
+    if(id==='cash'){const I=rs.filter(r=>r.type==='입금'),O=rs.filter(r=>r.type!=='입금'),cs=uniq(rs.map(r=>r.cur||'MXN')),u=cs.length===1&&cs[0]==='USD',sm=L=>u?sumBy(L,r=>+r.amount||0):sumBy(L,M('amount')),f=v=>u?fmtCur(v,'USD',1):money(v);
+      el.innerHTML=`<span>선택 ${rs.length}건</span>${I.length?`<span>입금 <b>${f(sm(I))}</b></span>`:''}${O.length?`<span>출금 <b>${f(sm(O))}</b></span>`:''}${I.length&&O.length?`<span>순액 <b>${f(sm(I)-sm(O))}</b></span>`:''}${!u&&cs.includes('USD')?'<span class="dim">MXN 환산</span>':''}`;return}
     const tot=sumBy(rs,M('amount')),bal=sumBy(rs,isAP?apBal:arBal),cs=uniq(rs.map(r=>r.cur||'MXN'));
     el.innerHTML=`<span>선택 ${rs.length}건</span><span>합계 <b>${money(tot)}</b></span><span>잔액 <b>${money(bal)}</b></span>${cs.length===1&&cs[0]==='USD'?`<span class="dim">${fmtCur(sumBy(rs,r=>+r.amount||0),'USD',1)}</span>`:''}`});
   document.querySelectorAll('table[data-seltbl]').forEach(t=>{const all=[...t.querySelectorAll('[data-selrow]')],on=all.filter(x=>x.checked).length,h=t.querySelector('[data-selall]');
@@ -1969,7 +1972,7 @@ function syncSel(){
 }
 function tableCard(m,p,modId,title){
   const note=hasCur(m)?`<span class="meta">· US$ 금액은 환율로 환산해 합계</span>`:'';
-  if(m.filters)return `<div class="card"><header class="fhead"><h2>${esc(title||'상세 내역')}</h2>${filterBar(m,p,modId)}${(()=>{const all=rowsFor(m,p).length,vis=viewRows(m,p,modId).length;return all>vis?`<span class="meta" style="color:var(--warn)">필터로 숨긴 ${all-vis}건</span>`:''})()}${m===MODS.ar?'<button class="btn" data-armatch="1" title="입금액으로 어떤 Factura 인지 찾기">입금 매칭</button>':''}${m===MODS.ap||m===MODS.ar?`<div class="selwrap">${selBtn(modId)}<div class="selsum" data-selsum="${modId}" aria-live="polite"></div></div>`:selBtn(modId)}</header>
+  if(m.filters)return `<div class="card"><header class="fhead"><h2>${esc(title||'상세 내역')}</h2>${filterBar(m,p,modId)}${(()=>{const all=rowsFor(m,p).length,vis=viewRows(m,p,modId).length;return all>vis?`<span class="meta" style="color:var(--warn)">필터로 숨긴 ${all-vis}건</span>`:''})()}${m===MODS.ar?'<button class="btn" data-armatch="1" title="입금액으로 어떤 Factura 인지 찾기">입금 매칭</button>':''}${m===MODS.ap||m===MODS.ar||m===MODS.cash?`<div class="selwrap">${selBtn(modId)}<div class="selsum" data-selsum="${modId}" aria-live="polite"></div></div>`:selBtn(modId)}</header>
     ${m.fsum?`<div id="fsum-${modId}">${fsumHTML(m,p,modId)}</div>`:''}
     <div id="tbl-${modId}">${tableHTML(m,p,modId)}</div></div>`;
   return `<div class="card"><header><h2>${esc(title||'상세 내역')}</h2>${m.monthNav?`<span class="monthbadge">${esc(p.label)}</span>`:`<span class="meta">${m.dated?esc(p.label):'전체 등록 자료'}</span>`}${note}
