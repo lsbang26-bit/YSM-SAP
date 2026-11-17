@@ -1189,7 +1189,7 @@ let DB=null;
 DB=LS.get(KEY);
 if(!DB||!DB.cash){DB=migrate(seed());LS.set(KEY,DB)}else{DB=migrate(DB);LS.set(KEY,DB)}
 syncFromAR(DB);LS.set(KEY,DB);
-let UI=Object.assign({cons:null,mod:'dash-all',mode:'week',cur:'MXN',open:{fin:true,tax:true,in:true,prod:true,out:true,sales:true,gen:true},fs:{unit:'month',year:THIS_YEAR,sel:[TODAY_D.getMonth()+1]}},LS.get(UKEY)||{});
+let UI=Object.assign({cons:null,mod:'dash-all',mode:'week',cur:'MXN',open:{fin:true,rep:true,tax:true,in:true,prod:true,out:true,sales:true,gen:true},fs:{unit:'month',year:THIS_YEAR,sel:[TODAY_D.getMonth()+1]}},LS.get(UKEY)||{});
 if(!UI.fs||!Array.isArray(UI.fs.sel)||!UI.fs.sel.length)UI.fs={unit:'month',year:THIS_YEAR,sel:[TODAY_D.getMonth()+1]};
 UI.q='';UI.cur='MXN';UI.fm=Object.assign({year:THIS_YEAR,sel:[TODAY_D.getMonth()+1]},UI.fm||{});if(!Array.isArray(UI.fm.sel)||!UI.fm.sel.length)UI.fm.sel=[TODAY_D.getMonth()+1];
 UI.mq=Object.assign({},UI.mq||{});
@@ -1229,7 +1229,7 @@ function syncFromAR(D){
   return res;
 }
 function save(){VCACHE.clear();calcReset();syncLinkedCash(DB);LS.set('ysm-sap-saved-at',Date.now());bkQueue();syncFromAR(DB);if(BANKS().length)DB.cash.forEach(r=>{if(!r.bank)r.bank=bankFor(r.cur)});if(LS.set(KEY,DB))savedAt=new Date();const el=$('#saved');if(el)el.textContent=savedText()}
-function saveUI(){LS.set(UKEY,{pm:UI.pm,cfu:UI.cfu,cfc:UI.cfc,cfx:UI.cfx,cw:UI.cw,vlang:UI.vlang,lastBank:UI.lastBank,cons:UI.cons,mod:UI.mod,dtab:UI.dtab,flt:UI.flt,rs:UI.rs,re:UI.re,pf:UI.pf,fm:UI.fm,mq:UI.mq,open:UI.open,fs:UI.fs})}
+function saveUI(){LS.set(UKEY,{pm:UI.pm,cfu:UI.cfu,cfc:UI.cfc,cfx:UI.cfx,cw:UI.cw,rpw:UI.rpw,rpm:UI.rpm,vlang:UI.vlang,lastBank:UI.lastBank,cons:UI.cons,mod:UI.mod,dtab:UI.dtab,flt:UI.flt,rs:UI.rs,re:UI.re,pf:UI.pf,fm:UI.fm,mq:UI.mq,open:UI.open,fs:UI.fs})}
 const savedText=()=>savedAt?`저장됨 ${pad(savedAt.getHours())}:${pad(savedAt.getMinutes())}`:'이 브라우저에 자동 저장';
 
 /* ---------- domain calcs (all return MXN) ---------- */
@@ -1519,6 +1519,7 @@ const kv=(l,v,s,tone,go)=>({l,v,s,tone,go});
 const GROUPS=[
   {id:'dash',name:'대쉬보드',items:['dash-all']},
   {id:'fin',name:'재무회계',items:['bank','cf','cash','fs','fscons','ledger','hq','ap','ar','assets','loans','stock','mfg','cost','ped']},
+  {id:'rep',name:'보고자료',items:['repw','repm']},
   {id:'tax',name:'세금',items:['cit','vat']},
   {id:'in',name:'입고관리',items:['vendors','inbound']},
   {id:'prod',name:'생산관리',items:['production']},
@@ -2002,7 +2003,7 @@ function headerHTML(id,m,p){
         ${id==='bank'?`<button class="btn primary" data-bankopenm="1">기초시재 입력</button>`:''}
         ${id==='ap'?`<button class="btn primary" data-cfdi="1">⇪ Factura 등록 (PDF · XML)</button>`:''}
         ${impOf(id)?`<button class="btn primary" data-import="${impOf(id)}">⇪ 엑셀 일괄등록</button>`:''}
-        ${g.id!=='dash'?`<button class="btn" data-go="dash-${g.id}">▦ 대쉬보드</button>`:''}
+        ${g.id!=='dash'&&g.id!=='rep'?`<button class="btn" data-go="dash-${g.id}">▦ 대쉬보드</button>`:''}${g.id==='rep'?`<button class="btn" data-repxls="${id==='repm'?'month':'week'}">⇩ 엑셀 내려받기</button>`:''}
         <button class="btn" data-layedit="1" title="항목 위치와 글씨를 바꿉니다">✎ 화면 편집</button>
       </div></div>
     ${tools?`<div class="toolbar">${tools}</div>`:''}
@@ -3323,6 +3324,61 @@ MODS.payables.dash=p=>{const {t,ty}=payTotals(p);
   return kpiHTML([kv('기간 Aguinaldo 적립',money(t('ag'))),kv('기간 휴가수당 적립',money(t('vp'))),kv('기간 저축기금 적립',money(t('sf'))),kv('연누계 미지급 잔액',money(ty),p.end.slice(0,4)+'.01.01 – '+p.end.slice(5).replace('-','.'),'warn')])
     +`<div class="duo single">${trendHTML('기간별 적립액 합계',q=>sumBy(DB.employees,e=>{const a=accrual(e,q.start,q.end);return a.ag+a.vp+a.sf}),1)}</div>`};
 ['fin','tax','in','prod','out','sales','gen'].forEach(g=>{MODS['dash-'+g].hidden=1;MODS['dash-'+g].tab=g});
+
+/* ---------- 보고자료: 주간·월간 보고서 ---------- */
+// 선택한 주(월~일) 또는 달의 손익·현금·채권채무·생산 요약을 직전 기간과 비교. 숫자는 재무제표·경리자료·외상매입/매출과 같은 출처를 씀
+function repAnchor(md){const v=UI[md==='week'?'rpw':'rpm'];return validD(v)?v:TODAY}
+function repToolbar(md){const p=period(repAnchor(md),md),u=md==='week'?'주':'달',now=p.start<=TODAY&&TODAY<=p.end;
+  return `<div class="chips" role="group" aria-label="보고 기간"><button class="chip" data-repnav="${md}|-1">◀ 이전 ${u}</button><span class="chip on" aria-live="polite">${esc(p.label)}</span><button class="chip" data-repnav="${md}|1">다음 ${u} ▶</button>${now?'':`<button class="chip" data-repnav="${md}|0">이번 ${u}로</button>`}</div>`}
+function repData(p){const inc=income(p),c=DB.cash.filter(r=>inP(r,p)),I=c.filter(r=>r.type==='입금'),O=c.filter(r=>r.type==='출금'),ob=DB.outbound.filter(r=>inP(r,p)),pr=DB.production.filter(r=>inP(r,p));
+  return {p,inc,I,O,ob,ci:sumBy(I,M('amount')),co:sumBy(O,M('amount')),close:cashBefore(addDs(p.end,1)),
+    ar:sumBy(DB.ar.filter(r=>r.date<=p.end),arBal),ap:sumBy(DB.ap.filter(r=>r.date<=p.end),apBal),arNew:sumBy(DB.ar.filter(r=>inP(r,p)),M('amount')),apNew:sumBy(DB.ap.filter(r=>inP(r,p)),M('amount')),
+    inb:sumBy(DB.inbound.filter(r=>inP(r,p)),lineAmt),plan:sumBy(pr,'plan'),act:sumBy(pr,'actual'),shipQ:sumBy(ob,'qty')}}
+function repRows(A,B){return [['매출액 (출고)',A.inc.sales,B.inc.sales,1],['매출원가',A.inc.cogs,B.inc.cogs,1],['매출총이익',A.inc.gross,B.inc.gross,1],['판매비와관리비',A.inc.sga,B.inc.sga,1],['영업이익',A.inc.op,B.inc.op,1],['법인세차감전이익',A.inc.pre,B.inc.pre,1],
+  ['입금',A.ci,B.ci,1],['출금',A.co,B.co,1],['순현금흐름 (입금−출금)',A.ci-A.co,B.ci-B.co,1],['기말 현금 잔액',A.close,B.close,1],
+  ['외상매출 청구액',A.arNew,B.arNew,1],['미수 잔액 (기말)',A.ar,B.ar,1],['외상매입 매입액',A.apNew,B.apNew,1],['미지급 잔액 (기말)',A.ap,B.ap,1],
+  ['원/부자재 입고 금액',A.inb,B.inb,1],['생산 계획 (EA)',A.plan,B.plan,0],['생산 실적 (EA)',A.act,B.act,0],['출고 수량 (EA)',A.shipQ,B.shipQ,0]]}
+// 다음 기간에 만기가 오는 미수·미지급과, 기말 현재 만기가 지난 건
+function repDue(p,md){const n=period(shift(p.start,md,1),md),L=[];
+  const add=(kind,r,bal,party)=>{if(bal<=0.5||!validD(r.due))return;const od=r.due<TODAY;if(r.due>n.end)return;L.push({kind,od,party,folio:r.folio||'',due:r.due,bal,nat:bal/rate(r.cur),cur:r.cur||'MXN'})};
+  DB.ar.filter(r=>r.date<=p.end).forEach(r=>add('수금',r,arBal(r),r.customer));DB.ap.filter(r=>r.date<=p.end).forEach(r=>add('지급',r,apBal(r),r.vendor));
+  return {n,L:L.sort((a,b)=>a.od!==b.od?(a.od?-1:1):a.due<b.due?-1:a.due>b.due?1:0)}}
+function repPage(md){
+  const p=period(repAnchor(md),md),q=period(shift(p.start,md,-1),md),A=repData(p),B=repData(q),u=md==='week'?'전주':'전월',U=md==='week'?'주':'월';
+  const chg=(a,b,m)=>{const d=a-b;return d===0?'<span class="muted">–</span>':`<span class="${d>0?'pos':'neg'}">${d>0?'+':'−'}${m?plain(Math.abs(d)):nf0.format(Math.abs(d))}</span>`};
+  const rt=(a,b)=>b&&isFinite((a-b)/Math.abs(b))?`${a>=b?'+':''}${((a-b)/Math.abs(b)*100).toFixed(1)}%`:'–';
+  const fq=v=>nf0.format(v), R=repRows(A,B);
+  const table=`<div class="card"><header><h2>핵심 지표 비교</h2><span class="meta">${esc(p.label)} vs ${u} (${esc(q.label)})</span></header><div class="tw"><table>
+    <thead><tr><th>항목</th><th class="n">이번 ${U}</th><th class="n">${u}</th><th class="n">증감</th><th class="n">증감률</th></tr></thead><tbody>
+    ${R.map(([l,a,b,m])=>`<tr><td>${esc(l)}</td><td class="n"><b>${m?money(a):fq(a)}</b></td><td class="n">${m?money(b):fq(b)}</td><td class="n">${chg(a,b,m)}</td><td class="n">${rt(a,b)}</td></tr>`).join('')}
+    </tbody></table></div><div class="body" style="font-size:12px;color:var(--faint)">금액은 MXN 환산입니다. 미수·미지급 잔액은 각 기간 말일까지 발생한 건의 현재 잔액입니다.</div></div>`;
+  const ps=[];for(let i=7;i>=0;i--)ps.push(period(shift(p.start,md,-i),md));
+  const bars=(t,fn)=>`<div class="card chart"><header><h2>${esc(t)}</h2><span class="meta">최근 8${md==='week'?'주':'개월'}</span></header><div class="body">${barsSVG(ps.map(x=>x.short),ps.map(fn),1,7)}</div></div>`;
+  const D=repDue(p,md);
+  const due=`<div class="card"><header><h2>${md==='week'?'다음 주':'다음 달'}까지 수금·지급 예정 및 연체</h2><span class="meta">~ ${esc(D.n.end)} · ${D.L.length}건</span></header>${D.L.length?`<div class="tw"><table>
+    <thead><tr><th>구분</th><th>상태</th><th>거래처</th><th>Factura</th><th>만기일</th><th class="n">잔액 (거래 통화)</th><th class="n">잔액 (MXN)</th></tr></thead><tbody>
+    ${D.L.map(x=>`<tr><td>${esc(x.kind)}</td><td>${pill(x.od?'연체':'진행')}</td><td>${esc(x.party||'')}</td><td>${esc(x.folio)}</td><td>${esc(x.due)}</td><td class="n">${fmtCur(x.nat,x.cur,1)}</td><td class="n">${money(x.bal)}</td></tr>`).join('')}
+    <tr><td colspan="5"><b>합계</b> · 수금 ${money(sumBy(D.L.filter(x=>x.kind==='수금'),'bal'))} / 지급 ${money(sumBy(D.L.filter(x=>x.kind==='지급'),'bal'))}</td><td></td><td></td></tr>
+    </tbody></table></div>`:'<div class="empty">예정되거나 연체된 수금·지급이 없습니다.</div>'}</div>`;
+  const inc=A.inc;
+  return `<div class="content">${kpiHTML([kv('매출액 (출고)',money(inc.sales),u+' '+rt(inc.sales,B.inc.sales),'good','outbound'),kv('영업이익',money(inc.op),'영업이익률 '+pct(inc.sales?inc.op/inc.sales:NaN),inc.op<0?'bad':'good','fs'),
+      kv('입금',money(A.ci),A.I.length+'건','good','cash'),kv('출금',money(A.co),A.O.length+'건','bad','cash'),kv('기말 현금 잔액',money(A.close),p.end+' 기준',A.close<0?'bad':'','bank'),
+      kv('미수 잔액',money(A.ar),'','warn','ar'),kv('미지급 잔액',money(A.ap),'','warn','ap'),kv('생산 달성률',pct(A.plan?A.act/A.plan:NaN),'실적 '+fq(A.act)+' EA',A.plan&&A.act/A.plan<0.9?'bad':'','production')])}
+    ${table}
+    <div class="duo even">${bars('매출액 추이',x=>income(x).sales)}${bars('기말 현금 잔액 추이',x=>cashBefore(addDs(x.end,1)))}</div>
+    <div class="duo even">${groupSummary('고객사별 매출 (출고)',A.ob,'customer',[['출고 금액',lineAmt,money]])}${groupSummary('분류별 출금',A.O,'cat',[['금액',M('amount'),money]],r=>r.account)}</div>
+    <div class="duo even">${groupSummary('계정별 입금',A.I,'account',[['금액',M('amount'),money]],r=>r.party)}${groupSummary('공급사별 매입 (외상매입)',DB.ap.filter(r=>inP(r,p)),'vendor',[['매입액',M('amount'),money],['잔액',apBal,money]])}</div>
+    ${due}</div>`;
+}
+function repXls(md){if(!window.XLSX){toast('엑셀 기능을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.');return}
+  const p=period(repAnchor(md),md),q=period(shift(p.start,md,-1),md),A=repData(p),B=repData(q),r=v=>Math.round(v*100)/100,D=repDue(p,md),nm=md==='week'?'주간':'월간';
+  const aoa=[[nm+' 보고 · '+p.label],['비교: '+q.label],['금액 단위 MXN (환산)'],[],['항목','이번 기간','직전 기간','증감','증감률'],
+    ...repRows(A,B).map(([l,a,b])=>[l,r(a),r(b),r(a-b),b?r((a-b)/Math.abs(b)*100)+'%':'']),[],[(md==='week'?'다음 주':'다음 달')+'까지 수금·지급 예정 및 연체 (~ '+D.n.end+')'],
+    ['구분','상태','거래처','Factura','만기일','통화','잔액 (거래 통화)','잔액 (MXN)'],...D.L.map(x=>[x.kind,x.od?'연체':'진행',x.party||'',x.folio,x.due,x.cur,r(x.nat),r(x.bal)])];
+  try{const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=[26,16,16,16,12,8,16,16].map(w=>({wch:w}));const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,nm+' 보고');XLSX.writeFile(wb,`${nm}보고_${p.start}_${p.end}.xlsx`)}catch(e){toast('엑셀 파일을 만들지 못했습니다')}}
+Object.assign(MODS,{
+  repw:{name:'주간',desc:'선택한 주(월~일)의 매출·손익·현금·채권채무·생산을 전주와 비교한 주간 보고서',page:()=>repPage('week'),toolbar:()=>repToolbar('week')},
+  repm:{name:'월간',desc:'선택한 달의 매출·손익·현금·채권채무·생산을 전월과 비교한 월간 보고서',page:()=>repPage('month'),toolbar:()=>repToolbar('month')},});
 if(MODS[UI.mod]&&MODS[UI.mod].tab)UI.dtab=MODS[UI.mod].tab;
 if(!MODS[UI.mod]||MODS[UI.mod].hidden)UI.mod='dash-all';
 
@@ -3920,6 +3976,7 @@ function coverKpi(g){
   const T=TODAY_D, P={start:ds(new Date(T.getFullYear(),T.getMonth(),1)),end:TODAY};
   try{
     if(g==='fin')return '현금 '+plain(cashBefore(addDs(TODAY,1)));
+    if(g==='rep')return '이번 주 매출 '+plain(income(period(TODAY,'week')).sales);
     if(g==='in')return '이번 달 입고 '+plain(sumBy(DB.inbound.filter(r=>inP(r,P)),lineAmt));
     if(g==='prod'){const pr=DB.production.filter(r=>inP(r,P)),pl=sumBy(pr,'plan');return '달성률 '+pct(pl?sumBy(pr,'actual')/pl:NaN)}
     if(g==='out')return '이번 달 매출 '+plain(income(P).sales);
@@ -4655,7 +4712,7 @@ function toast(msg,action){
 }
 
 /* ---------- events ---------- */
-function go(id){Object.keys(SEL).forEach(k=>delete SEL[k]);let tab=null;if(MODS[id]&&MODS[id].tab){tab=UI.dtab=MODS[id].tab;id='dash-all'}if(!MODS[id])return;UI.mod=id;UI.q='';saveUI();render();closeSide();window.scrollTo(0,0);
+function go(id){Object.keys(SEL).forEach(k=>delete SEL[k]);let tab=null;if(id==='dash-rep')id='repw';if(MODS[id]&&MODS[id].tab){tab=UI.dtab=MODS[id].tab;id='dash-all'}if(!MODS[id])return;UI.mod=id;UI.q='';saveUI();render();closeSide();window.scrollTo(0,0);
   if(tab){const el=document.querySelector('.dtabs');if(el)el.scrollIntoView({block:'start'})}}
 document.addEventListener('click',e=>{
   if(e.target.classList.contains('modal-bg')){closeModal();return}
@@ -4750,6 +4807,8 @@ document.addEventListener('click',e=>{
   if(d.fclear){UI.flt=UI.flt||{};UI.flt[d.fclear]={};saveUI();renderMain();return}
   if(d.fset){const [id,k,v]=d.fset.split('|');UI.flt=UI.flt||{};const f=UI.flt[id]=UI.flt[id]||{};f[k]=f[k]===v?'':v;saveUI();renderMain();return}
   if(d.go){go(d.go);return}
+  if(d.repnav){const [md,n]=d.repnav.split('|'),k=md==='week'?'rpw':'rpm';UI[k]=+n?shift(repAnchor(md),md,+n):TODAY;saveUI();renderMain();return}
+  if(d.repxls){repXls(d.repxls);return}
   if(d.group){UI.open[d.group]=UI.open[d.group]===false;saveUI();renderNav();return}
   if(d.allgroups){GROUPS.forEach(g=>UI.open[g.id]=d.allgroups==='open');saveUI();renderNav();return}
   if(d.mod&&t.closest('#nav')){go(d.mod);return}
