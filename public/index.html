@@ -1543,7 +1543,9 @@ function priceAt(cust,pn,item,d){
 }
 // 외상매입: 금액·부가세·합계 중 적은 것으로 나머지를 채움 (모두 비워도 등록, 거래일·지급기일 비우면 오늘·결제조건)
 // 품목 내역(lines) → 금액 = Σ 수량 × 단가, 수량 합계, 평균 단가, 품목명 "첫 품목 외 N건" (외상매입·외상매출 공통)
-function lnNorm(r){if(!(Array.isArray(r.lines)&&r.lines.length)){delete r.lines;return false}r.sub=r2(r.lines.reduce((a,x)=>a+(+x.qty||0)*(+x.price||0),0));const q=r.lines.reduce((a,x)=>a+(+x.qty||0),0);r.qty=q||'';r.price=q?Math.round(r.sub/q*10000)/10000:'';
+function lnNorm(r){if(!(Array.isArray(r.lines)&&r.lines.length)){delete r.lines;delete r.subFix;return false}const lt=r2(r.lines.reduce((a,x)=>a+(+x.qty||0)*(+x.price||0),0));
+  // 금액을 직접 고쳤으면(품목 합계와 다르면) 그 금액을 그대로 씀
+  if(!(r.subFix&&+r.sub))r.sub=lt;const q=r.lines.reduce((a,x)=>a+(+x.qty||0),0);r.qty=q||'';r.price=q?Math.round(r.sub/q*10000)/10000:'';
   if(!String(r.item||'').trim()||r.item===r.itemAuto){const nm=r.lines.map(x=>x.item).filter(Boolean);r.item=r.itemAuto=nm.length?nm[0]+(nm.length>1?` 외 ${nm.length-1}건`:''):''}return true}
 function apNorm(r){
   // 합계(지급할 금액) = 금액 − 할인 + 부가세 − 부가세 Ret − ISR Ret, 부가세를 비우면 (금액 − 할인) × 세율
@@ -3265,7 +3267,7 @@ document.addEventListener('paste',e=>{const t=e.target;if(!t.dataset||!(t.datase
   if(isL)lnSync(F);else pdSync(F)});
 function readForm(form,m){
   const o={};inCols(m).forEach(c=>{const el=form.querySelector(`[name="${c.k}"]`);if(!el)return;let v=el.value;if(isNum(c)){const x=pnum(v);v=String(v).trim()===''?(c.keepBlank?'':0):isFinite(x)?x:0}else v=String(v).trim();o[c.k]=v});
-  const L=lnRead(form);if(L)o.lines=L;const P=pdRead(form);if(P)o.lines=P;const Y=pyRead(form);if(Y)o.pays=Y;const PL=plRead(form);if(PL)o.plan=PL;return o;
+  const L=lnRead(form);if(L){o.lines=L;const lt=r2(L.reduce((a,x)=>a+(+x.qty||0)*(+x.price||0),0));o.subFix=L.length&&o.sub!=null&&o.sub!==''&&Math.abs((+o.sub||0)-lt)>0.005?1:0}const P=pdRead(form);if(P)o.lines=P;const Y=pyRead(form);if(Y)o.pays=Y;const PL=plRead(form);if(PL)o.plan=PL;return o;
 }
 function registerCard(id,p,title){
   const m=MODS[id], blank=m.blank(p);
