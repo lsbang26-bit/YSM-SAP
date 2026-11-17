@@ -3401,7 +3401,7 @@ function fundCard(p){const W=fdWeek(p),won=v=>'₩'+nf0.format(Math.round(v)),f=
       ${W.L.map(a=>`<tr><td>${esc(a.name)}</td><td class="n">${f(a.open,a.cur)}</td><td class="n">${f(a[ki],a.cur)}</td><td class="n">${f(a[ko],a.cur)}</td>${xc(a)}<td class="n"><b>${f(a.close,a.cur)}</b></td></tr>`).join('')}</tbody></table></div>
     <div class="body" style="font-size:12px;color:var(--faint)">${X?'입금·출금은 계좌 이체·환전·차입금 갱신을 뺀 실제 거래입니다. 뺀 금액의 순액은 "계좌간 거래" 칸에 있고, 전주 잔고 + 입금 − 출금 + 계좌간 거래 = 잔고입니다. <button class="linkbtn" data-fdx="1" style="border:0;background:none;color:var(--accent);cursor:pointer;padding:0;font-size:12px">계좌간 거래 내역 보기</button> · ':''}금액은 부가세 포함${X?'':', 계좌 간 이체 포함'}입니다. 원화 환산: 1 US$ = ${nf2.format(FX())} MXN, 1 MXN = ${nf2.format(KRW())}원.</div>
     <h2 style="font-size:14px;margin:6px 16px 0">주요내용</h2>
-    ${big('큰 입금',B.I)}${big('큰 비용',B.O)}
+    ${big('주요 입금',B.I)}${big('주요 비용',B.O)}
     <div class="body"><label style="display:block;font-size:12px;color:var(--faint);margin-bottom:4px">추가 메모 (이 주에 저장)</label><textarea data-fdnote="${p.start}" rows="3" style="width:100%;box-sizing:border-box">${esc(note)}</textarea>
     <div style="font-size:12px;color:var(--faint);margin-top:4px">계좌 이체·환전·차입금 갱신은 주요내용에서 뺐습니다. 입금은 큰 순서로 5건, 비용은 7건입니다.</div></div></div>`}
 // 계좌간 거래 (이체·환전·차입금 갱신) 팝업: 선택한 주
