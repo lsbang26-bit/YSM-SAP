@@ -4454,19 +4454,22 @@ function runCmd(text,lang,noAI){
     const arD=DB.ar.filter(r=>arBal(r)>0.5&&inP_(r.due)&&okC(r)), apD=DB.ap.filter(r=>apBal(r)>0.5&&inP_(r.due)&&okV(r));
     const cin=DB.cash.filter(r=>r.type==='입금'&&inP_(r.date)&&!/차입금 입금/.test(r.account||'')&&(!wC||wC.includes(r.party))), cout=DB.cash.filter(r=>r.type==='출금'&&inP_(r.date)&&(!wV||wV.includes(r.party)));
     const arOv=DB.ar.filter(r=>arBal(r)>0.5&&r.due&&r.due<Q.start&&Q.start<=TODAY&&okC(r)), apOv=DB.ap.filter(r=>apBal(r)>0.5&&r.due&&r.due<Q.start&&Q.start<=TODAY&&okV(r));
+    // 거래 통화로 표시 (US$ 건은 US$, MXN 건은 MXN). 막대 길이만 MXN 환산으로 비교
+    const nat=(r,f)=>f(r)/rate(r.cur||'MXN'),fc=(v,c)=>(c==='USD'?'US$ ':'MXN ')+(v<0?'−':'')+nf2.format(Math.abs(v)),byC=(L,f)=>['MXN','USD'].map(c=>[c,sumBy(L.filter(r=>(r.cur||'MXN')===c),r=>nat(r,f))]).filter(x=>Math.abs(x[1])>0.004),
+      fcL=(b,j='<br>')=>b.length?b.map(([c,v])=>fc(v,c)).join(j):fc(0,'MXN'),bigS=(L,f,j)=>fcL(byC(L,f),j),sayS=(L,f)=>{const b=byC(L,f);return b.length?b.map(([c,v])=>plain(v)+(c==='USD'?S(' 달러',' dollars',' dólares'):S(' 페소',' pesos',' pesos'))).join(S(' 와 ',' and ',' y ')):S('0 페소','0 pesos','0 pesos')};
     const inExp=sumBy(arD,arBal), inDone=sumBy(cin,M('amount')), outExp=sumBy(apD,apBal), outDone=sumBy(cout,M('amount')), ovI=sumBy(arOv,arBal), ovO=sumBy(apOv,apBal);
-    const wantI=(has(CFI)||!has(CFO))&&!(wV&&!wC&&!has(CFI)), wantO=(has(CFO)||!has(CFI))&&!(wC&&!wV&&!has(CFO)), who=[...(wantO&&wV||[]),...(wantI&&wC||[])].filter((v,i,a)=>a.indexOf(v)===i), whoL=who.length?(who.length>2?who.slice(0,2).join(', ')+S(` 외 ${who.length-2}곳`,` +${who.length-2}`,` +${who.length-2}`):who.join(', '))+' · ':'', dueBar=(rs,k,f)=>topBy(rs,k,f,6).map(([n,v])=>[n,v,money(v)]);
-    const big=[];if(wantI)big.push([S('입금 예정','Incoming (due)','Por cobrar'),money(inExp)],[S('입금 완료','Received','Cobrado'),money(inDone)]);
-    if(wantO)big.push([S('지급 예정','To pay (due)','Por pagar'),money(outExp)],[S('지급 완료','Paid','Pagado'),money(outDone)]);
-    if(wantI&&wantO)big.push([S('예정 차액','Net (due)','Neto'),money(inExp-outExp)]);
+    const wantI=(has(CFI)||!has(CFO))&&!(wV&&!wC&&!has(CFI)), wantO=(has(CFO)||!has(CFI))&&!(wC&&!wV&&!has(CFO)), who=[...(wantO&&wV||[]),...(wantI&&wC||[])].filter((v,i,a)=>a.indexOf(v)===i), whoL=who.length?(who.length>2?who.slice(0,2).join(', ')+S(` 외 ${who.length-2}곳`,` +${who.length-2}`,` +${who.length-2}`):who.join(', '))+' · ':'', dueBar=(rs,k,f)=>topBy(rs,k,f,6).map(([n,v])=>[n,v,bigS(rs.filter(r=>(r[k]||'–')===n),f,' · ')]);
+    const big=[];if(wantI)big.push([S('입금 예정','Incoming (due)','Por cobrar'),bigS(arD,arBal)],[S('입금 완료','Received','Cobrado'),bigS(cin,M('amount'))]);
+    if(wantO)big.push([S('지급 예정','To pay (due)','Por pagar'),bigS(apD,apBal)],[S('지급 완료','Paid','Pagado'),bigS(cout,M('amount'))]);
+    if(wantI&&wantO)big.push([S('예정 차액','Net (due)','Neto'),fcL(['MXN','USD'].map(c=>[c,(byC(arD,arBal).find(x=>x[0]===c)||[0,0])[1]-(byC(apD,apBal).find(x=>x[0]===c)||[0,0])[1]]).filter(x=>Math.abs(x[1])>0.004))]);
     const secs=[];
     if(wantI)secs.push({h:S(`입금 예정 · ${arD.length}건 (외상매출 수금기일)`,`Incoming · ${arD.length}`,`Por cobrar · ${arD.length}`),go:'ar',bars:dueBar(arD,'customer',arBal)});
     if(wantO)secs.push({h:S(`지급 예정 · ${apD.length}건 (외상매입 지급기일)`,`To pay · ${apD.length}`,`Por pagar · ${apD.length}`),go:'ap',bars:dueBar(apD,'vendor',apBal)});
     if(wantI&&ovI>0.5)secs.push({h:S(`기간 전 연체 미수 · ${arOv.length}건`,`Overdue receivables · ${arOv.length}`,`Cobros vencidos · ${arOv.length}`),go:'ar',bars:dueBar(arOv,'customer',arBal)});
     if(wantO&&ovO>0.5)secs.push({h:S(`기간 전 연체 미지급 · ${apOv.length}건`,`Overdue payables · ${apOv.length}`,`Pagos vencidos · ${apOv.length}`),go:'ap',bars:dueBar(apOv,'vendor',apBal)});
-    const sI=S(`입금 예정은 ${plain(inExp)} 페소${inDone?`, 이미 입금된 금액은 ${plain(inDone)} 페소`:''}`,`incoming due ${plain(inExp)} pesos${inDone?`, already received ${plain(inDone)}`:''}`,`por cobrar ${plain(inExp)} pesos${inDone?`, ya cobrado ${plain(inDone)}`:''}`);
-    const sO=S(`지불해야 할 금액은 ${plain(outExp)} 페소`,`to pay ${plain(outExp)} pesos`,`por pagar ${plain(outExp)} pesos`);
-    const ov=(wantO&&ovO>0.5)?S(`. 연체된 미지급 ${plain(ovO)} 페소도 있습니다`,`. Plus ${plain(ovO)} pesos overdue`,`. Además ${plain(ovO)} pesos vencidos`):'';
+    const sI=S(`입금 예정은 ${sayS(arD,arBal)}${inDone?`, 이미 입금된 금액은 ${sayS(cin,M('amount'))}`:''}`,`incoming due ${sayS(arD,arBal)}${inDone?`, already received ${sayS(cin,M('amount'))}`:''}`,`por cobrar ${sayS(arD,arBal)}${inDone?`, ya cobrado ${sayS(cin,M('amount'))}`:''}`);
+    const sO=S(`지불해야 할 금액은 ${sayS(apD,apBal)}`,`to pay ${sayS(apD,apBal)}`,`por pagar ${sayS(apD,apBal)}`);
+    const ov=(wantO&&ovO>0.5)?S(`. 연체된 미지급 ${sayS(apOv,apBal)}도 있습니다`,`. Plus ${sayS(apOv,apBal)} overdue`,`. Además ${sayS(apOv,apBal)} vencidos`):'';
     A={title:whoL+S(wantI&&wantO?'입금 · 지급 일정':wantI?'입금 일정':'지급 일정',wantI&&wantO?'Cash in · out':wantI?'Cash in':'Cash out',wantI&&wantO?'Cobros y pagos':wantI?'Cobros':'Pagos'),period:Q.label,big,secs,go:wantO&&!wantI?'ap':wantI&&!wantO?'ar':'bank',
       say:S(`${Q.label} ${whoL.replace(' · ',' ')}`,`${Q.label} ${whoL.replace(' · ',' ')}: `,`${Q.label} ${whoL.replace(' · ',' ')}: `)+[wantI?sI:'',wantO?sO:''].filter(Boolean).join(S('이고, ',', and ',' y '))+S('입니다','','')+ov};
   }else if(has(/잔고|잔액|시재|통장|은행|bbva|base|달러|페소|balance|bank|cash|saldo|banco|efectivo/i)&&!has(/미수|미지급|외상|receivable|payable|cobrar|pagar/i)){
