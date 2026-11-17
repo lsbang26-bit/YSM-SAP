@@ -3325,6 +3325,75 @@ MODS.payables.dash=p=>{const {t,ty}=payTotals(p);
     +`<div class="duo single">${trendHTML('기간별 적립액 합계',q=>sumBy(DB.employees,e=>{const a=accrual(e,q.start,q.end);return a.ag+a.vp+a.sf}),1)}</div>`};
 ['fin','tax','in','prod','out','sales','gen'].forEach(g=>{MODS['dash-'+g].hidden=1;MODS['dash-'+g].tab=g});
 
+/* ---------- 주간 보고: 주간 자금 보고 (일일자금수지 실적표 엑셀) ---------- */
+// DB.fund = {order:[계좌], acc:{계좌:{cur, months:{'YYYY-MM':{open, rows:[{date,party,cta,ko,desc,note,folio,inn,out}]}}}}, note:{주 시작일:메모}}
+// 금액은 부가세 포함 (엑셀 잔고 계산과 같음: 잔고 = 전 잔고 + 입금 + 부가세 − 출금 − 부가세)
+const FD_CTA={VENTAS:'매출',VENTA:'매출',PRESTACION:'복리후생비',CONSUMIBLE:'소모품비',CONSUMIBLES:'소모품비',SUELDOS:'급여',SUELDO:'급여','MATERIA PRIMA':'원재료',COMISION:'지급수수료',COMISIONES:'지급수수료',TRANSPORTE:'임차료(운송)',SUMINISTRO:'소모품비',INTERESES:'이자비용',FLETE:'운반비',GASTO:'경비',REPRESENTACION:'접대비',TRASPASO:'계좌 이체',IMPUESTOS:'세금과공과',HONORARIOS:'지급수수료'};
+const FD_MON={ENERO:'1월',FEBRERO:'2월',MARZO:'3월',ABRIL:'4월',MAYO:'5월',JUNIO:'6월',JULIO:'7월',AGOSTO:'8월',SEPTIEMBRE:'9월',OCTUBRE:'10월',NOVIEMBRE:'11월',DICIEMBRE:'12월'};
+const FD_TXT=[[/VENTA SCRAP/,'스크랩 매출'],[/VENTA DE ACERO/,'강재 매출'],[/VENTA DE FUNDA ANTIPOLVO/,'더스트 커버 매출'],[/VENTAS? (DE )?CLIENTES?|^VENTA\s*$|\| VENTA/,'매출 대금 수금'],[/DEVOLUCION DE PAGO/,'지급액 반환'],[/RECIBO DE LUZ|ENERGIA ELECTRICA/,'전력비'],[/SERVICIO DE AGUA/,'공단 수도료'],[/SEGURIDAD PARQUE/,'공단 경비 용역'],[/RENTA NAVE/,'공장 임차료'],[/MANTENIMIENTO NAVE/,'공장 관리비'],[/PRODUCTOS QUIMICOS/,'화학 제품 (원자재)'],
+  [/NOMINA SEMANA (\d+)/,'$1주차 주급'],[/NOMINA CATORCENA (\d+)/,'14일 급여 $1회차'],[/NOMINA MENSUAL ?(\w*)/,'$1 월급'],[/FINIQUITOS?( SEMANA (\d+))?/,'퇴직 정산금'],[/BONO RECOMENDACI/,'추천 보너스'],
+  [/(PAGO )?INTERESES (DE )?CREDITO/,'차입금 이자'],[/RENOVACION DISPOSICION/,'차입금 갱신'],[/RENTA DE CASA|RENTA CASA/,'주택 임차료'],[/RENTA DEPARTAMENTO/,'아파트 임차료'],[/RENTA (MENSUAL )?(DE )?TRANSPORTE/,'통근 차량 임차료'],
+  [/ROLLOS DE ACERO/,'강판 코일 (원자재)'],[/MINERALES DE ACERO|MATERIAL ACERO/,'철강 자재'],[/HONORARIOS PEDIMENTO/,'통관 수수료'],[/HONORARIOS/,'자문 수수료'],[/PEDIMENTO/,'수입 통관 (면장)'],
+  [/REEMBOLSO RENTA/,'임차료 환급'],[/REEMBOLSO/,'경비 환급'],[/POLIZA JURIDICA/,'법률 보험'],[/SERVICIO MEDICO ?(\w*)/,'$1 의료 서비스'],[/SERVICIO DE FLETE|FLETE/,'운송비'],[/SERVICIO INMEX/,'IMMEX 서비스'],
+  [/SERVICIO DE COMIDA/,'식당 급식'],[/HOSPEDAJE/,'숙박비'],[/VUELOS?/,'항공권'],[/DESPENSA/,'식료품 쿠폰'],[/GASOLINA/,'유류대'],[/ALIMENTOS/,'식비'],[/RECARGA|TELCEL/,'휴대폰 충전'],[/ARTICULOS PARA CASA|LITERAS|COLCHONES/,'숙소 생활용품'],
+  [/SENSORES/,'센서'],[/MATRICULAS/,'금형 각인판'],[/GAS SOLDADURA/,'용접 가스'],[/GAS NATURAL/,'천연가스 배관'],[/GARRAFONES|AGUA/,'생수'],[/ESCOMBRO/,'폐기물 처리'],[/TARJETAS? DE PRESENTACION/,'명함'],[/TARJETA DE ACCESO/,'출입 카드'],
+  [/RESPUESTOS|REFACCIONES/,'예비 부품'],[/CONECTORES/,'공압 커넥터'],[/LIQUIDO REVELADOR/,'현상액'],[/VASOS/,'종이컵'],[/CAJA FUERTE/,'금고'],[/UBER/,'택시비'],[/RESTAURANTE|COMIDA/,'식대'],[/GASTO ADMINISTRATIVO/,'관리 경비']];
+function fdKo(r){const t=(String(r.note||'')+' | '+String(r.desc||'')).toUpperCase(),mo=Object.keys(FD_MON).find(k=>new RegExp('\\b'+k+'\\b').test(t)),mk=mo?FD_MON[mo]+' ':'';for(const [re,ko] of FD_TXT){const m=t.match(re);if(m){const o=ko.replace(/\$(\d)/g,(_,i)=>{const v=(m[+i]||'').trim();return FD_MON[v]||v}).replace(/^\s+/,'');return mk&&!o.includes(FD_MON[mo])?mk+o:o}}
+  return r.ko||FD_CTA[String(r.cta||'').trim().toUpperCase()]||String(r.note||r.desc||'')}
+const fdInternal=r=>/TRASPASO|DIVISAS|RENOVACION|BANCO \w+ A /i.test(String(r.desc||'')+' '+String(r.note||''));
+function fdDate(v){if(v instanceof Date&&!isNaN(v))return ds(new Date(v.getFullYear(),v.getMonth(),v.getDate()));if(typeof v==='number'&&v>20000&&v<80000){const d=new Date(Math.round((v-25569)*864e5));return ds(new Date(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()))}
+  const t=String(v||'').trim();if(validD(t))return t;const m=t.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);return m?`${m[3]}-${pad(+m[2])}-${pad(+m[1])}`:''}
+// 시트 하나 = 계좌 하나. 'Fecha' 머리글 줄에서 칸 위치를 찾고, '(Saldo Inicial' 줄에서 전월 잔고를 읽음
+function fdSheet(aoa,name){const S=v=>String(v==null?'':v).trim(),hr=aoa.findIndex(R=>R&&/^fecha/i.test(S(R[0])));if(hr<0)return null;
+  const H=aoa[hr],idx=re=>H.findIndex(v=>re.test(S(v))),ci=idx(/ingreso|입금/i),co=idx(/egreso|출금/i),cs=idx(/saldo|잔고/i),cc=idx(/cuenta|계정/i),ce=idx(/empresa|거래처/i),cd=idx(/descrip|적요/i),cf=idx(/factura|영수/i),cn=idx(/nota|비고/i);
+  if(ci<0||co<0)return null;const sub=aoa[hr+1]||[],usd=/US\$|USD|D[oó]lar/i.test(name+' '+S(sub[ci])),num=v=>typeof v==='number'?v:hcNum(v);let open=null;const rows=[];
+  for(let r=hr+1;r<aoa.length;r++){const R=aoa[r]||[];if(R.some(v=>/saldo inicial|전월 잔고/i.test(S(v)))){if(cs>=0&&S(R[cs])!=='')open=num(R[cs]);continue}
+    const d=fdDate(R[0]);if(!d)continue;const inn=num(R[ci])+num(R[ci+1]),out=num(R[co])+num(R[co+1]);if(!inn&&!out)continue;
+    rows.push({date:d,cta:cc<0?'':S(R[cc]),ko:cc<0?'':S(R[cc+1]),party:ce<0?'':S(R[ce]),desc:cd<0?'':S(R[cd]),folio:cf<0||S(R[cf])==='-'?'':S(R[cf]),note:cn<0?'':S(R[cn]),inn:Math.round(inn*100)/100,out:Math.round(out*100)/100})}
+  return {name:S(name),cur:usd?'USD':'MXN',open,rows}}
+function fdUpload(file){if(!window.XLSX){toast('엑셀 기능을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.');return}
+  const rd=new FileReader();rd.onload=()=>{try{const wb=XLSX.read(new Uint8Array(rd.result),{type:'array',cellDates:true});
+    const A=wb.SheetNames.map(n=>fdSheet(XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:'',raw:true}),n)).filter(Boolean);
+    const all=A.flatMap(a=>a.rows.map(r=>r.date));if(!A.length||!all.length){toast('일일자금수지 실적표를 찾지 못했습니다. 시트마다 Fecha · Ingreso(입금) · Egreso(출금) · Saldo(잔고) 머리글이 있는지 확인해 주세요.');return}
+    const cnt={};all.forEach(d=>{const k=d.slice(0,7);cnt[k]=(cnt[k]||0)+1});const ym=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a])[0];
+    const F=DB.fund=DB.fund&&DB.fund.acc?DB.fund:{order:[],acc:{},note:{}};
+    A.forEach(a=>{const x=F.acc[a.name]=F.acc[a.name]||{cur:a.cur,months:{}};x.cur=a.cur;if(!F.order.includes(a.name))F.order.push(a.name);
+      const by={};a.rows.forEach(r=>{(by[r.date.slice(0,7)]=by[r.date.slice(0,7)]||[]).push(r)});if(!by[ym])by[ym]=[];
+      Object.keys(by).forEach(k=>{x.months[k]={open:k===ym?(a.open==null?(x.months[k]?x.months[k].open:0):a.open):(x.months[k]?x.months[k].open:null),rows:by[k]}})});
+    const nAll=all.length,last=all.sort().pop();UI.rpw=last;save();saveUI();if(UI.mod!=='repw')go('repw');else renderMain();
+    toast(`자금 자료 ${A.length}개 계좌 · ${nAll}건을 올렸습니다 (${ym}, 마지막 거래 ${last}). 마지막 거래가 있는 주를 보여줍니다`)}catch(e){toast('파일을 읽지 못했습니다. 엑셀(.xlsx, .xls) 파일인지 확인해 주세요.')}};
+  rd.readAsArrayBuffer(file)}
+// d 날짜 시작 시점의 계좌 잔고 (그 달 전월 잔고 + d 이전 거래)
+function fdOpen(x,K,i){const m=x.months[K[i]];if(m.open!=null&&m.open!=='')return +m.open;return i>0?fdOpen(x,K,i-1)+sumBy(x.months[K[i-1]].rows,r=>r.inn-r.out):0}
+function fdBal(x,d){const K=Object.keys(x.months).sort();if(!K.length)return 0;const ym=d.slice(0,7);let i=-1;K.forEach((k,j)=>{if(k<=ym)i=j});if(i<0)return fdOpen(x,K,0);
+  const o=fdOpen(x,K,i),m=x.months[K[i]];return o+sumBy(K[i]===ym?m.rows.filter(r=>r.date<d):m.rows,r=>r.inn-r.out)}
+function fdWeek(p){const F=DB.fund;if(!F||!F.acc)return null;const nx=addDs(p.end,1);
+  const L=F.order.filter(n=>F.acc[n]).map(n=>{const x=F.acc[n],R=Object.values(x.months).flatMap(m=>m.rows).filter(r=>inP(r,p)),o=fdBal(x,p.start),i=sumBy(R,'inn'),q=sumBy(R,'out');
+    return {name:n,cur:x.cur,open:o,inn:i,out:q,close:o+i-q,R}});
+  const has=L.some(a=>Object.keys(F.acc[a.name].months).some(k=>k<=p.end.slice(0,7)&&k>=p.start.slice(0,7)));
+  return {L:L.filter(a=>a.R.length||Math.abs(a.open)>0.005||Math.abs(a.close)>0.005),has,months:uniq(Object.values(F.acc).flatMap(x=>Object.keys(x.months))).sort()}}
+const fdKRW=(v,cur)=>v*rate(cur)*KRW();
+function fdBig(W){const T=W.L.flatMap(a=>a.R.filter(r=>!fdInternal(r)).map(r=>Object.assign({acc:a.name,cur:a.cur},r)));
+  const I=T.filter(r=>r.inn>0).map(r=>Object.assign({v:r.inn,mxv:r.inn*rate(r.cur)},r)).sort((a,b)=>b.mxv-a.mxv).slice(0,5);
+  const O=T.filter(r=>r.out>0).map(r=>Object.assign({v:r.out,mxv:r.out*rate(r.cur)},r)).sort((a,b)=>b.mxv-a.mxv).slice(0,7);return {I,O}}
+function fundCard(p){const W=fdWeek(p),won=v=>'₩'+nf0.format(Math.round(v)),f=(v,c)=>Math.abs(v)<0.005?'<span class="muted">–</span>':fmtCur(v,c,1);
+  const up=`<label class="btn" style="cursor:pointer">⇪ 자금일보 엑셀 올리기<input type="file" id="fundFile" accept=".xlsx,.xls" style="display:none"></label>`;
+  if(!W)return `<div class="card"><header><h2>주간 자금 보고</h2><div style="margin-left:auto">${up}</div></header><div class="empty">일일자금수지 실적표 (Reporte Diario) 엑셀을 올리면 계좌별 전주 잔고 · 입금 · 출금 · 잔고와 주요 입금·비용을 채웁니다.</div></div>`;
+  const tk=k=>sumBy(W.L,a=>fdKRW(a[k],a.cur)),B=fdBig(W),note=(DB.fund.note||{})[p.start]||'';
+  const big=(t,L)=>`<h3 style="font-size:13px;margin:14px 16px 6px">${t}</h3>${L.length?`<div class="tw"><table><thead><tr><th>일자</th><th>계좌</th><th>거래처</th><th>내용</th><th class="n">금액</th><th class="n">원화</th></tr></thead><tbody>
+    ${L.map(r=>`<tr><td>${esc(r.date.slice(5).replace('-','/'))}</td><td>${esc(r.acc)}</td><td>${esc(r.party)}</td><td title="${esc([r.desc,r.note].filter(Boolean).join(' · '))}">${esc(fdKo(r))}</td><td class="n">${fmtCur(r.v,r.cur,1)}</td><td class="n">${won(fdKRW(r.v,r.cur))}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">이 주에 해당 거래가 없습니다.</div>'}`;
+  return `<div class="card"><header><h2>주간 자금 보고</h2><span class="meta">${esc(p.label)}</span><div style="margin-left:auto">${up}</div></header>
+    ${W.has?'':`<div class="body" style="color:var(--warn,#B45309)">이 주의 자금 자료가 없습니다. 올린 자료: ${esc(W.months.join(', '))}. 위의 ◀ 이전 주 / 다음 주 ▶ 로 주를 바꿔 보세요.</div>`}
+    <div class="tw"><table><thead><tr><th></th><th class="n">전주 잔고</th><th class="n">입금</th><th class="n">출금</th><th class="n">잔고</th></tr></thead><tbody>
+      <tr><td><b>원화 합계</b></td><td class="n"><b>${won(tk('open'))}</b></td><td class="n"><b>${won(tk('inn'))}</b></td><td class="n"><b>${won(tk('out'))}</b></td><td class="n"><b>${won(tk('close'))}</b></td></tr></tbody></table></div>
+    <div class="tw" style="margin-top:10px"><table><thead><tr><th>계좌</th><th class="n">전주 잔고</th><th class="n">입금</th><th class="n">출금</th><th class="n">잔고</th></tr></thead><tbody>
+      ${W.L.map(a=>`<tr><td>${esc(a.name)}</td><td class="n">${f(a.open,a.cur)}</td><td class="n">${f(a.inn,a.cur)}</td><td class="n">${f(a.out,a.cur)}</td><td class="n"><b>${f(a.close,a.cur)}</b></td></tr>`).join('')}</tbody></table></div>
+    <div class="body" style="font-size:12px;color:var(--faint)">금액은 부가세 포함, 계좌 간 이체 포함입니다. 원화 환산: 1 US$ = ${nf2.format(FX())} MXN, 1 MXN = ${nf2.format(KRW())}원.</div>
+    <h2 style="font-size:14px;margin:6px 16px 0">주요내용</h2>
+    ${big('큰 입금',B.I)}${big('큰 비용',B.O)}
+    <div class="body"><label style="display:block;font-size:12px;color:var(--faint);margin-bottom:4px">추가 메모 (이 주에 저장)</label><textarea data-fdnote="${p.start}" rows="3" style="width:100%;box-sizing:border-box">${esc(note)}</textarea>
+    <div style="font-size:12px;color:var(--faint);margin-top:4px">계좌 이체·환전·차입금 갱신은 주요내용에서 뺐습니다. 입금은 큰 순서로 5건, 비용은 7건입니다.</div></div></div>`}
+document.addEventListener('change',e=>{const t=e.target;if(t.id==='fundFile'&&t.files&&t.files[0]){fdUpload(t.files[0]);t.value=''}else if(t.dataset&&t.dataset.fdnote&&DB.fund){(DB.fund.note=DB.fund.note||{})[t.dataset.fdnote]=t.value;save()}});
 /* ---------- 주간 보고: 인원현황 (엑셀로 올린 주별 부서·인원·MXN) ---------- */
 // DB.hc = [{wk:'W1',n:1,dept,cnt,mxn,krw}] · 원화 칸이 없으면 MXN × 원화 환율
 const hcNum=v=>{if(typeof v==='number')return v;const t=String(v||'').replace(/[^\d.\-]/g,'');return t?+t:0};
@@ -3409,7 +3478,7 @@ function repPage(md){
   return `<div class="content">${kpiHTML([kv('매출액 (출고)',money(inc.sales),u+' '+rt(inc.sales,B.inc.sales),'good','outbound'),kv('영업이익',money(inc.op),'영업이익률 '+pct(inc.sales?inc.op/inc.sales:NaN),inc.op<0?'bad':'good','fs'),
       kv('입금',money(A.ci),A.I.length+'건','good','cash'),kv('출금',money(A.co),A.O.length+'건','bad','cash'),kv('기말 현금 잔액',money(A.close),p.end+' 기준',A.close<0?'bad':'','bank'),
       kv('미수 잔액',money(A.ar),'','warn','ar'),kv('미지급 잔액',money(A.ap),'','warn','ap'),kv('생산 달성률',pct(A.plan?A.act/A.plan:NaN),'실적 '+fq(A.act)+' EA',A.plan&&A.act/A.plan<0.9?'bad':'','production')])}
-    ${md==='week'?hcCard(p):''}
+    ${md==='week'?fundCard(p)+hcCard(p):''}
     ${table}
     <div class="duo even">${bars('매출액 추이',x=>income(x).sales)}${bars('기말 현금 잔액 추이',x=>cashBefore(addDs(x.end,1)))}</div>
     <div class="duo even">${groupSummary('고객사별 매출 (출고)',A.ob,'customer',[['출고 금액',lineAmt,money]])}${groupSummary('분류별 출금',A.O,'cat',[['금액',M('amount'),money]],r=>r.account)}</div>
@@ -3421,6 +3490,7 @@ function repXls(md){if(!window.XLSX){toast('엑셀 기능을 불러오지 못했
   const aoa=[[nm+' 보고 · '+p.label],['비교: '+q.label],['금액 단위 MXN (환산)'],[],['항목','이번 기간','직전 기간','증감','증감률'],
     ...repRows(A,B).map(([l,a,b])=>[l,r(a),r(b),r(a-b),b?r((a-b)/Math.abs(b)*100)+'%':'']),[],[(md==='week'?'다음 주':'다음 달')+'까지 수금·지급 예정 및 연체 (~ '+D.n.end+')'],
     ['구분','상태','거래처','Factura','만기일','통화','잔액 (거래 통화)','잔액 (MXN)'],...D.L.map(x=>[x.kind,x.od?'연체':'진행',x.party||'',x.folio,x.due,x.cur,r(x.nat),r(x.bal)])];
+  const FW=md==='week'?fdWeek(p):null;if(FW&&FW.L.length){const B=fdBig(FW),k=c=>Math.round(sumBy(FW.L,a=>fdKRW(a[c],a.cur)));aoa.push([],['주간 자금 보고'],['','전주 잔고','입금','출금','잔고'],['원화 합계',k('open'),k('inn'),k('out'),k('close')],[],['계좌','전주 잔고','입금','출금','잔고','통화'],...FW.L.map(a=>[a.name,r(a.open),r(a.inn),r(a.out),r(a.close),a.cur]),[],['주요내용'],['구분','일자','계좌','거래처','내용','금액','통화'],...B.I.map(x=>['입금',x.date,x.acc,x.party,fdKo(x),r(x.v),x.cur]),...B.O.map(x=>['비용',x.date,x.acc,x.party,fdKo(x),r(x.v),x.cur]));const nt=(DB.fund.note||{})[p.start];if(nt)aoa.push(['메모',nt])}
   const hw=md==='week'?hcSel(p):'',HR=(DB.hc||[]).filter(x=>x.wk===hw);if(HR.length)aoa.push([],['인원현황 '+hw],['부서','인원','MXN','원화'],...HR.map(x=>[x.dept,+x.cnt||0,r(+x.mxn||0),Math.round(hcKrw(x))]),['합계',sumBy(HR,'cnt'),r(sumBy(HR,'mxn')),Math.round(sumBy(HR,hcKrw))]);
   try{const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=[26,16,16,16,12,8,16,16].map(w=>({wch:w}));const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,nm+' 보고');XLSX.writeFile(wb,`${nm}보고_${p.start}_${p.end}.xlsx`)}catch(e){toast('엑셀 파일을 만들지 못했습니다')}}
 Object.assign(MODS,{
