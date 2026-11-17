@@ -3398,7 +3398,15 @@ document.addEventListener('change',e=>{const t=e.target;if(t.id==='fundFile'&&t.
 // DB.hc = [{wk:'W1',n:1,dept,cnt,mxn,krw}] · 원화 칸이 없으면 MXN × 원화 환율
 const hcNum=v=>{if(typeof v==='number')return v;const t=String(v||'').replace(/[^\d.\-]/g,'');return t?+t:0};
 const hcWkN=w=>{const m=String(w).match(/(\d+)/);return m?+m[1]:0};
-function hcWeeks(){return uniq((DB.hc||[]).map(r=>r.wk)).sort((a,b)=>hcWkN(a)-hcWkN(b)||(a<b?-1:1))}
+function hcWeeks(){const F={};(DB.hc||[]).forEach(r=>{if(r.from&&!F[r.wk])F[r.wk]=r.from});return uniq((DB.hc||[]).map(r=>r.wk)).sort((a,b)=>F[a]&&F[b]&&F[a]!==F[b]?(F[a]<F[b]?-1:1):hcWkN(a)-hcWkN(b)||(a<b?-1:1))}
+// Contpaq 부서명 → 한국어 (같은 뜻의 부서는 하나로 합침)
+const HC_DEPT=[[/^$|ninguno/i,'미지정'],[/mantenimiento t[eé]cnico/i,'기술 보전'],[/mainten|mantenim|mtto/i,'보전'],[/molde/i,'금형'],[/prensa/i,'프레스'],[/pintura/i,'도장'],[/soldad/i,'용접'],[/inspec/i,'검사'],[/calid|quality/i,'품질'],
+  [/embarq/i,'출하'],[/log[ií]st/i,'물류'],[/almac/i,'자재 창고'],[/limpieza/i,'청소'],[/asuntos generales/i,'총무'],[/prod|manufac/i,'생산'],[/admin|contab|finan/i,'관리'],[/recursos humanos|^rh$/i,'인사'],[/compras/i,'구매'],[/venta|sales/i,'영업']];
+const hcDeptKo=t=>{t=String(t||'').trim();const m=HC_DEPT.find(([re])=>re.test(t));return m?m[1]:t};
+// Contpaq Lista de Raya (forma tabular): 부서별 인원 = 직원 수, MXN = 총지급 (TOTAL PERCEPCIONES)
+function hcFromRaya(aoa){const R=rayaContpaq(aoa);if(!R||!R.rows.length)return [];const P=R.period||{},wk=P.per&&/^W/.test(P.per)?P.per.replace(/~.*/,''):(P.per||('W'+isoWeek(pd(P.to||TODAY))));const G={},src={};
+  R.rows.forEach(r=>{const d=hcDeptKo(r.cdept);(G[d]=G[d]||{cnt:0,mxn:0,neto:0,er:0});G[d].cnt++;G[d].mxn+=r.sueldo+r.ot+r.bonus;G[d].neto+=+r.neto||0;G[d].er+=(+r.imssPat||0)+(+r.rcv||0)+(+r.infPat||0)+(+r.isn||0);(src[d]=src[d]||new Set()).add(r.cdept||'Ninguno')});
+  return Object.keys(G).sort((a,b)=>G[b].cnt-G[a].cnt).map(d=>({wk,n:hcWkN(wk),dept:d,cnt:G[d].cnt,mxn:Math.round(G[d].mxn*100)/100,neto:Math.round(G[d].neto*100)/100,er:Math.round(G[d].er*100)/100,krw:0,src:[...src[d]].join(', '),from:P.from||'',to:P.to||''}))}
 function hcSel(p){const W=hcWeeks();if(!W.length)return '';if(W.includes(UI.hcw))return UI.hcw;const iw=p?W.find(w=>hcWkN(w)===isoWeek(pd(p.start))):'';return iw||W[W.length-1]}
 const hcKrw=r=>+r.krw||(+r.mxn||0)*KRW();
 // 캡처 양식: 'W1' 제목 아래 부서 | 인원 | MXN | 원화. 여러 주가 옆으로(또는 아래로) 이어져도 '부서' 머리글마다 한 주로 읽음
@@ -3416,8 +3424,8 @@ function hcParse(aoa,sheetName){const out=[],S=v=>String(v==null?'':v).trim(),is
 function rr0(aoa,r,c,isWk){for(let rr=r-1;rr>=Math.max(0,r-3);rr--){const R=aoa[rr]||[];for(let k=Math.max(0,c-1);k<c+4;k++)if(isWk(R[k]))return String(R[k]).trim()}return ''}
 function hcUpload(file){if(!window.XLSX){toast('엑셀 기능을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.');return}
   const rd=new FileReader();rd.onload=()=>{try{const wb=XLSX.read(new Uint8Array(rd.result),{type:'array'});let rows=[];
-    wb.SheetNames.forEach(n=>{rows=rows.concat(hcParse(XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:'',raw:true}),n))});
-    if(!rows.length){toast('인원현황을 찾지 못했습니다. "W1" 아래에 부서 · 인원 · MXN · 원화 머리글이 있는지 확인해 주세요.');return}
+    wb.SheetNames.forEach(n=>{const a=XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:'',raw:true}),c=hcFromRaya(a);rows=rows.concat(c.length?c:hcParse(a,n))});
+    if(!rows.length){toast('인원현황을 찾지 못했습니다. Contpaq Lista de Raya (forma tabular) 파일이거나, "W1" 아래에 부서 · 인원 · MXN · 원화 머리글이 있는지 확인해 주세요.');return}
     const W=uniq(rows.map(r=>r.wk));DB.hc=(DB.hc||[]).filter(r=>!W.includes(r.wk)).concat(rows);UI.hcw=W[W.length-1];save();saveUI();renderMain();
     toast(`인원현황 ${W.join(', ')} · 부서 ${rows.length}행을 올렸습니다`)}catch(e){toast('파일을 읽지 못했습니다. 엑셀(.xlsx, .xls) 또는 CSV 파일인지 확인해 주세요.')}};
   rd.readAsArrayBuffer(file)}
@@ -3426,17 +3434,18 @@ function hcTemplate(){if(!window.XLSX){toast('엑셀 기능을 불러오지 못�
   try{const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:3}}];ws['!cols']=[16,10,16,16].map(w=>({wch:w}));const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'인원현황');XLSX.writeFile(wb,'인원현황_양식.xlsx')}catch(e){toast('양식을 만들지 못했습니다')}}
 function hcCard(p){const W=hcWeeks(),w=hcSel(p),R=(DB.hc||[]).filter(r=>r.wk===w),tc=sumBy(R,'cnt'),tm=sumBy(R,'mxn'),tk=sumBy(R,hcKrw),won=v=>'₩'+nf0.format(Math.round(v));
   const btns=`<label class="btn" style="cursor:pointer">⇪ 엑셀 올리기<input type="file" id="hcFile" accept=".xlsx,.xls,.csv" style="display:none"></label><button class="btn" data-hctpl="1">양식 내려받기</button>`;
-  if(!W.length)return `<div class="card"><header><h2>인원현황</h2><div class="hbtns" style="margin-left:auto;display:flex;gap:6px">${btns}</div></header><div class="empty">아직 올린 인원현황이 없습니다. "W1" 아래에 부서 · 인원 · MXN · 원화가 있는 엑셀을 올려 주세요. 여러 주를 한 파일에 옆으로 이어 붙여도 됩니다.</div></div>`;
+  if(!W.length)return `<div class="card"><header><h2>인원현황</h2><div class="hbtns" style="margin-left:auto;display:flex;gap:6px">${btns}</div></header><div class="empty">아직 올린 인원현황이 없습니다. Contpaq Lista de Raya (forma tabular) 엑셀을 올리면 부서별 인원과 총지급액(MXN)을 채웁니다. "W1" 아래에 부서 · 인원 · MXN · 원화를 적은 엑셀도 됩니다.</div></div>`;
   const prev=W[W.indexOf(w)-1],P=prev?(DB.hc||[]).filter(r=>r.wk===prev):[],pc=sumBy(P,'cnt'),pm=sumBy(P,'mxn');
   const sel=`<label class="fx" style="margin:0">주 선택 <select data-hcw="1">${W.map(x=>`<option${x===w?' selected':''}>${esc(x)}</option>`).join('')}</select></label>`;
-  const tbl=`<div class="tw"><table><thead><tr><th colspan="4" style="text-align:center">${esc(w)}</th></tr><tr><th>부서</th><th class="n">인원</th><th class="n">MXN</th><th class="n">원화</th></tr></thead><tbody>
-    ${R.map(r=>`<tr><td>${esc(r.dept)}</td><td class="n">${nf0.format(+r.cnt||0)}</td><td class="n">${plain(+r.mxn||0)}</td><td class="n">${won(hcKrw(r))}</td></tr>`).join('')}
+  const tbl=`<div class="tw"><table><thead><tr><th colspan="4" style="text-align:center">${esc(w)}${R[0]&&R[0].from?` <span style="font-weight:400;color:var(--faint)">(${esc(R[0].from)} ~ ${esc(R[0].to)})</span>`:''}</th></tr><tr><th>부서</th><th class="n">인원</th><th class="n">MXN</th><th class="n">원화</th></tr></thead><tbody>
+    ${R.map(r=>`<tr><td${r.src?` title="Contpaq: ${esc(r.src)}"`:''}>${esc(r.dept)}</td><td class="n">${nf0.format(+r.cnt||0)}</td><td class="n">${plain(+r.mxn||0)}</td><td class="n">${won(hcKrw(r))}</td></tr>`).join('')}
     <tr><td><b>합계</b></td><td class="n"><b>${nf0.format(tc)}</b></td><td class="n"><b>${plain(tm)}</b></td><td class="n"><b>${won(tk)}</b></td></tr></tbody></table></div>
-    ${prev?`<div class="body" style="font-size:12px;color:var(--faint)">${esc(prev)} 대비 인원 ${tc-pc>=0?'+':'−'}${nf0.format(Math.abs(tc-pc))}명 · MXN ${tm-pm>=0?'+':'−'}${plain(Math.abs(tm-pm))}</div>`:''}`;
+    ${`<div class="body" style="font-size:12px;color:var(--faint)">${R.some(r=>r.src)?'MXN = Contpaq 총지급 (TOTAL PERCEPCIONES). 부서에 마우스를 올리면 Contpaq 부서명이 보입니다. ':''}${prev?`${esc(prev)} 대비 인원 ${tc-pc>=0?'+':'−'}${nf0.format(Math.abs(tc-pc))}명 · MXN ${tm-pm>=0?'+':'−'}${plain(Math.abs(tm-pm))}`:''}</div>`}`;
   const ch=(t,lab,vals,m,cur)=>`<div class="card chart"><header><h2>${esc(t)}</h2></header><div class="body">${barsSVG(lab,vals,m,cur)}</div></div>`;
+  const hch=(t,k,m)=>{const L=R.slice().sort((a,b)=>(+b[k]||0)-(+a[k]||0)),mxv=Math.max(1,...L.map(r=>+r[k]||0)),tot=sumBy(L,k)||1;return `<div class="card chart"><header><h2>${esc(t)}</h2><span class="meta">${L.length}개 부서</span></header><div class="body"><div class="hbars">${L.map(r=>{const v=+r[k]||0;return `<div class="hb" title="${esc(r.dept)}"><span class="hl">${esc(r.dept)}</span><span class="ht"><i style="width:${Math.max(1.5,v/mxv*100)}%"></i></span><span class="hv">${m?plain(v):nf0.format(v)+'명'}<small>${(v/tot*100).toFixed(1)}%</small></span></div>`}).join('')}</div></div></div>`};
   const WS=W.slice(-8),WR=WS.map(x=>(DB.hc||[]).filter(r=>r.wk===x));
   return `<div class="card"><header><h2>인원현황</h2>${sel}<div style="margin-left:auto;display:flex;gap:6px">${btns}<button class="btn" data-hcdel="${esc(w)}" title="이 주의 인원현황을 지웁니다">${esc(w)} 삭제</button></div></header>${tbl}</div>
-    <div class="duo even">${ch('부서별 인원 ('+w+')',R.map(r=>r.dept),R.map(r=>+r.cnt||0),0,-1)}${ch('부서별 MXN ('+w+')',R.map(r=>r.dept),R.map(r=>+r.mxn||0),1,-1)}</div>
+    <div class="duo even">${hch('부서별 인원 ('+w+')','cnt',0)}${hch('부서별 MXN ('+w+')','mxn',1)}</div>
     ${WS.length>1?`<div class="duo even">${ch('주별 총 인원',WS,WR.map(L=>sumBy(L,'cnt')),0,WS.indexOf(w))}${ch('주별 총 MXN',WS,WR.map(L=>sumBy(L,'mxn')),1,WS.indexOf(w))}</div>`:''}`}
 document.addEventListener('change',e=>{const t=e.target;if(t.id==='hcFile'&&t.files&&t.files[0]){hcUpload(t.files[0]);t.value=''}else if(t.dataset&&t.dataset.hcw){UI.hcw=t.value;saveUI();renderMain()}});
 /* ---------- 보고자료: 주간·월간 보고서 ---------- */
