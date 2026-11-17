@@ -1171,7 +1171,7 @@ function seedGroup(D,r,withParentAP){
     D.ic.push({id:uid(),date:s25,seller:QRO,buyer:USA,item:'AB-100 반제품 수출',cur:'USD',amount:a2,settled:old?a2:0});
   }
 }
-function migrate(D){if((D.ver||1)<3)D=migrate3(D);if(D.ver<4){upgradeV4(D,rng(11));D.ver=4}if(D.ver<5){upgradeV5(D,rng(13),false);D.ver=5}if(D.ver<6){upgradeV6(D);D.ver=6}if(D.ver<7){upgradeV7(D,rng(17));D.ver=7}if(D.ver<8){upgradeV8(D,rng(19));D.ver=8}if(D.ver<9){upgradeV9(D);D.ver=9}if(D.ver<10){upgradeV10(D);D.ver=10}if(D.ver<11){upgradeV11(D);D.ver=11}if(D.ver<12){upgradeV12(D);D.ver=12}if(D.ver<13){upgradeV13(D);D.ver=13}if(D.ver<14){upgradeV14(D);D.ver=14}if(D.ver<15){upgradeV15(D);D.ver=15}if(D.ver<16){upgradeV16(D);D.ver=16}if(D.ver<17){(D.production||[]).forEach(x=>{if(x.pn!=null)return;const[pn,it]=splitProd(x.product);Object.assign(x,{plant:'YSM',pn,item:it,spec:'',model:'',cat:'',amount:0})});D.ver=17}(D.ap||[]).forEach(r=>{if((r.iva==='0%'||r.iva==='면세')&&+r.ivaAmt&&+r.sub){r.ivaAmt=0;r.amount=Math.round(((+r.sub||0)-(+r.disc||0)-(+r.ivaRet||0)-(+r.isrRet||0))*100)/100}});if(!Array.isArray(D.ped))D.ped=[];(D.payroll||[]).forEach(r=>{if(r.ptype==='2주급')r.ptype='14 급여'});return D}
+function migrate(D){if((D.ver||1)<3)D=migrate3(D);if(D.ver<4){upgradeV4(D,rng(11));D.ver=4}if(D.ver<5){upgradeV5(D,rng(13),false);D.ver=5}if(D.ver<6){upgradeV6(D);D.ver=6}if(D.ver<7){upgradeV7(D,rng(17));D.ver=7}if(D.ver<8){upgradeV8(D,rng(19));D.ver=8}if(D.ver<9){upgradeV9(D);D.ver=9}if(D.ver<10){upgradeV10(D);D.ver=10}if(D.ver<11){upgradeV11(D);D.ver=11}if(D.ver<12){upgradeV12(D);D.ver=12}if(D.ver<13){upgradeV13(D);D.ver=13}if(D.ver<14){upgradeV14(D);D.ver=14}if(D.ver<15){upgradeV15(D);D.ver=15}if(D.ver<16){upgradeV16(D);D.ver=16}if(D.ver<17){(D.production||[]).forEach(x=>{if(x.pn!=null)return;const[pn,it]=splitProd(x.product);Object.assign(x,{plant:'YSM',pn,item:it,spec:'',model:'',cat:'',amount:0})});D.ver=17}(D.ap||[]).forEach(r=>{if((r.iva==='0%'||r.iva==='면세')&&+r.ivaAmt&&+r.sub){r.ivaAmt=0;r.amount=Math.round(((+r.sub||0)-(+r.disc||0)-(+r.ivaRet||0)-(+r.isrRet||0))*100)/100}});if(!Array.isArray(D.ped))D.ped=[];if(!Array.isArray(D.hc))D.hc=[];(D.payroll||[]).forEach(r=>{if(r.ptype==='2주급')r.ptype='14 급여'});return D}
 function migrate3(D){
   if(D.ver>=3)return D;
   if(D.ver===2){D.settings.openRM=D.settings.openRM||2500000;seedGroup(D,rng(7),false);D.ver=3;return D}
@@ -1229,7 +1229,7 @@ function syncFromAR(D){
   return res;
 }
 function save(){VCACHE.clear();calcReset();syncLinkedCash(DB);LS.set('ysm-sap-saved-at',Date.now());bkQueue();syncFromAR(DB);if(BANKS().length)DB.cash.forEach(r=>{if(!r.bank)r.bank=bankFor(r.cur)});if(LS.set(KEY,DB))savedAt=new Date();const el=$('#saved');if(el)el.textContent=savedText()}
-function saveUI(){LS.set(UKEY,{pm:UI.pm,cfu:UI.cfu,cfc:UI.cfc,cfx:UI.cfx,cw:UI.cw,rpw:UI.rpw,rpm:UI.rpm,vlang:UI.vlang,lastBank:UI.lastBank,cons:UI.cons,mod:UI.mod,dtab:UI.dtab,flt:UI.flt,rs:UI.rs,re:UI.re,pf:UI.pf,fm:UI.fm,mq:UI.mq,open:UI.open,fs:UI.fs})}
+function saveUI(){LS.set(UKEY,{pm:UI.pm,cfu:UI.cfu,cfc:UI.cfc,cfx:UI.cfx,cw:UI.cw,rpw:UI.rpw,rpm:UI.rpm,hcw:UI.hcw,vlang:UI.vlang,lastBank:UI.lastBank,cons:UI.cons,mod:UI.mod,dtab:UI.dtab,flt:UI.flt,rs:UI.rs,re:UI.re,pf:UI.pf,fm:UI.fm,mq:UI.mq,open:UI.open,fs:UI.fs})}
 const savedText=()=>savedAt?`저장됨 ${pad(savedAt.getHours())}:${pad(savedAt.getMinutes())}`:'이 브라우저에 자동 저장';
 
 /* ---------- domain calcs (all return MXN) ---------- */
@@ -3325,6 +3325,51 @@ MODS.payables.dash=p=>{const {t,ty}=payTotals(p);
     +`<div class="duo single">${trendHTML('기간별 적립액 합계',q=>sumBy(DB.employees,e=>{const a=accrual(e,q.start,q.end);return a.ag+a.vp+a.sf}),1)}</div>`};
 ['fin','tax','in','prod','out','sales','gen'].forEach(g=>{MODS['dash-'+g].hidden=1;MODS['dash-'+g].tab=g});
 
+/* ---------- 주간 보고: 인원현황 (엑셀로 올린 주별 부서·인원·MXN) ---------- */
+// DB.hc = [{wk:'W1',n:1,dept,cnt,mxn,krw}] · 원화 칸이 없으면 MXN × 원화 환율
+const hcNum=v=>{if(typeof v==='number')return v;const t=String(v||'').replace(/[^\d.\-]/g,'');return t?+t:0};
+const hcWkN=w=>{const m=String(w).match(/(\d+)/);return m?+m[1]:0};
+function hcWeeks(){return uniq((DB.hc||[]).map(r=>r.wk)).sort((a,b)=>hcWkN(a)-hcWkN(b)||(a<b?-1:1))}
+function hcSel(p){const W=hcWeeks();if(!W.length)return '';if(W.includes(UI.hcw))return UI.hcw;const iw=p?W.find(w=>hcWkN(w)===isoWeek(pd(p.start))):'';return iw||W[W.length-1]}
+const hcKrw=r=>+r.krw||(+r.mxn||0)*KRW();
+// 캡처 양식: 'W1' 제목 아래 부서 | 인원 | MXN | 원화. 여러 주가 옆으로(또는 아래로) 이어져도 '부서' 머리글마다 한 주로 읽음
+function hcParse(aoa,sheetName){const out=[],S=v=>String(v==null?'':v).trim(),isWk=v=>/^(w|wk|week)\s*\d+$|^\d+\s*주(차)?$/i.test(S(v));
+  for(let r=0;r<aoa.length;r++)for(let c=0;c<(aoa[r]||[]).length;c++){if(!/^(부서|departamento)$/i.test(S(aoa[r][c])))continue;
+    const H=aoa[r],find=re=>{for(let k=c+1;k<H.length&&k<c+8;k++){if(/^(부서|departamento)$/i.test(S(H[k])))break;if(re.test(S(H[k])))return k}return -1};
+    const ci=find(/^(인원|인원수|headcount|personal)$/i),cm=find(/^(mxn|금액|급여)/i),ck=find(/^(원화|krw|원)$/i);if(ci<0&&cm<0)continue;
+    let wk='';for(let rr=r-1;rr>=Math.max(0,r-3)&&!wk;rr--)for(let k=c;k<=Math.max(ci,cm,ck,c);k++){if(isWk((aoa[rr]||[])[k])){wk=S(aoa[rr][k]);break}}
+    if(!wk&&rr0(aoa,r,c,isWk))wk=rr0(aoa,r,c,isWk);if(!wk&&isWk(sheetName))wk=S(sheetName);if(!wk)continue;
+    wk=/^\d/.test(wk)?'W'+hcWkN(wk):'W'+hcWkN(wk);
+    for(let rr=r+1;rr<aoa.length;rr++){const R=aoa[rr]||[],d=S(R[c]);if(!d){if(S(R[ci])||S(R[cm]))continue;break}if(/^(부서|departamento)$/i.test(d)||isWk(d))break;if(/^(합계|합 계|계|총계|total)$/i.test(d))continue;
+      out.push({wk,n:hcWkN(wk),dept:d,cnt:ci<0?0:hcNum(R[ci]),mxn:cm<0?0:hcNum(R[cm]),krw:ck<0?0:hcNum(R[ck])})}}
+  return out}
+// 머리글 왼쪽 위 칸들에서 주 표시 찾기 (병합 셀이 가운데 정렬로 들어온 경우)
+function rr0(aoa,r,c,isWk){for(let rr=r-1;rr>=Math.max(0,r-3);rr--){const R=aoa[rr]||[];for(let k=Math.max(0,c-1);k<c+4;k++)if(isWk(R[k]))return String(R[k]).trim()}return ''}
+function hcUpload(file){if(!window.XLSX){toast('엑셀 기능을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.');return}
+  const rd=new FileReader();rd.onload=()=>{try{const wb=XLSX.read(new Uint8Array(rd.result),{type:'array'});let rows=[];
+    wb.SheetNames.forEach(n=>{rows=rows.concat(hcParse(XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:'',raw:true}),n))});
+    if(!rows.length){toast('인원현황을 찾지 못했습니다. "W1" 아래에 부서 · 인원 · MXN · 원화 머리글이 있는지 확인해 주세요.');return}
+    const W=uniq(rows.map(r=>r.wk));DB.hc=(DB.hc||[]).filter(r=>!W.includes(r.wk)).concat(rows);UI.hcw=W[W.length-1];save();saveUI();renderMain();
+    toast(`인원현황 ${W.join(', ')} · 부서 ${rows.length}행을 올렸습니다`)}catch(e){toast('파일을 읽지 못했습니다. 엑셀(.xlsx, .xls) 또는 CSV 파일인지 확인해 주세요.')}};
+  rd.readAsArrayBuffer(file)}
+function hcTemplate(){if(!window.XLSX){toast('엑셀 기능을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.');return}
+  const wk='W'+isoWeek(TODAY_D),aoa=[[wk],['부서','인원','MXN','원화'],...DEPTS.map(d=>[d,'','','']),['합계','','','']];
+  try{const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:3}}];ws['!cols']=[16,10,16,16].map(w=>({wch:w}));const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'인원현황');XLSX.writeFile(wb,'인원현황_양식.xlsx')}catch(e){toast('양식을 만들지 못했습니다')}}
+function hcCard(p){const W=hcWeeks(),w=hcSel(p),R=(DB.hc||[]).filter(r=>r.wk===w),tc=sumBy(R,'cnt'),tm=sumBy(R,'mxn'),tk=sumBy(R,hcKrw),won=v=>'₩'+nf0.format(Math.round(v));
+  const btns=`<label class="btn" style="cursor:pointer">⇪ 엑셀 올리기<input type="file" id="hcFile" accept=".xlsx,.xls,.csv" style="display:none"></label><button class="btn" data-hctpl="1">양식 내려받기</button>`;
+  if(!W.length)return `<div class="card"><header><h2>인원현황</h2><div class="hbtns" style="margin-left:auto;display:flex;gap:6px">${btns}</div></header><div class="empty">아직 올린 인원현황이 없습니다. "W1" 아래에 부서 · 인원 · MXN · 원화가 있는 엑셀을 올려 주세요. 여러 주를 한 파일에 옆으로 이어 붙여도 됩니다.</div></div>`;
+  const prev=W[W.indexOf(w)-1],P=prev?(DB.hc||[]).filter(r=>r.wk===prev):[],pc=sumBy(P,'cnt'),pm=sumBy(P,'mxn');
+  const sel=`<label class="fx" style="margin:0">주 선택 <select data-hcw="1">${W.map(x=>`<option${x===w?' selected':''}>${esc(x)}</option>`).join('')}</select></label>`;
+  const tbl=`<div class="tw"><table><thead><tr><th colspan="4" style="text-align:center">${esc(w)}</th></tr><tr><th>부서</th><th class="n">인원</th><th class="n">MXN</th><th class="n">원화</th></tr></thead><tbody>
+    ${R.map(r=>`<tr><td>${esc(r.dept)}</td><td class="n">${nf0.format(+r.cnt||0)}</td><td class="n">${plain(+r.mxn||0)}</td><td class="n">${won(hcKrw(r))}</td></tr>`).join('')}
+    <tr><td><b>합계</b></td><td class="n"><b>${nf0.format(tc)}</b></td><td class="n"><b>${plain(tm)}</b></td><td class="n"><b>${won(tk)}</b></td></tr></tbody></table></div>
+    ${prev?`<div class="body" style="font-size:12px;color:var(--faint)">${esc(prev)} 대비 인원 ${tc-pc>=0?'+':'−'}${nf0.format(Math.abs(tc-pc))}명 · MXN ${tm-pm>=0?'+':'−'}${plain(Math.abs(tm-pm))}</div>`:''}`;
+  const ch=(t,lab,vals,m,cur)=>`<div class="card chart"><header><h2>${esc(t)}</h2></header><div class="body">${barsSVG(lab,vals,m,cur)}</div></div>`;
+  const WS=W.slice(-8),WR=WS.map(x=>(DB.hc||[]).filter(r=>r.wk===x));
+  return `<div class="card"><header><h2>인원현황</h2>${sel}<div style="margin-left:auto;display:flex;gap:6px">${btns}<button class="btn" data-hcdel="${esc(w)}" title="이 주의 인원현황을 지웁니다">${esc(w)} 삭제</button></div></header>${tbl}</div>
+    <div class="duo even">${ch('부서별 인원 ('+w+')',R.map(r=>r.dept),R.map(r=>+r.cnt||0),0,-1)}${ch('부서별 MXN ('+w+')',R.map(r=>r.dept),R.map(r=>+r.mxn||0),1,-1)}</div>
+    ${WS.length>1?`<div class="duo even">${ch('주별 총 인원',WS,WR.map(L=>sumBy(L,'cnt')),0,WS.indexOf(w))}${ch('주별 총 MXN',WS,WR.map(L=>sumBy(L,'mxn')),1,WS.indexOf(w))}</div>`:''}`}
+document.addEventListener('change',e=>{const t=e.target;if(t.id==='hcFile'&&t.files&&t.files[0]){hcUpload(t.files[0]);t.value=''}else if(t.dataset&&t.dataset.hcw){UI.hcw=t.value;saveUI();renderMain()}});
 /* ---------- 보고자료: 주간·월간 보고서 ---------- */
 // 선택한 주(월~일) 또는 달의 손익·현금·채권채무·생산 요약을 직전 기간과 비교. 숫자는 재무제표·경리자료·외상매입/매출과 같은 출처를 씀
 function repAnchor(md){const v=UI[md==='week'?'rpw':'rpm'];return validD(v)?v:TODAY}
@@ -3364,6 +3409,7 @@ function repPage(md){
   return `<div class="content">${kpiHTML([kv('매출액 (출고)',money(inc.sales),u+' '+rt(inc.sales,B.inc.sales),'good','outbound'),kv('영업이익',money(inc.op),'영업이익률 '+pct(inc.sales?inc.op/inc.sales:NaN),inc.op<0?'bad':'good','fs'),
       kv('입금',money(A.ci),A.I.length+'건','good','cash'),kv('출금',money(A.co),A.O.length+'건','bad','cash'),kv('기말 현금 잔액',money(A.close),p.end+' 기준',A.close<0?'bad':'','bank'),
       kv('미수 잔액',money(A.ar),'','warn','ar'),kv('미지급 잔액',money(A.ap),'','warn','ap'),kv('생산 달성률',pct(A.plan?A.act/A.plan:NaN),'실적 '+fq(A.act)+' EA',A.plan&&A.act/A.plan<0.9?'bad':'','production')])}
+    ${md==='week'?hcCard(p):''}
     ${table}
     <div class="duo even">${bars('매출액 추이',x=>income(x).sales)}${bars('기말 현금 잔액 추이',x=>cashBefore(addDs(x.end,1)))}</div>
     <div class="duo even">${groupSummary('고객사별 매출 (출고)',A.ob,'customer',[['출고 금액',lineAmt,money]])}${groupSummary('분류별 출금',A.O,'cat',[['금액',M('amount'),money]],r=>r.account)}</div>
@@ -3375,6 +3421,7 @@ function repXls(md){if(!window.XLSX){toast('엑셀 기능을 불러오지 못했
   const aoa=[[nm+' 보고 · '+p.label],['비교: '+q.label],['금액 단위 MXN (환산)'],[],['항목','이번 기간','직전 기간','증감','증감률'],
     ...repRows(A,B).map(([l,a,b])=>[l,r(a),r(b),r(a-b),b?r((a-b)/Math.abs(b)*100)+'%':'']),[],[(md==='week'?'다음 주':'다음 달')+'까지 수금·지급 예정 및 연체 (~ '+D.n.end+')'],
     ['구분','상태','거래처','Factura','만기일','통화','잔액 (거래 통화)','잔액 (MXN)'],...D.L.map(x=>[x.kind,x.od?'연체':'진행',x.party||'',x.folio,x.due,x.cur,r(x.nat),r(x.bal)])];
+  const hw=md==='week'?hcSel(p):'',HR=(DB.hc||[]).filter(x=>x.wk===hw);if(HR.length)aoa.push([],['인원현황 '+hw],['부서','인원','MXN','원화'],...HR.map(x=>[x.dept,+x.cnt||0,r(+x.mxn||0),Math.round(hcKrw(x))]),['합계',sumBy(HR,'cnt'),r(sumBy(HR,'mxn')),Math.round(sumBy(HR,hcKrw))]);
   try{const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=[26,16,16,16,12,8,16,16].map(w=>({wch:w}));const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,nm+' 보고');XLSX.writeFile(wb,`${nm}보고_${p.start}_${p.end}.xlsx`)}catch(e){toast('엑셀 파일을 만들지 못했습니다')}}
 Object.assign(MODS,{
   repw:{name:'주간',desc:'선택한 주(월~일)의 매출·손익·현금·채권채무·생산을 전주와 비교한 주간 보고서',page:()=>repPage('week'),toolbar:()=>repToolbar('week')},
@@ -4809,6 +4856,8 @@ document.addEventListener('click',e=>{
   if(d.go){go(d.go);return}
   if(d.repnav){const [md,n]=d.repnav.split('|'),k=md==='week'?'rpw':'rpm';UI[k]=+n?shift(repAnchor(md),md,+n):TODAY;saveUI();renderMain();return}
   if(d.repxls){repXls(d.repxls);return}
+  if(d.hctpl){hcTemplate();return}
+  if(d.hcdel){const w=d.hcdel;DB.hc=(DB.hc||[]).filter(r=>r.wk!==w);UI.hcw='';save();renderMain();toast(w+' 인원현황을 지웠습니다');return}
   if(d.group){UI.open[d.group]=UI.open[d.group]===false;saveUI();renderNav();return}
   if(d.allgroups){GROUPS.forEach(g=>UI.open[g.id]=d.allgroups==='open');saveUI();renderNav();return}
   if(d.mod&&t.closest('#nav')){go(d.mod);return}
