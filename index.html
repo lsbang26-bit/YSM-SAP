@@ -1258,7 +1258,7 @@ function cnIndex(){if(CNIX&&CNDB===DB)return CNIX;CNDB=DB;const T=new Map(),C=ne
     if(!t){const u=U.get(cnU(r.cnUuid))||U.get(cnU(r.uuid));if(u&&(u.cur||'MXN')===(r.cur||'MXN'))t=u}if(!t)return;tgt.set(r.id,t);C.set(t.id,(C.get(t.id)||0)-(+r.amount||0))});
   return CNIX={tgt,C}}
 const cnTarget=r=>cnIndex().tgt.get(r.id)||null, arCreditN=r=>cnIndex().C.get(r.id)||0;
-const arBal=r=>+r.amount<0&&cnTarget(r)?0:mx(r,'amount')-mx(r,'received')-arCreditN(r)*rate(r.cur);
+const arBal=r=>+r.amount<0&&(cnTarget(r)||r.cnDone)?0:mx(r,'amount')-mx(r,'received')-arCreditN(r)*rate(r.cur);
 const dueStatus=(bal,due)=>bal<=0.5?'완료':(validD(due)&&due<TODAY?'연체':'진행');
 const assetEnd=r=>validD(r.acq)?ds(addD(pd(r.acq),Math.round((+r.life||1)*365)-1)):'';
 const assetPerDay=r=>mx(r,'cost')/((+r.life||1)*365);
@@ -1510,7 +1510,7 @@ const SUG={
   busroutes:()=>uniq([...DB.employees.map(e=>e.bus),'Ruta 1','Ruta 2','Ruta 3']),
   stockitems:()=>uniq([...MATERIALS.map(m=>m.n),...bomMain(DB).map(b=>b.material),...DB.bom.map(b=>b.product),...PRODUCTS.map(p=>p.n)])
 };
-const TONE={'입금':'good','출금':'bad','완료':'good','진행':'info','연체':'bad','검수완료':'good','검수대기':'warn','반품':'bad','출고완료':'good','출고예정':'info',
+const TONE={'CN 완료':'good','입금':'good','출금':'bad','완료':'good','진행':'info','연체':'bad','검수완료':'good','검수대기':'warn','반품':'bad','출고완료':'good','출고예정':'info',
   '거래중':'good','중지':'','발행':'good','미발행':'warn','정산 대기':'warn','지급 완료':'good','승인':'good','신청':'info','반려':'bad','연차휴가':'acc','반차':'acc','무급휴가':'','해고 · 부당 (사유 없음)':'bad','해고 · 정당한 사유':'warn','수입(Pedimento)':'info','수입':'info','국내':'','세금납부':'warn','재직':'good','휴직':'warn','퇴사':'','일치':'good','과잉':'warn','부족':'bad','기초':'info','외주가공':'acc','입사예정':'info','상환중':'info','상환완료':'good','만기임박':'warn','원자재':'info','부자재':'',
   '지배기업':'acc','종속기업':'info','자산매입':'info','제조비용':'warn','판관비용':'acc','차입금':'bad','매출수입':'good','보통예금':'info','영업외수익':'good','영업외비용':'warn','유동부채':'bad','CN 적용':'acc','CN 미적용':'warn'};
 const pill=v=>`<span class="pill ${TONE[v]||''}">${esc(v)}</span>`;
@@ -1624,7 +1624,7 @@ const MODS={
   ar:{name:'외상매출',desc:'고객사 매출 채권과 수금 현황',data:'ar',dated:true,tight:1,after:(p,id)=>arFacturaCard(p,id),side:()=>arWeekCard(),
     filters:[['customer','고객사'],['folio','Factura','text'],['item','품목','text'],['amount','합계','range'],['st','상태']],fsum:1,
     cols:[C('date','발행일','date'),C('customer','고객사','text',{sug:'customers'}),C('folio','Factura','text',{opt:1,view:r=>(String(r.folio||'').trim()?`<span class="pill good"${r.uuid?` title="CFDI ${esc(r.uuid)}"`:''}>${esc(r.folio)}</span>`:pill(r.factura||'미발행'))+(+r.amount<0&&String(r.cnFor||'').trim()?` <span class="cnto${cnTarget(r)?'':' bad'}" title="${cnTarget(r)?'이 Factura 잔액에서 차감':'같은 고객사·통화에 이 번호의 Factura가 없습니다'}">→ ${esc(r.cnFor)}</span>`:'')+(arCreditN(r)>0.004?` <span class="cnto" title="적용된 Credit Note">CN −${nf2.format(arCreditN(r))}</span>`:'')}),Object.assign({},UUIDC,{l:'CFDI 번호 (UUID)'}),C('item','품목','text',{opt:1}),C('qty','수량','num',{opt:1,keepBlank:1,view:r=>+r.qty?nfq.format(+r.qty):''}),C('price','단가','money2',{opt:1,keepBlank:1,view:r=>+r.price?fmtCur(+r.price,r.cur,1):''}),CUR,C('fx','환율 (US$ 건)','num',{noTable:1,opt:1}),SUB({sum:1}),IVAF,C('ivaAmt','부가세','money',{noTable:1,opt:1,keepBlank:1}),VATR({sum:1}),C('ivaRet','부가세 Ret','money',{sum:1,opt:1}),TOT({sum:1}),Object.assign({},FACTC_AR,{noTable:1}),C('received','수금액','money',{sum:1}),C('terms','크레딧 텀(일)','num',{opt:1,keepBlank:1,noTable:1}),C('due','수금기일','date'),
-      C('bal','잔액','money',{sum:1,calc:arBal}),C('termsV','크레딧 텀(일)','calc',{n:1,calc:r=>validD(r.due)&&validD(r.date)?diffD(r.date,r.due):''}),C('st','상태','calc',{calc:r=>+r.amount<0?(cnTarget(r)?'CN 적용':'CN 미적용'):dueStatus(arBal(r),r.due),pill:1,act:{mod:'ar',label:'입금 완료',show:r=>arBal(r)>0.5}})],
+      C('bal','잔액','money',{sum:1,calc:arBal}),C('termsV','크레딧 텀(일)','calc',{n:1,calc:r=>validD(r.due)&&validD(r.date)?diffD(r.date,r.due):''}),C('st','상태','calc',{calc:r=>+r.amount<0?(cnTarget(r)?'CN 적용':r.cnDone?'CN 완료':'CN 미적용'):dueStatus(arBal(r),r.due),pill:1,act:{mod:'ar',label:'입금 완료',show:r=>arBal(r)>0.5}})],
     kpis:(rows,p)=>{const all=DB.ar.filter(r=>r.date<=p.end),od=all.filter(r=>dueStatus(arBal(r),r.due)==='연체');return[kv('기간 청구액',money(sumBy(rows,M('amount'))),rows.length+'건'),kv('기간분 미수',money(sumBy(rows,arBal))),
       kv('전체 미수 잔액',money(sumBy(all,arBal)),p.end+' 기준','warn'),kv('연체',od.length+'건',plain(sumBy(od,arBal)),od.length?'bad':'')]},
     trend:{l:'기간별 청구액',fn:rows=>sumBy(rows,M('amount')),money:1},
@@ -1856,6 +1856,7 @@ const isMoney=c=>c.t==='money'||c.t==='money2';
 function cellView(c,r,p,m){
   if(c.view)return c.view(r);
   let v=c.calc?c.calc(r,p):r[c.k];
+  if(c.pill&&c.act&&c.act.mod==='ar'&&+r.amount<0&&!cnTarget(r)){const h0=pill(v);return r.cnDone?`<button type="button" class="stpill" data-cnundo="${r.id}" title="눌러서 완료 표시 취소">${h0}</button>`:`<span class="stcell">${h0}<button class="act settle" data-cndone="${r.id}" title="적용할 Factura가 없는 Credit Note를 완료로 표시합니다 (경리자료 반영 없음)">적용 완료</button></span>`}
   if(c.pill){const h0=pill(v),h=c.act?`<button type="button" class="stpill" data-stedit="${r.id}" data-m="${c.act.mod}" title="눌러서 ${c.act.mod==='ar'?'입금':'지급'} 내역 보기·취소">${h0}</button>`:h0;return c.act&&c.act.show(r)?`<span class="stcell">${h}<button class="act settle" data-settle="${r.id}" data-m="${c.act.mod}">${c.act.label}</button></span>`:h}
   if(c.calc&&v==='')return '<span class="dim">–</span>';
   if(c.cls==='cur')return v==='USD'?'<span class="cur-tag usd">US$</span>':'<span class="dim">MXN</span>';
@@ -4984,6 +4985,8 @@ document.addEventListener('click',e=>{
   if(d.repnav){const [md,n]=d.repnav.split('|'),k=md==='week'?'rpw':'rpm';UI[k]=+n?shift(repAnchor(md),md,+n):TODAY;saveUI();renderMain();return}
   if(d.repxls){repXls(d.repxls);return}
   if(d.hctpl){hcTemplate();return}
+  if(d.cndone||d.cnundo){const id=d.cndone||d.cnundo,r=DB.ar.find(x=>x.id===id);if(!r)return;const on=!!d.cndone,setv=v=>{if(v)r.cnDone=1;else delete r.cnDone;calcReset();save();renderMain()};setv(on);
+    toast(on?'Credit Note를 완료로 표시했습니다 (경리자료 반영 없음)':'Credit Note 완료 표시를 취소했습니다',{label:'되돌리기',fn:()=>setv(!on)});return}
   if(d.fdx){modal={type:'fdx'};renderModal();return}
   if(d.hcwt){const W=hcWeeks(),cur=hcSels(curPeriod());let S=d.hcwt==='*'?(cur.length===W.length?[W[W.length-1]]:W.slice()):cur.includes(d.hcwt)?cur.filter(w=>w!==d.hcwt):cur.concat(d.hcwt);if(!S.length)S=[d.hcwt];UI.hcws=S;saveUI();renderMain();return}
   if(d.hcdel){const w=d.hcdel;DB.hc=(DB.hc||[]).filter(r=>r.wk!==w);UI.hcw='';UI.hcws=(UI.hcws||[]).filter(x=>x!==w);save();renderMain();toast(w+' 인원현황을 지웠습니다');return}
