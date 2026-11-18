@@ -835,11 +835,12 @@ const ACCOUNTS={
   '차입금':['차입금 입금','원금 상환','이자비용'],
   '매출수입':['매출대금 수금','이자수익','기타수입'],
   '세금납부':['부가세 납부','법인세 납부','원천세 납부'],
+  '부가세대급금':['수입 부가세','부가세대급금'],
   '보통예금':['계좌 이체','예금 입금','예금 인출'],
   '영업외수익':['이자수익','외환차익','임대료수익','유형자산처분이익','잡이익'],
   '영업외비용':['외환차손','유형자산처분손실','기부금','잡손실','이자비용'],
   '유동부채':['단기차입금']};
-const NOVAT_ACC=['차입금 입금','원금 상환','단기차입금'];
+const NOVAT_ACC=['차입금 입금','원금 상환','단기차입금','수입 부가세','부가세대급금'];
 const CATS4=['자산매입','제조비용','판관비용','차입금'];
 const PTYPES=['주급','14 급여','월급','특별'];
 const PER_PFX={'주급':'W','14 급여':'C','월급':'M','특별':'S'};
@@ -1516,7 +1517,7 @@ const SUG={
 };
 const TONE={'CN 완료':'good','입금':'good','출금':'bad','완료':'good','진행':'info','연체':'bad','검수완료':'good','검수대기':'warn','반품':'bad','출고완료':'good','출고예정':'info',
   '거래중':'good','중지':'','발행':'good','미발행':'warn','정산 대기':'warn','지급 완료':'good','승인':'good','신청':'info','반려':'bad','연차휴가':'acc','반차':'acc','무급휴가':'','해고 · 부당 (사유 없음)':'bad','해고 · 정당한 사유':'warn','수입(Pedimento)':'info','수입':'info','국내':'','세금납부':'warn','재직':'good','휴직':'warn','퇴사':'','일치':'good','과잉':'warn','부족':'bad','기초':'info','외주가공':'acc','입사예정':'info','상환중':'info','상환완료':'good','만기임박':'warn','원자재':'info','부자재':'',
-  '지배기업':'acc','종속기업':'info','자산매입':'info','제조비용':'warn','판관비용':'acc','차입금':'bad','매출수입':'good','보통예금':'info','영업외수익':'good','영업외비용':'warn','유동부채':'bad','CN 적용':'acc','CN 미적용':'warn'};
+  '지배기업':'acc','종속기업':'info','자산매입':'info','부가세대급금':'info','제조비용':'warn','판관비용':'acc','차입금':'bad','매출수입':'good','보통예금':'info','영업외수익':'good','영업외비용':'warn','유동부채':'bad','CN 적용':'acc','CN 미적용':'warn'};
 const pill=v=>`<span class="pill ${TONE[v]||''}">${esc(v)}</span>`;
 const kv=(l,v,s,tone,go)=>({l,v,s,tone,go});
 
@@ -1677,7 +1678,7 @@ const MODS={
   ped:{name:'수입면장',desc:'수입면장(Pedimento)별 취득원가·관세·부가세·통관 수수료',data:'ped',dated:true,
     cols:[C('ped','면장#','text'),C('inv','인보이스#','text',{opt:1}),C('date','날짜','date'),C('vendor','공급처','text',{sug:'vendors',wide:1}),C('kind','구분','sel',{opts:PED_KINDS,pill:1}),C('item','항목','text',{wide:1}),
       C('cost','취득원가','money',{sum:1}),C('igi','관세(IGI)','money',{sum:1}),C('piva','부가세(IVA)','money',{sum:1}),C('dta','통관수수료(DTA)','money',{sum:1}),C('prv','사전검증 수수료(PRV)','money',{sum:1}),C('ivaprv','IVA/PRV','money',{sum:1}),
-      C('total','합계','money',{sum:1,calc:pedTotal})],
+      C('total','합계','money',{sum:1,calc:pedTotal}),C('pst','지급','text',{calc:r=>r.pay?'지급 완료':'미지급',view:r=>r.pay?`<button type="button" class="stpill" data-pedpay="${r.id}" title="${esc(r.pay.date)} 지급 · 눌러서 내역 보기·취소">${pill('지급 완료')}</button>`:`<button class="act settle" data-pedpay="${r.id}" title="관세·부가세를 나눠 경리자료에 출금 전표를 만듭니다">지급완료</button>`})],
     kpis:rows=>[kv('면장',uniq(rows.map(r=>r.ped||r.id)).length+'건'),kv('취득원가',money(sumBy(rows,'cost'))),kv('관세(IGI)',money(sumBy(rows,'igi'))),kv('부가세(IVA)',money(sumBy(rows,'piva'))),kv('합계 (취득원가 제외)',money(sumBy(rows,pedTotal)),'','good')],
     extra:rows=>groupSummary('구분별 합계',rows,'kind',[['취득원가',r=>+r.cost||0,money],['관세',r=>+r.igi||0,money],['합계',pedTotal,money]]),
     blank:p=>({ped:'',inv:'',date:TODAY,vendor:'',kind:'원자재',item:'',cur:'MXN',cost:0,igi:0,piva:0,dta:0,prv:0,ivaprv:0})},
@@ -2241,6 +2242,7 @@ function ledgerData(p){
     if(cat==='보통예금'){const P=c.xfer&&cix.get(c.xfer);return {l:P?'보통예금 · '+bankOf(P):k||'보통예금'}}
     if(cat==='유동부채')return {a:acc('부채',k||'단기차입금','cr'),l:k||'단기차입금',v:A0};
     if(cat==='세금납부')return {a:acc('세금납부',k||'세금 납부','dr'),l:k||'세금 납부',v:A0};
+    if(cat==='부가세대급금')return {a:acc('자산','부가세대급금',out?'dr':'cr'),l:'부가세대급금',v:A0};
     if(k==='이자비용')return {l:'이자비용 (차입금현황의 기간 이자로 계산)'};
     if(cat==='차입금')return {l:'차입금 (차입금현황 기준)'};
     if(k==='외상매입금 지급')return {l:'외상매입금 (연계된 외상매입 없음)'};
@@ -3141,7 +3143,7 @@ function xfSync(F,src){const B=F&&F.querySelector('[data-xfer]');if(!B)return;co
   if(diff&&A.dataset.manual&&amt>0&&inA>0&&(src==='amt'||src==='sub')){const f=fc==='USD'?inA/amt:amt/inA;fxEl.value=String(Math.round(f*10000)/10000)}
   else if(!A.dataset.manual||src==='fx'||src==='to'||src==='bank'||(src==='sub'&&!diff)){A.dataset.manual='';const fx=pnum(fxEl.value)||0,v=!diff?amt:fc==='USD'?amt*fx:fx?amt/fx:0;A.value=v?r2(v).toFixed(2):''}
   B.querySelector('[data-xfcur]').textContent=`(${tc==='USD'?'US$':'MXN'})`;B.querySelector('[data-xfnote]').textContent=opts.length?`${T.value}에 ${tc==='USD'?'US$':'MXN'} ${nf2.format(pnum(A.value)||0)} 입금 전표가 자동으로 만들어집니다`:'받을 계좌가 없습니다. 설정에서 계좌를 추가해 주세요'}
-['input','change'].forEach(ev=>document.addEventListener(ev,e=>{const t=e.target,F=t.form;if(F&&F.dataset.settle&&t.name==='sdate'){const c=F.querySelector('[name="snocash"]');if(c&&validD(t.value))c.checked=t.value<OP_START()}}));
+['input','change'].forEach(ev=>document.addEventListener(ev,e=>{const t=e.target,F=t.form;if(F&&(F.dataset.settle||F.dataset.pedpayf)&&t.name==='sdate'){const c=F.querySelector('[name="snocash"]');if(c&&validD(t.value))c.checked=t.value<OP_START()}}));
 document.addEventListener('input',e=>{const t=e.target,F=t.form;if(!F||(F.dataset.reg||F.dataset.edit)!=='cash')return;if(t.dataset.xf)xfSync(F,t.dataset.xf);else if(['sub','fx','bank'].includes(t.name))xfSync(F,t.name)});
 document.addEventListener('change',e=>{const t=e.target,F=t.form;if(!F||(F.dataset.reg||F.dataset.edit)!=='cash')return;if(t.dataset.xf)xfSync(F,t.dataset.xf);else if(['type','cat','account','bank','cur'].includes(t.name))setTimeout(()=>xfSync(F,t.name))});
 new MutationObserver(()=>document.querySelectorAll('form [data-xfer]:not([data-xi])').forEach(B=>{B.dataset.xi=1;xfSync(B.closest('form'))})).observe(document.body,{childList:true,subtree:true});
@@ -3421,6 +3423,28 @@ function fdxModal(){const p=period(repAnchor('week'),'week'),W=fdWeek(p);const T
     <p style="font-size:12px;color:var(--faint);margin-top:8px">적요에 TRASPASO · COMPRA VENTA DIVISAS · RENOVACION 이 있는 거래입니다. 주간 자금 보고의 주요내용에서는 빠지고, 계좌별 입금·출금에는 포함됩니다. 환전은 통화가 달라 원화 순액이 0이 아닐 수 있습니다.</p>`;
   return `<div class="modal-bg"><div class="modal lg" role="dialog" aria-modal="true" aria-labelledby="mt"><header><h3 id="mt">계좌간 거래 · ${esc(p.label)}</h3><button type="button" class="x" data-close="1" aria-label="닫기">×</button></header>
     <div class="mbody">${body}</div><footer><button type="button" class="btn" data-close="1">닫기</button></footer></div></div>`}
+// 수입면장 지급완료: 관세(IGI·DTA·PRV)는 구분에 맞는 원가 계정, 부가세(IVA·IVA/PRV)는 부가세대급금으로 나눠 경리자료에 출금 전표 2건
+const PED_ACC={'자산':['자산매입','기계장치'],'원자재':['제조비용','원재료비'],'부자재':['제조비용','부재료비'],'소모품':['제조비용','소모품비']};
+const pedDuty=r=>r2((+r.igi||0)+(+r.dta||0)+(+r.prv||0)),pedVat=r=>r2((+r.piva||0)+(+r.ivaprv||0));
+function pedPayModal(){const r=DB.ped.find(x=>x.id===modal.id);if(!r){modal=null;return ''}const P=r.pay,[cat,acct]=PED_ACC[r.kind]||PED_ACC['원자재'],L=P?DB.cash.filter(c=>c.link===r.id&&c.linkMod==='ped'):[];
+  const head=`<div style="font-size:13px"><b>면장 ${esc(r.ped||'–')}</b> · ${esc(r.vendor||'')} · ${esc(r.kind||'')} · ${esc(r.item||'')}</div>
+    <table class="tight"><thead><tr><th>구분</th><th>내역</th><th>분류 · 계정</th><th class="n">금액 (MXN)</th></tr></thead><tbody>
+    <tr><td>관세</td><td class="muted">IGI ${plain(+r.igi||0)} + DTA ${plain(+r.dta||0)} + PRV ${plain(+r.prv||0)}</td><td>${esc(cat)} · ${esc(acct)}</td><td class="n"><b>${plain(pedDuty(r))}</b></td></tr>
+    <tr><td>부가세</td><td class="muted">IVA ${plain(+r.piva||0)} + IVA/PRV ${plain(+r.ivaprv||0)}</td><td>부가세대급금 · 수입 부가세</td><td class="n"><b>${plain(pedVat(r))}</b></td></tr>
+    <tr><td><b>합계</b></td><td></td><td></td><td class="n"><b>${plain(pedTotal(r))}</b></td></tr></tbody></table>`;
+  if(P)return `<div class="modal-bg"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mt"><header><h3 id="mt">수입면장 지급 내역</h3><button type="button" class="x" data-close="1" aria-label="닫기">×</button></header>
+    <div class="mbody" style="display:grid;gap:12px">${head}${L.length?`<table class="tight"><thead><tr><th>지급일</th><th>은행</th><th>분류 · 계정</th><th class="n">금액</th><th></th></tr></thead><tbody>
+      ${L.map(c=>`<tr><td>${esc(c.date)}</td><td>${esc(bankOf(c))}</td><td>${esc(c.cat)} · ${esc(c.account)}</td><td class="n">${money(+c.amount||0)}</td><td><button type="button" class="act" data-cashgo="${c.id}">경리자료 →</button></td></tr>`).join('')}</tbody></table>`
+      :`<p class="note" style="margin:0">${esc(P.date)} 지급 완료로만 표시했습니다 (운영 시작 전 지급 · 경리자료 전표 없음).</p>`}
+      <p class="note" style="margin:0">지급 취소를 누르면 지급 완료 표시와 연결된 경리자료 전표가 함께 지워집니다.</p></div>
+    <footer><button type="button" class="btn danger" data-pedundo="${r.id}">지급 취소</button><button type="button" class="btn primary" data-close="1">닫기</button></footer></div></div>`;
+  const bn=bankNames('MXN').length?bankNames('MXN'):bankNames(),d0=validD(r.date)?r.date:TODAY;
+  return `<div class="modal-bg"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mt"><form data-pedpayf="${r.id}"><header><h3 id="mt">수입면장 지급 완료 처리</h3><button type="button" class="x" data-close="1" aria-label="닫기">×</button></header>
+    <div class="mbody" style="display:grid;gap:14px">${head}
+      <div class="form"><label>지급일<input type="date" name="sdate" value="${d0}" required></label><label>지급 은행<select name="sbank" required>${bn.map(n=>`<option${n===bankFor('MXN')?' selected':''}>${esc(n)}</option>`).join('')}</select></label></div>
+      <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px"><input type="checkbox" name="snocash" style="margin-top:2px"${d0<OP_START()?' checked':''}><span>${OP_START().replace(/-/g,'.')} 이전 지급 · 완료로 표시만 하고 경리자료에는 반영하지 않음<br><span class="muted">지급일이 운영 시작일 전이면 자동으로 체크됩니다.</span></span></label>
+      <p class="note" style="margin:0">확인하면 경리자료에 출금 전표 2건이 만들어집니다. 관세는 ${esc(cat)} · ${esc(acct)}, 부가세는 부가세대급금 · 수입 부가세입니다.</p></div>
+    <footer><button type="button" class="btn" data-close="1">취소</button><button type="submit" class="btn primary">지급 확인</button></footer></form></div></div>`}
 document.addEventListener('change',e=>{const t=e.target;if(t.id==='fundFile'&&t.files&&t.files[0]){fdUpload(t.files[0]);t.value=''}else if(t.dataset&&t.dataset.fdnote&&DB.fund){(DB.fund.note=DB.fund.note||{})[t.dataset.fdnote]=t.value;save()}});
 /* ---------- 주간 보고: 인원현황 (엑셀로 올린 주별 부서·인원·MXN) ---------- */
 // DB.hc = [{wk:'W1',n:1,dept,cnt,mxn,krw}] · 원화 칸이 없으면 MXN × 원화 환율
@@ -4094,6 +4118,7 @@ function renderModal(){
   if(modal&&modal.type==='arwk'){host.innerHTML=arWeekModal(modal.k);return}
   if(modal&&modal.type==='fsd'){host.innerHTML=fsdModal(modal.k);return}
   if(modal&&modal.type==='fdx'){host.innerHTML=fdxModal();return}
+  if(modal&&modal.type==='pedpay'){host.innerHTML=pedPayModal();return}
   if(modal&&modal.type==='armatch'){host.innerHTML=arMatchModal();const q=host.querySelector('[name="am_amt"]');if(q&&!modal.run)q.focus();return}
   if(modal&&modal.type==='banktx'){host.innerHTML=bankTxModal(modal);return}
   if(modal&&modal.type==='stkprod'){host.innerHTML=stkProdModal(modal);return}
@@ -4165,8 +4190,10 @@ function closeModal(){modal=null;renderModal()}
 function delRow(mod,id){
   const m=MODS[mod],arr=DB[m.data],i=arr.findIndex(r=>r.id===id),row=arr[i];if(i<0)return;
   if(mod==='cash'&&row.xfer){const j=arr.findIndex(x=>x.id===row.xfer&&x.xfer===row.id);if(j>=0){arr.splice(j,1);return delRow(mod,id)}}
+  if(mod==='ped')DB.cash=DB.cash.filter(c=>!(c.link===id&&c.linkMod==='ped'));
+  if(row.link&&row.linkMod==='ped'){const P=DB.ped.find(x=>x.id===row.link);if(P&&!arr.some(x=>x!==row&&x.link===P.id&&x.linkMod==='ped'))delete P.pay}
   if(row.link&&row.linkMod==='sever'){const L=DB.sever.find(x=>x.id===row.link);if(L){L.status='정산 대기';L.pdate=''}}
-  else if(row.link&&DB[row.linkMod]){const L=DB[row.linkMod].find(x=>x.id===row.link),k=row.linkMod==='ar'?'received':'paid';if(L)L[k]=Math.max(0,Math.round(((+L[k]||0)-(+row.amount||0))*100)/100)}
+  else if(row.link&&row.linkMod!=='ped'&&DB[row.linkMod]){const L=DB[row.linkMod].find(x=>x.id===row.link),k=row.linkMod==='ar'?'received':'paid';if(L)L[k]=Math.max(0,Math.round(((+L[k]||0)-(+row.amount||0))*100)/100)}
   if(mod==='outbound'&&row.arId){DB.obSkip=DB.obSkip||[];if(!DB.obSkip.includes(row.arId))DB.obSkip.push(row.arId)}
   arr.splice(i,1);
 }
@@ -5023,6 +5050,8 @@ document.addEventListener('click',e=>{
     toast(on?'Credit Note를 완료로 표시했습니다 (경리자료 반영 없음)':'Credit Note 완료 표시를 취소했습니다',{label:'되돌리기',fn:()=>setv(!on)});return}
   if(d.fdx){modal={type:'fdx'};renderModal();return}
   if(d.fdxt){UI.fdx=!UI.fdx;saveUI();renderMain();return}
+  if(d.pedpay){modal={type:'pedpay',id:d.pedpay};renderModal();return}
+  if(d.pedundo){const r=DB.ped.find(x=>x.id===d.pedundo);if(!r)return;const n=DB.cash.length;DB.cash=DB.cash.filter(c=>!(c.link===r.id&&c.linkMod==='ped'));const k=n-DB.cash.length;delete r.pay;flashId=r.id;save();closeModal();renderMain();toast(`지급 완료를 취소했습니다${k?` · 경리자료 전표 ${k}건 삭제`:''}`);return}
   if(d.zm!==undefined){const v=+d.zm;UI.zm=v?Math.round(Math.min(1.6,Math.max(0.7,zmV()+v*0.1))*10)/10:1;saveUI();zmApply();renderMain();return}
   if(d.hcwt){const W=hcWeeks(),cur=hcSels(curPeriod());let S=d.hcwt==='*'?(cur.length===W.length?[W[W.length-1]]:W.slice()):cur.includes(d.hcwt)?cur.filter(w=>w!==d.hcwt):cur.concat(d.hcwt);if(!S.length)S=[d.hcwt];UI.hcws=S;saveUI();renderMain();return}
   if(d.hcdel){const w=d.hcdel;DB.hc=(DB.hc||[]).filter(r=>r.wk!==w);UI.hcw='';UI.hcws=(UI.hcws||[]).filter(x=>x!==w);save();renderMain();toast(w+' 인원현황을 지웠습니다');return}
@@ -5210,6 +5239,16 @@ document.addEventListener('submit',e=>{
     const since=f.querySelector('[name="since"]').value;if(!validD(since)){toast('기준일을 확인해 주세요');return}
     BANKS().forEach((b,i)=>{const el=f.querySelector(`[name="open${i}"]`);if(el){b.open=parseFloat(el.value)||0;b.since=since}});
     syncOpenCash();save();closeModal();renderMain();toast(`${since} 기준 기초시재를 저장했습니다`);return;
+  }
+  if(f.dataset.pedpayf){
+    const r=DB.ped.find(x=>x.id===f.dataset.pedpayf);if(!r)return;const date=f.querySelector('[name="sdate"]').value;if(!validD(date)){toast('지급일을 확인해 주세요');return}
+    const nc=f.querySelector('[name="snocash"]');if(nc&&nc.checked){r.pay={date,nocash:1};flashId=r.id;save();closeModal();renderMain();toast(`지급 완료로 표시했습니다 (${date}, 운영 시작 전 지급 · 경리자료 전표 없음)`);return}
+    const bank=f.querySelector('[name="sbank"]').value||bankFor('MXN'),[cat,acct]=PED_ACC[r.kind]||PED_ACC['원자재'],tag=`면장 ${r.ped||'(번호 없음)'} · ${r.vendor||''}`,base={date,bank,type:'출금',party:'SAT',cur:'MXN',iva:'면세',factura:'수입(Pedimento)',uuid:'',link:r.id,linkMod:'ped'};
+    const rows=[[cat,acct,`관세 (IGI·DTA·PRV) · ${tag}`,pedDuty(r)],['부가세대급금','수입 부가세',`수입 부가세 (IVA·IVA/PRV) · ${tag}`,pedVat(r)]].filter(x=>x[3]>0.004);
+    if(!rows.length){toast('관세와 부가세 금액이 없습니다');return}
+    rows.reverse().forEach(([c,a,m,v])=>DB.cash.unshift(Object.assign({id:uid(),cat:c,account:a,memo:m,amount:v,sub:v},base)));UI.lastBank=bank;
+    r.pay={date,bank};flashId=r.id;save();closeModal();renderMain();
+    toast(`지급 완료 처리했고 경리자료에 ${bank} 출금 전표 ${rows.length}건(관세 ${plain(pedDuty(r))} · 부가세 ${plain(pedVat(r))})을 만들었습니다`,{label:'경리자료 보기',fn:()=>go('cash')});return;
   }
   if(f.dataset.settle){
     const mod=f.dataset.settle, isAR=mod==='ar', r=DB[mod].find(x=>x.id===modal.id);if(!r)return;
