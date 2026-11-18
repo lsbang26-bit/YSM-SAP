@@ -1408,8 +1408,10 @@ function mfgCalc(p){
   return {begRM,purch,transfer,endRM,rm,wage,social,allow,retire,labor,dep,ex,hq,overhead,total,begWIP,endWIP,cogm,begFG,endFG,cogs:cogm+begFG-endFG};
 }
 // exchange rates: each US$ document keeps its booking rate (fx); month-end closing rates (fxHist) revalue open balances; today uses the 환율 setting
-const bookFx=r=>r.cur==='USD'?(+r.fx>0?+r.fx:FX()):1;
-function rateAt(d){if(d>=TODAY)return FX();const h=(DB.fxHist||[]).filter(x=>x.date<=d&&+x.rate>0).sort((a,b)=>a.date<b.date?1:-1)[0];return h?+h.rate:FX()}
+// 멕시코 중앙은행(Banxico) 일자별 FIX 환율: DB.fxDaily {YYYY-MM-DD: rate}. 휴일·주말은 직전 영업일 환율
+let FXDK=null,FXDS=null;function fxDay(d){const M=DB&&DB.fxDaily;if(!M||!validD(d))return 0;if(M[d])return +M[d];if(FXDS!==M||!FXDK){FXDS=M;FXDK=Object.keys(M).sort()}let lo=0,hi=FXDK.length-1,f=-1;while(lo<=hi){const m=(lo+hi)>>1;if(FXDK[m]<=d){f=m;lo=m+1}else hi=m-1}return f>=0&&addDs(FXDK[f],10)>=d?+M[FXDK[f]]:0}
+const bookFx=r=>r.cur==='USD'?(+r.fx>0?+r.fx:fxDay(r.date)||FX()):1;
+function rateAt(d){const b=fxDay(d);if(b&&d<TODAY)return b;if(d>=TODAY)return FX();const h=(DB.fxHist||[]).filter(x=>x.date<=d&&+x.rate>0).sort((a,b)=>a.date<b.date?1:-1)[0];return h?+h.rate:FX()}
 // 외환차익·차손: US$ 외상매출 collected / 외상매입 paid at a rate different from the booking rate
 function fxRealized(p){
   let gain=0,loss=0;const docs={ar:new Map(DB.ar.map(r=>[r.id,r])),ap:new Map(DB.ap.map(r=>[r.id,r]))};
@@ -1583,7 +1585,7 @@ function bomNorm(r){
 function prodNorm(r){r.pn=String(r.pn||'').trim();r.item=String(r.item||'').trim();
   const B=DB&&DB.bom||[],hit=k=>{const b=k&&B.find(x=>x.assyPn===k);return b&&b.product};
   r.product=hit(r.pn)||hit(r.pn.replace(/-[A-Z]{1,4}$/,''))||[r.pn,r.item].filter(Boolean).join(' ')||r.product||'';return r}
-function fixRow(m,r){if(m===MODS.cash&&(r.cat==='보통예금'||r.cat==='유동부채'||NOVAT_ACC.includes(r.account)))r.iva='면세';if(m===MODS.bom)return bomNorm(r);if(m===MODS.loans&&Array.isArray(r.plan)){r.plan=r.plan.filter(x=>validD(x.date)&&+x.amount);r.plan.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);if(!r.plan.length)delete r.plan}if(m===MODS.loans&&Array.isArray(r.pays)){r.pays=r.pays.filter(x=>validD(x.date)&&+x.amount);r.pays.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);if(r.pays.length)r.repaid=r2(r.pays.filter(x=>x.kind==='원금').reduce((a,x)=>a+(+x.amount||0),0));else delete r.pays}if(m===MODS.ped)return pedNorm(r);if(m===MODS.production)return prodNorm(r);if(m===MODS.outbound||m===MODS.prices){r.pn=String(r.pn||'').trim();r.item=String(r.item||'').trim()}
+function fixRow(m,r){if(r&&r.cur==='USD'&&!(+r.fx>0)&&m.cols&&m.cols.some(c=>c.k==='fx')){const b=fxDay(r.date);if(b)r.fx=b}if(m===MODS.cash&&(r.cat==='보통예금'||r.cat==='유동부채'||NOVAT_ACC.includes(r.account)))r.iva='면세';if(m===MODS.bom)return bomNorm(r);if(m===MODS.loans&&Array.isArray(r.plan)){r.plan=r.plan.filter(x=>validD(x.date)&&+x.amount);r.plan.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);if(!r.plan.length)delete r.plan}if(m===MODS.loans&&Array.isArray(r.pays)){r.pays=r.pays.filter(x=>validD(x.date)&&+x.amount);r.pays.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);if(r.pays.length)r.repaid=r2(r.pays.filter(x=>x.kind==='원금').reduce((a,x)=>a+(+x.amount||0),0));else delete r.pays}if(m===MODS.ped)return pedNorm(r);if(m===MODS.production)return prodNorm(r);if(m===MODS.outbound||m===MODS.prices){r.pn=String(r.pn||'').trim();r.item=String(r.item||'').trim()}
   if(m===MODS.outbound){const pr=priceAt(r.customer,r.pn,r.item,r.date);if(pr){if(!(+r.price>0)){r.price=+pr.price;r.cur=pr.cur||r.cur}if(!r.item)r.item=pr.item||'';if(!r.pn)r.pn=pr.pn||''}r.product=[r.pn,r.item].filter(Boolean).join(' ')||r.product||''}
 if(m.cols.some(c=>c.k==='folio')&&String(r.folio||'').trim())r.factura='발행';if(m.cols.some(c=>c.bank)){const b=BANKS().find(x=>x.name===r.bank);if(!b||(b.cur||'MXN')!==(r.cur||'MXN'))r.bank=bankFor(r.cur)}if(m===MODS.ar&&!lnNorm(r)&&+r.qty>0&&+r.price>0)r.sub=r2(+r.qty*+r.price);if(m===MODS.ar&&validD(r.date)){const tm=String(r.terms??'').trim()===''?NaN:Math.round(+r.terms);if(isFinite(tm)&&tm>=0){r.terms=tm;r.due=addDs(r.date,tm)}else{if(!validD(r.due))r.due=addDs(r.date,partyTerms('ar',r));r.terms=diffD(r.date,r.due)}}if(m===MODS.ap)apNorm(r);else if(m.cols.some(c=>c.k==='sub'))r.amount=hasIvaAmt(r)?r2((+r.sub||0)+(+r.ivaAmt)):r2((+r.sub||0)*(1+ivaRt(r)));if(m===MODS.ar){const rt=+r.ivaRet||0;if(rt>0){const v=hasIvaAmt(r)?+r.ivaAmt:r2((+r.sub||0)*ivaRt(r));r.ivaAmt=v;r.amount=r2((+r.sub||0)+v-rt)}else r.ivaRet=0}if(m.cols.some(c=>c.k==='fx')){if(r.cur==='USD'){if(!(+r.fx>0))r.fx=FX()}else r.fx=''}return r}
 const PED_KINDS=['자산','원자재','부자재','소모품'];
@@ -2388,6 +2390,7 @@ function fsPage(){
     <div class="card"><header><h2>월말 환율 (외화환산 기준)</h2><span class="meta">US$ 외상매출·외상매입·차입금 잔액을 이 환율로 평가합니다</span></header><div class="body"><div class="fxgrid">
       ${(DB.fxHist||[]).slice().sort((a,b)=>a.date<b.date?-1:1).slice(-12).map(h=>`<label><span>${+h.date.slice(5,7)}월 말 <small>${h.date.slice(0,4)}</small></span><input class="cell n" type="number" step="any" data-fxh="${h.date}" value="${h.rate}"></label>`).join('')}
     </div></div></div>
+    ${fxBmxCard()}
     <div class="card"><div class="body">
       <p class="note">재무제표는 직접 입력하지 않고 각 화면의 자료로 계산합니다. 숫자를 고치려면 해당 화면에서 편집하세요. 샘플 자료는 최근 4개월치만 있어 그 이전 기간의 손익은 0으로 표시됩니다.</p></div></div>
   </div>`;
@@ -3143,7 +3146,9 @@ function xfSync(F,src){const B=F&&F.querySelector('[data-xfer]');if(!B)return;co
   if(diff&&A.dataset.manual&&amt>0&&inA>0&&(src==='amt'||src==='sub')){const f=fc==='USD'?inA/amt:amt/inA;fxEl.value=String(Math.round(f*10000)/10000)}
   else if(!A.dataset.manual||src==='fx'||src==='to'||src==='bank'||(src==='sub'&&!diff)){A.dataset.manual='';const fx=pnum(fxEl.value)||0,v=!diff?amt:fc==='USD'?amt*fx:fx?amt/fx:0;A.value=v?r2(v).toFixed(2):''}
   B.querySelector('[data-xfcur]').textContent=`(${tc==='USD'?'US$':'MXN'})`;B.querySelector('[data-xfnote]').textContent=opts.length?`${T.value}에 ${tc==='USD'?'US$':'MXN'} ${nf2.format(pnum(A.value)||0)} 입금 전표가 자동으로 만들어집니다`:'받을 계좌가 없습니다. 설정에서 계좌를 추가해 주세요'}
-['input','change'].forEach(ev=>document.addEventListener(ev,e=>{const t=e.target,F=t.form;if(F&&(F.dataset.settle||F.dataset.pedpayf)&&t.name==='sdate'){const c=F.querySelector('[name="snocash"]');if(c&&validD(t.value))c.checked=t.value<OP_START()}}));
+document.addEventListener('change',e=>{const t=e.target,F=t.form;if(!F||!(F.dataset.reg||F.dataset.edit)||!['date','cur'].includes(t.name))return;const fx=F.querySelector('[name="fx"]'),c=F.querySelector('[name="cur"]'),d=F.querySelector('[name="date"]');if(!fx||!c||c.value!=='USD'||!d)return;const v=fxDay(d.value);if(v&&(!fx.value||fx.dataset.auto==='1')){fx.value=v;fx.dataset.auto='1'}});
+document.addEventListener('input',e=>{const t=e.target;if(t.name==='fx'&&t.dataset)delete t.dataset.auto});
+['input','change'].forEach(ev=>document.addEventListener(ev,e=>{const t=e.target,F=t.form;if(F&&F.dataset.settle&&t.name==='sdate'){const x=F.querySelector('[name="sfx"]'),v=fxDay(t.value);if(x&&v)x.value=v}if(F&&(F.dataset.settle||F.dataset.pedpayf)&&t.name==='sdate'){const c=F.querySelector('[name="snocash"]');if(c&&validD(t.value))c.checked=t.value<OP_START()}}));
 document.addEventListener('input',e=>{const t=e.target,F=t.form;if(!F||(F.dataset.reg||F.dataset.edit)!=='cash')return;if(t.dataset.xf)xfSync(F,t.dataset.xf);else if(['sub','fx','bank'].includes(t.name))xfSync(F,t.name)});
 document.addEventListener('change',e=>{const t=e.target,F=t.form;if(!F||(F.dataset.reg||F.dataset.edit)!=='cash')return;if(t.dataset.xf)xfSync(F,t.dataset.xf);else if(['type','cat','account','bank','cur'].includes(t.name))setTimeout(()=>xfSync(F,t.name))});
 new MutationObserver(()=>document.querySelectorAll('form [data-xfer]:not([data-xi])').forEach(B=>{B.dataset.xi=1;xfSync(B.closest('form'))})).observe(document.body,{childList:true,subtree:true});
@@ -3445,6 +3450,36 @@ function pedPayModal(){const r=DB.ped.find(x=>x.id===modal.id);if(!r){modal=null
       <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px"><input type="checkbox" name="snocash" style="margin-top:2px"${d0<OP_START()?' checked':''}><span>${OP_START().replace(/-/g,'.')} 이전 지급 · 완료로 표시만 하고 경리자료에는 반영하지 않음<br><span class="muted">지급일이 운영 시작일 전이면 자동으로 체크됩니다.</span></span></label>
       <p class="note" style="margin:0">확인하면 경리자료에 출금 전표 2건이 만들어집니다. 관세는 ${esc(cat)} · ${esc(acct)}, 부가세는 부가세대급금 · 수입 부가세입니다.</p></div>
     <footer><button type="button" class="btn" data-close="1">취소</button><button type="submit" class="btn primary">지급 확인</button></footer></form></div></div>`}
+// Banxico SIE API: 시리즈 SF43718 (FIX, 결정일) 또는 SF60653 (DOF 게재일). 토큰은 Banxico 사이트에서 무료 발급, 이 브라우저의 자료에만 저장
+const BMX_SER={SF43718:'FIX (결정일)',SF60653:'DOF 게재 환율 (게재일)'};
+let FXBUSY=0;async function fxFetch(quiet){if(FXBUSY)return 0;FXBUSY=1;try{return await fxFetch0(quiet)}finally{FXBUSY=0}}
+async function fxFetch0(quiet){const S=DB.settings||(DB.settings={}),tk=String(S.bmxToken||'').trim();if(!tk){if(!quiet)toast('Banxico 토큰을 먼저 입력해 주세요');return 0}
+  const ser=BMX_SER[S.bmxSeries]?S.bmxSeries:'SF43718',M=DB.fxDaily||(DB.fxDaily={}),ks=Object.keys(M).sort(),from=ks.length&&S.bmxSer===ser?addDs(ks[ks.length-1],-10):'2025-01-01';
+  try{const res=await fetch(`https://www.banxico.org.mx/SieAPIRest/service/v1/series/${ser}/datos/${from}/${TODAY}?token=${encodeURIComponent(tk)}`,{headers:{Accept:'application/json'}});
+    if(!res.ok)throw new Error(res.status===401||res.status===403?'토큰이 맞지 않습니다':'응답 오류 '+res.status);
+    const j=await res.json(),L=(((j.bmx||{}).series||[])[0]||{}).datos||[];if(S.bmxSer!==ser){Object.keys(M).forEach(k=>delete M[k]);S.bmxSer=ser}
+    let n=0;L.forEach(x=>{const m=String(x.fecha||'').match(/^(\d{2})\/(\d{2})\/(\d{4})$/),v=parseFloat(String(x.dato||'').replace(/,/g,''));if(m&&v>0){const d=`${m[3]}-${m[2]}-${m[1]}`;if(M[d]!==v)n++;M[d]=v}});
+    FXDK=null;const r=fxApply();S.bmxAt=new Date().toISOString();S.bmxErr='';save();renderMain();
+    if(!quiet||n)toast(`Banxico 환율 ${n}일치를 받았습니다${r.rows?` · US$ 전표 ${r.rows}건에 환율 입력`:''}${r.last?` · 오늘 환율 ${r.last}`:''}`);return n}
+  catch(e){S.bmxErr=String(e.message||e);save();if(!quiet)toast('Banxico 환율을 가져오지 못했습니다: '+S.bmxErr);renderMain();return 0}}
+// 받은 환율을 반영: 오늘 환율 설정, 월말 환율(외화환산 기준), 환율이 비어 있는 US$ 전표
+function fxApply(){const M=DB.fxDaily||{},ks=Object.keys(M).sort();if(!ks.length)return {rows:0};const last=M[ks[ks.length-1]];DB.settings.fx=last;
+  DB.fxHist=DB.fxHist||[];let d=monthOf(ks[0]).end;while(d<TODAY){const v=fxDay(d);if(v){const h=DB.fxHist.find(x=>x.date===d);if(h){h.rate=v;h.src='banxico'}else DB.fxHist.push({date:d,rate:v,src:'banxico'})}d=monthOf(addDs(d,1)).end}
+  let rows=0;['cash','ap','ar','loans','outbound'].forEach(k=>(DB[k]||[]).forEach(r=>{if(r.cur==='USD'&&!(+r.fx>0)&&validD(r.date)&&r.date>=OP_START()){const v=fxDay(r.date);if(v){r.fx=v;rows++}}}));
+  try{syncOpenCash()}catch(_){}return {rows,last}}
+function fxBmxCard(){const S=DB.settings||{},M=DB.fxDaily||{},ks=Object.keys(M).sort(),rec=ks.slice(-10).reverse(),ser=BMX_SER[S.bmxSeries]?S.bmxSeries:'SF43718';
+  const ms=[];for(let i=5;i>=0;i--){const p=period(shift(TODAY.slice(0,8)+'01','month',-i),'month');const X=fxRealized(p),V=fxReval(p);ms.push({p,rate:rateAt(p.end),X,V})}
+  return `<div class="card"><header><h2>Banxico 환율 자동 입력</h2><span class="meta">${ks.length?`${ks.length}일치 · 마지막 ${esc(ks[ks.length-1])}`:'아직 받은 환율 없음'}${S.bmxAt?` · ${esc(S.bmxAt.slice(0,16).replace('T',' '))} 갱신`:''}</span><div style="margin-left:auto;display:flex;gap:6px"><button class="btn primary" data-fxfetch="1">⟳ 지금 가져오기</button></div></header>
+    <div class="body" style="display:grid;gap:12px">
+      <div class="form" style="grid-template-columns:2fr 1fr"><label>Banxico SIE API 토큰<input type="password" autocomplete="off" data-bmxtk="1" value="${esc(S.bmxToken||'')}" placeholder="64자리 토큰"></label><label>환율 종류<select data-bmxser="1">${Object.entries(BMX_SER).map(([k,v])=>`<option value="${k}"${k===ser?' selected':''}>${esc(v)}</option>`).join('')}</select></label></div>
+      ${S.bmxErr?`<p class="note" style="margin:0;color:var(--bad)">마지막 시도 실패: ${esc(S.bmxErr)}</p>`:''}
+      <p class="note" style="margin:0">토큰은 <a href="https://www.banxico.org.mx/SieAPIRest/service/v1/token" target="_blank" rel="noopener">Banxico 토큰 발급 페이지</a>에서 무료로 받습니다. 토큰이 있으면 하루 한 번 자동으로 환율을 받아 오늘 환율, 월말 환율, 환율이 비어 있는 US$ 전표(${OP_START()} 이후)에 넣습니다. 새로 입력하는 US$ 건도 그 날짜 환율이 자동으로 들어갑니다.</p>
+      ${rec.length?`<div class="tw"><table class="tight"><thead><tr>${rec.map(d=>`<th class="n">${esc(d.slice(5).replace('-','/'))}</th>`).join('')}</tr></thead><tbody><tr>${rec.map(d=>`<td class="n">${(+M[d]).toFixed(4)}</td>`).join('')}</tr></tbody></table></div>`:''}
+      <h3 style="font-size:13px;margin:4px 0 0">월말 환차익 · 환차손 (최근 6개월)</h3>
+      <div class="tw"><table><thead><tr><th>월</th><th class="n">월말 환율</th><th class="n">외환차익 (결제)</th><th class="n">외환차손 (결제)</th><th class="n">외화환산이익 (월말 평가)</th><th class="n">외화환산손실 (월말 평가)</th><th class="n">순액</th></tr></thead><tbody>
+      ${ms.map(x=>{const net=x.X.gain-x.X.loss+x.V.gain-x.V.loss;return `<tr><td>${esc(x.p.label)}${x.p.end>=TODAY?' <span class="muted">(진행 중)</span>':''}</td><td class="n">${x.rate.toFixed(4)}</td><td class="n">${money(x.X.gain)}</td><td class="n">${money(x.X.loss)}</td><td class="n">${money(x.V.gain)}</td><td class="n">${money(x.V.loss)}</td><td class="n"><b class="${net>=0?'pos':'neg'}">${money(net)}</b></td></tr>`}).join('')}</tbody></table></div>
+      <p class="note" style="margin:0">외환차익·차손은 US$ 외상매출·외상매입을 장부 환율과 다른 날 환율로 결제한 차이입니다. 외화환산이익·손실은 월말에 남은 US$ 미수·미지급·차입금을 월말 환율로 다시 평가한 차이로, 손익계산서의 금융수익·금융비용에 들어갑니다.</p>
+    </div></div>`}
 document.addEventListener('change',e=>{const t=e.target;if(t.id==='fundFile'&&t.files&&t.files[0]){fdUpload(t.files[0]);t.value=''}else if(t.dataset&&t.dataset.fdnote&&DB.fund){(DB.fund.note=DB.fund.note||{})[t.dataset.fdnote]=t.value;save()}});
 /* ---------- 주간 보고: 인원현황 (엑셀로 올린 주별 부서·인원·MXN) ---------- */
 // DB.hc = [{wk:'W1',n:1,dept,cnt,mxn,krw}] · 원화 칸이 없으면 MXN × 원화 환율
@@ -4161,7 +4196,7 @@ function renderModal(){
         <div class="form"><label>${isAR?'입금일':'지급일'}<input type="date" name="sdate" value="${TODAY}" required></label>
           <label>${isAR?'입금 은행':'지급 은행'}<select name="sbank" required>${(bankNames(cur).length?bankNames(cur):bankNames()).map(n=>`<option${n===bankFor(cur)?' selected':''}>${esc(n)}</option>`).join('')}</select></label>
           <label>${isAR?'입금액':'지급액'}${cur==='USD'?' (US$)':''}<input type="number" step="any" name="samt" value="${bal}" min="0.01" max="${bal}" required></label>
-          ${cur==='USD'?`<label>${isAR?'입금':'지급'}일 환율 (장부 ${bookFx(r)})<input type="number" step="any" name="sfx" value="${FX()}" min="0.0001" required></label>`:''}</div>
+          ${cur==='USD'?`<label>${isAR?'입금':'지급'}일 환율 (장부 ${bookFx(r)})<input type="number" step="any" name="sfx" value="${fxDay(TODAY)||FX()}" min="0.0001" required></label>`:''}</div>
         <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px"><input type="checkbox" name="snocash" style="margin-top:2px"><span>${OP_START().replace(/-/g,'.')} 이전 ${isAR?'입금':'지급'} · 완료로 표시만 하고 경리자료에는 반영하지 않음<br><span class="muted">${isAR?'입금':'지급'}일이 운영 시작일 전이면 자동으로 체크됩니다.</span></span></label>
         <p class="note" style="margin:0">확인하면 경리자료에 ${isAR?'입금':'출금'} 전표가 만들어지고 ${isAR?'수금액':'지급액'}이 늘어납니다. 금액을 줄이면 일부만 처리되고 잔액이 남습니다. 부가세는 ${isAR?'매출세액':'매입세액'}으로 이 날짜에 잡힙니다.</p></div>
       <footer><button type="button" class="btn" data-close="1">취소</button><button type="submit" class="btn primary">${isAR?'입금 확인':'지급 확인'}</button></footer></form></div></div>`;
@@ -5050,6 +5085,7 @@ document.addEventListener('click',e=>{
     toast(on?'Credit Note를 완료로 표시했습니다 (경리자료 반영 없음)':'Credit Note 완료 표시를 취소했습니다',{label:'되돌리기',fn:()=>setv(!on)});return}
   if(d.fdx){modal={type:'fdx'};renderModal();return}
   if(d.fdxt){UI.fdx=!UI.fdx;saveUI();renderMain();return}
+  if(d.fxfetch){fxFetch(false);return}
   if(d.pedpay){modal={type:'pedpay',id:d.pedpay};renderModal();return}
   if(d.pedundo){const r=DB.ped.find(x=>x.id===d.pedundo);if(!r)return;const n=DB.cash.length;DB.cash=DB.cash.filter(c=>!(c.link===r.id&&c.linkMod==='ped'));const k=n-DB.cash.length;delete r.pay;flashId=r.id;save();closeModal();renderMain();toast(`지급 완료를 취소했습니다${k?` · 경리자료 전표 ${k}건 삭제`:''}`);return}
   if(d.zm!==undefined){const v=+d.zm;UI.zm=v?Math.round(Math.min(1.6,Math.max(0.7,zmV()+v*0.1))*10)/10:1;saveUI();zmApply();renderMain();return}
@@ -5162,6 +5198,8 @@ document.addEventListener('change',e=>{
   if(t.id==='rangeStart'||t.id==='rangeEnd'){if(validD(t.value)){if(t.id==='rangeStart')UI.rs=t.value;else UI.re=t.value;if(UI.rs>UI.re)[UI.rs,UI.re]=[UI.re,UI.rs];saveUI();renderMain()}return}
   if(t.id==='krw'){DB.settings.krw=parseFloat(t.value)||75;save();renderMain();return}
   if(t.id==='fx'){DB.settings.fx=parseFloat(t.value)||18.5;syncOpenCash();save();renderMain();return}
+  if(t.dataset&&t.dataset.bmxtk){DB.settings.bmxToken=t.value.trim();save();if(DB.settings.bmxToken)fxFetch(false);return}
+  if(t.dataset&&t.dataset.bmxser){DB.settings.bmxSeries=t.value;save();if(DB.settings.bmxToken)fxFetch(false);return}
   if(t.dataset&&t.dataset.cnt){const [k,it,u]=t.dataset.cnt.split('|');setCount(k,it,u,t.value);return}
   if(t.dataset&&t.dataset.fxh){const h=(DB.fxHist||[]).find(x=>x.date===t.dataset.fxh);if(h&&parseFloat(t.value)>0){h.rate=parseFloat(t.value);save();later()}return}
   const map={'set-mw':'minWage','set-coef':'coefUtil','set-ag':'agDays','set-vp':'vacPrem','set-sf':'sfRate','openCash':'openCash','openRM':'openRM'};
@@ -5503,6 +5541,7 @@ document.addEventListener('drop',e=>{const t=dropTarget(e);if(!t)return;e.preven
   layDrag=null;layCommit(d.kind!=='blk');layPanel()});
 layApplyGroups();
 // a new month-end appears in the 월말 환율 list with the current rate until it is corrected
+setTimeout(()=>{try{const S=DB.settings||{};if(S.bmxToken&&String(S.bmxAt||'').slice(0,10)!==new Date().toISOString().slice(0,10))fxFetch(true)}catch(_){}},1500);
 (function(){DB.fxHist=DB.fxHist||[];let add=0;for(let k=1;k<=12;k++){const d=ds(new Date(THIS_YEAR,TODAY_D.getMonth()-k+1,0));if(!DB.fxHist.some(h=>h.date===d)){DB.fxHist.push({date:d,rate:FX()});add++}}if(add)save()})();
 
 seedTaxPays();
