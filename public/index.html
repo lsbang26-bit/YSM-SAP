@@ -1263,7 +1263,9 @@ function cnIndex(){if(CNIX&&CNDB===DB)return CNIX;CNDB=DB;const T=new Map(),C=ne
     if(!t){const u=U.get(cnU(r.cnUuid))||U.get(cnU(r.uuid));if(u&&(u.cur||'MXN')===(r.cur||'MXN'))t=u}if(!t)return;tgt.set(r.id,t);C.set(t.id,(C.get(t.id)||0)-(+r.amount||0))});
   return CNIX={tgt,C}}
 const cnTarget=r=>cnIndex().tgt.get(r.id)||null, arCreditN=r=>cnIndex().C.get(r.id)||0;
-const arBal=r=>+r.amount<0&&(cnTarget(r)||r.cnDone)?0:mx(r,'amount')-mx(r,'received')-arCreditN(r)*rate(r.cur);
+const arBal=r=>+r.amount<0&&(cnTarget(r)||r.cnDone)?0:mx(r,'amount')-mx(r,'received')-mx(r,'fee')-arCreditN(r)*rate(r.cur);
+// 송금수수료(기타): 외상매출 입금 때 수수료·작은 차이로 덜 들어온 금액. 수금액 + 송금수수료 = 정리된 채권, 영업외비용(잡손실)로 처리
+const arFeeDate=r=>validD(r.feeDate)?r.feeDate:(cashByLink(r.id).filter(c=>c.linkMod==='ar').map(c=>c.date).sort().pop()||r.due||r.date);
 const dueStatus=(bal,due)=>bal<=0.5?'완료':(validD(due)&&due<TODAY?'연체':'진행');
 const assetEnd=r=>validD(r.acq)?ds(addD(pd(r.acq),Math.round((+r.life||1)*365)-1)):'';
 const assetPerDay=r=>mx(r,'cost')/((+r.life||1)*365);
@@ -1425,7 +1427,7 @@ function calcReset(){LINKIX=null;CNIX=null;if(INCC)INCC.clear()}
 function cashByLink(id){if(!LINKIX||LINKDB!==DB){LINKDB=DB;LINKIX=new Map();(DB.cash||[]).forEach(c=>{if(!c.link)return;const a=LINKIX.get(c.link);if(a)a.push(c);else LINKIX.set(c.link,[c])})}return LINKIX.get(id)||[]}
 function usdOpen(r,d,done){
   const L=cashByLink(r.id), linked=sumBy(L,'amount'), upTo=sumBy(L.filter(c=>c.date<=d),'amount'), rest=Math.max(0,(+r[done]||0)-linked);
-  return Math.max(0,(+r.amount||0)-upTo-(done==='received'?arCreditN(r):0)-(validD(r.due)&&r.due<=d?rest:0));
+  return Math.max(0,(+r.amount||0)-upTo-(done==='received'?arCreditN(r)+(+r.fee>0&&arFeeDate(r)<=d?+r.fee:0):0)-(validD(r.due)&&r.due<=d?rest:0));
 }
 // 외화환산이익·손실: change in the revaluation of open US$ receivables, payables and loans between the day before the period and its end
 function fxReval(p){
@@ -1449,7 +1451,7 @@ function income0(p){
   // 경리자료 '영업외수익' 분류의 이자수익 외 계정 (외환차익·임대료수익·유형자산처분이익·잡이익)
   const othInc=sumBy(DB.cash.filter(r=>r.type==='입금'&&r.cat==='영업외수익'&&r.account!=='이자수익'&&inP(r,p)),r=>mx(r,'amount')-ivaPart(r));
   // 경리자료 '영업외비용' 분류 (이자비용 계정은 차입금현황에서 이미 계산하므로 중복되지 않게 제외)
-  const othExp=sumBy(DB.cash.filter(r=>r.type==='출금'&&r.cat==='영업외비용'&&r.account!=='이자비용'&&inP(r,p)),r=>mx(r,'amount')-ivaPart(r));
+  const othExp=sumBy(DB.cash.filter(r=>r.type==='출금'&&r.cat==='영업외비용'&&r.account!=='이자비용'&&inP(r,p)),r=>mx(r,'amount')-ivaPart(r))+sumBy(DB.ar.filter(r=>+r.fee>0&&inP({date:arFeeDate(r)},p)),M('fee'));
   const X=fxRealized(p), V=fxReval(p), finInc=intInc+othInc+X.gain+V.gain, finExp=interest+othExp+X.loss+V.loss;
   return {sales,cogs,gross,sga,wage,social,allow,other,dep,hq,op,intInc,othInc,othExp,fxGain:X.gain,fxtGain:V.gain,finInc,interest,fxLoss:X.loss,fxtLoss:V.loss,finExp,pre:op+finInc-finExp};
 }
@@ -1630,7 +1632,7 @@ const MODS={
     blank:p=>({date:TODAY,vendor:'',folio:'',cat:'제조비용',dept:'',account:'원재료비',item:'',cur:'MXN',sub:0,disc:0,ivaRet:0,isrRet:0,ivaAmt:'',amount:0,iva:'16%',factura:'발행',uuid:'',paid:0,due:addDs(TODAY,30)})},
   ar:{name:'외상매출',desc:'고객사 매출 채권과 수금 현황',data:'ar',dated:true,tight:1,after:(p,id)=>arFacturaCard(p,id),side:()=>arWeekCard(),
     filters:[['customer','고객사'],['folio','Factura','text'],['item','품목','text'],['amount','합계','range'],['st','상태']],fsum:1,
-    cols:[C('date','발행일','date'),C('customer','고객사','text',{sug:'customers'}),C('folio','Factura','text',{opt:1,view:r=>(String(r.folio||'').trim()?`<span class="pill good"${r.uuid?` title="CFDI ${esc(r.uuid)}"`:''}>${esc(r.folio)}</span>`:pill(r.factura||'미발행'))+(+r.amount<0&&String(r.cnFor||'').trim()?` <span class="cnto${cnTarget(r)?'':' bad'}" title="${cnTarget(r)?'이 Factura 잔액에서 차감':'같은 고객사·통화에 이 번호의 Factura가 없습니다'}">→ ${esc(r.cnFor)}</span>`:'')+(arCreditN(r)>0.004?` <span class="cnto" title="적용된 Credit Note">CN −${nf2.format(arCreditN(r))}</span>`:'')}),Object.assign({},UUIDC,{l:'CFDI 번호 (UUID)'}),C('item','품목','text',{opt:1}),C('qty','수량','num',{opt:1,keepBlank:1,view:r=>+r.qty?nfq.format(+r.qty):''}),C('price','단가','money2',{opt:1,keepBlank:1,view:r=>+r.price?fmtCur(+r.price,r.cur,1):''}),CUR,C('fx','환율 (US$ 건)','num',{noTable:1,opt:1}),SUB({sum:1}),IVAF,C('ivaAmt','부가세','money',{noTable:1,opt:1,keepBlank:1}),VATR({sum:1}),C('ivaRet','부가세 Ret','money',{sum:1,opt:1}),TOT({sum:1}),Object.assign({},FACTC_AR,{noTable:1}),C('received','수금액','money',{sum:1}),C('terms','크레딧 텀(일)','num',{opt:1,keepBlank:1,noTable:1}),C('due','수금기일','date'),
+    cols:[C('date','발행일','date'),C('customer','고객사','text',{sug:'customers'}),C('folio','Factura','text',{opt:1,view:r=>(String(r.folio||'').trim()?`<span class="pill good"${r.uuid?` title="CFDI ${esc(r.uuid)}"`:''}>${esc(r.folio)}</span>`:pill(r.factura||'미발행'))+(+r.amount<0&&String(r.cnFor||'').trim()?` <span class="cnto${cnTarget(r)?'':' bad'}" title="${cnTarget(r)?'이 Factura 잔액에서 차감':'같은 고객사·통화에 이 번호의 Factura가 없습니다'}">→ ${esc(r.cnFor)}</span>`:'')+(arCreditN(r)>0.004?` <span class="cnto" title="적용된 Credit Note">CN −${nf2.format(arCreditN(r))}</span>`:'')}),Object.assign({},UUIDC,{l:'CFDI 번호 (UUID)'}),C('item','품목','text',{opt:1}),C('qty','수량','num',{opt:1,keepBlank:1,view:r=>+r.qty?nfq.format(+r.qty):''}),C('price','단가','money2',{opt:1,keepBlank:1,view:r=>+r.price?fmtCur(+r.price,r.cur,1):''}),CUR,C('fx','환율 (US$ 건)','num',{noTable:1,opt:1}),SUB({sum:1}),IVAF,C('ivaAmt','부가세','money',{noTable:1,opt:1,keepBlank:1}),VATR({sum:1}),C('ivaRet','부가세 Ret','money',{sum:1,opt:1}),TOT({sum:1}),Object.assign({},FACTC_AR,{noTable:1}),C('received','수금액','money',{sum:1}),C('fee','송금수수료(기타)','money',{sum:1,opt:1,keepBlank:1}),C('terms','크레딧 텀(일)','num',{opt:1,keepBlank:1,noTable:1}),C('due','수금기일','date'),
       C('bal','잔액','money',{sum:1,calc:arBal}),C('termsV','크레딧 텀(일)','calc',{n:1,calc:r=>validD(r.due)&&validD(r.date)?diffD(r.date,r.due):''}),C('st','상태','calc',{calc:r=>+r.amount<0?(cnTarget(r)?'CN 적용':r.cnDone?'CN 완료':'CN 미적용'):dueStatus(arBal(r),r.due),pill:1,act:{mod:'ar',label:'입금 완료',show:r=>arBal(r)>0.5}})],
     kpis:(rows,p)=>{const all=DB.ar.filter(r=>r.date<=p.end),od=all.filter(r=>dueStatus(arBal(r),r.due)==='연체');return[kv('기간 청구액',money(sumBy(rows,M('amount'))),rows.length+'건'),kv('기간분 미수',money(sumBy(rows,arBal))),
       kv('전체 미수 잔액',money(sumBy(all,arBal)),p.end+' 기준','warn'),kv('연체',od.length+'건',plain(sumBy(od,arBal)),od.length?'bad':'')]},
@@ -2270,7 +2272,8 @@ function ledgerData(p){
   DB.ar.forEach(r=>{if(!validD(r.date))return;const A0=mx(r,'amount'),o={src:'ar',rid:r.id,memo:r.item||'',party:r.customer||'',fc:fc(r,+r.amount||0)};
     post(acc('자산','외상매출금','dr'),r.date,A0,0,Object.assign({ctr:'매출·부가세'+(r.folio?' (Factura '+r.folio+')':'')},o));
     const rest=mx(r,'received')-sumBy(cashByLink(r.id).filter(c=>c.linkMod==='ar'),c=>mx(c,'amount'));
-    if(rest>0.005)post(acc('자산','외상매출금','dr'),r.date,0,rest,Object.assign({},o,{memo:(r.item||'')+' · 수금 처리분 (연계된 경리자료 없음)',ctr:'–',fc:''}))});
+    if(rest>0.005)post(acc('자산','외상매출금','dr'),r.date,0,rest,Object.assign({},o,{memo:(r.item||'')+' · 수금 처리분 (연계된 경리자료 없음)',ctr:'–',fc:''}));
+    if(+r.fee>0){const fd=arFeeDate(r),fv=mx(r,'fee'),fo=Object.assign({},o,{memo:(r.item||'')+' · 송금수수료(기타)',fc:fc(r,+r.fee)});post(acc('자산','외상매출금','dr'),fd,0,fv,Object.assign({ctr:'잡손실 (송금수수료)'},fo));if(inP({date:fd},p))post(acc('영업외비용','잡손실 (송금수수료)','dr'),fd,fv,0,Object.assign({ctr:'외상매출금'},fo))}});
   // 손익 계정: 기간 안의 것만
   DB.outbound.forEach(r=>{if(!inP(r,p))return;const v=lineAmt(r);post(acc('매출','제품매출','cr'),r.date,0,v,{src:'outbound',rid:r.id,memo:[r.pn,r.item].filter(Boolean).join(' ')+(+r.qty?` · ${nf0.format(+r.qty)}${r.unit?' '+r.unit:''}`:''),party:r.customer||'',ctr:'외상매출금',fc:fc(r,(+r.qty||0)*(+r.price||0))})});
   DB.inbound.forEach(r=>{if(!inP(r,p)||r.check==='반품')return;const v=lineAmt(r)+(+r.igi||0)+(+r.dta||0);post(acc('제조원가','원·부재료 매입 (입고)','dr'),r.date,v,0,{src:'inbound',rid:r.id,memo:(r.kind?r.kind+' · ':'')+(r.item||''),party:r.vendor||'',ctr:'외상매입금 (외상매입 화면)',fc:fc(r,(+r.qty||0)*(+r.price||0))})});
@@ -2378,7 +2381,7 @@ function fsPage(){
       ${plRow('판매비와관리비','sga','sub')}${plRow('급상여 (영업·관리 · 급여지급내역)','wage','ind')}${plRow('법정복리비 (IMSS·RCV·Infonavit·ISN)','social','ind')}${plRow('본사관리비 (판관 배부분)','hq','ind')}${plRow('제수당 (Aguinaldo·휴가수당·저축기금)','allow','ind')}${plRow('감가상각비 (차량·비품)','dep','ind')}${plRow('기타 판관비 (경리자료·외상매입)','other','ind')}${plRow('영업이익','op','sub')}
       ${plRow('금융수익','finInc','sub')}${plRow('이자수익 (경리자료)','intInc','ind')}${plRow('기타 영업외수익 (경리자료)','othInc','ind')}${plRow('외환차익 (US$ 외상 결제)','fxGain','ind')}${plRow('외화환산이익 (기말 환율 평가)','fxtGain','ind')}
       ${plRow('금융비용','finExp','sub')}
-      ${plRow('이자비용 (차입금현황)','interest','ind')}${plRow('외환차손 (US$ 외상 결제)','fxLoss','ind')}${plRow('외화환산손실 (기말 환율 평가)','fxtLoss','ind')}${plRow('기타 영업외비용 (경리자료)','othExp','ind')}${plRow('법인세차감전이익','pre','sub')}${plRow('법인세비용 (ISR 30%, 법인세 화면)','tax','ind')}${plRow('당기순이익','ni','total')}</tbody></table></div></div>
+      ${plRow('이자비용 (차입금현황)','interest','ind')}${plRow('외환차손 (US$ 외상 결제)','fxLoss','ind')}${plRow('외화환산손실 (기말 환율 평가)','fxtLoss','ind')}${plRow('기타 영업외비용 (경리자료 · 송금수수료)','othExp','ind')}${plRow('법인세차감전이익','pre','sub')}${plRow('법인세비용 (ISR 30%, 법인세 화면)','tax','ind')}${plRow('당기순이익','ni','total')}</tbody></table></div></div>
     <div class="card"><header><h2>재무상태표</h2><span class="meta">각 기간 말일 기준 (진행 중인 기간은 오늘 기준)</span></header><div class="tw"><table class="stmt">
       ${head(P.map(p=>p.label+' 말'),false)}<tbody>
       ${bsRow('자산 총계','assets','sub')}${bsRow('현금및현금성자산','cashBal','ind')}${bsRow('매출채권 (외상매출)','ar','ind')}${bsRow('재고자산 (원·부자재·제품, 재고조사 평가)','inv','ind')}${bsRow('유형자산 장부가액','fixed','ind')}${bsRow('부가세 대급금 (미지급 매입분 IVA)','vatRec','ind')}
@@ -3148,6 +3151,10 @@ function xfSync(F,src){const B=F&&F.querySelector('[data-xfer]');if(!B)return;co
   B.querySelector('[data-xfcur]').textContent=`(${tc==='USD'?'US$':'MXN'})`;B.querySelector('[data-xfnote]').textContent=opts.length?`${T.value}에 ${tc==='USD'?'US$':'MXN'} ${nf2.format(pnum(A.value)||0)} 입금 전표가 자동으로 만들어집니다`:'받을 계좌가 없습니다. 설정에서 계좌를 추가해 주세요'}
 document.addEventListener('change',e=>{const t=e.target,F=t.form;if(!F||!(F.dataset.reg||F.dataset.edit)||!['date','cur'].includes(t.name))return;const fx=F.querySelector('[name="fx"]'),c=F.querySelector('[name="cur"]'),d=F.querySelector('[name="date"]');if(!fx||!c||c.value!=='USD'||!d)return;const v=fxDay(d.value);if(v&&(!fx.value||fx.dataset.auto==='1')){fx.value=v;fx.dataset.auto='1'}});
 document.addEventListener('input',e=>{const t=e.target;if(t.name==='fx'&&t.dataset)delete t.dataset.auto});
+function feeCalc(F){const o=F.querySelector('[data-feecalc]');if(!o)return;const a=F.querySelector('[name="samt"]'),b=+a.dataset.sbal||0,v=parseFloat(a.value)||0,fe=parseFloat((F.querySelector('[name="sfee"]')||{}).value)||0,c=MODS.ar&&modal&&DB.ar.find(x=>x.id===modal.id),cur=(c&&c.cur)||'MXN',rest=r2(b-v-fe);
+  o.innerHTML=`<span>입금액 + 송금수수료</span><b>${fmtCur(v+fe,cur)}</b><span>남는 잔액</span><b${rest<-0.004?' style="color:var(--bad)"':''}>${fmtCur(rest,cur)}</b>`}
+document.addEventListener('input',e=>{const F=e.target.form;if(F&&F.dataset.settle==='ar'&&['samt','sfee'].includes(e.target.name))feeCalc(F)});
+document.addEventListener('click',e=>{const t=e.target.closest&&e.target.closest('[data-feefill]');if(!t)return;const F=t.closest('form'),a=F.querySelector('[name="samt"]'),x=F.querySelector('[name="sfee"]');x.value=Math.max(0,r2((+a.dataset.sbal||0)-(parseFloat(a.value)||0))).toFixed(2);feeCalc(F)});
 ['input','change'].forEach(ev=>document.addEventListener(ev,e=>{const t=e.target,F=t.form;if(F&&F.dataset.settle&&t.name==='sdate'){const x=F.querySelector('[name="sfx"]'),v=fxDay(t.value);if(x&&v)x.value=v}if(F&&(F.dataset.settle||F.dataset.pedpayf)&&t.name==='sdate'){const c=F.querySelector('[name="snocash"]');if(c&&validD(t.value))c.checked=t.value<OP_START()}}));
 document.addEventListener('input',e=>{const t=e.target,F=t.form;if(!F||(F.dataset.reg||F.dataset.edit)!=='cash')return;if(t.dataset.xf)xfSync(F,t.dataset.xf);else if(['sub','fx','bank'].includes(t.name))xfSync(F,t.name)});
 document.addEventListener('change',e=>{const t=e.target,F=t.form;if(!F||(F.dataset.reg||F.dataset.edit)!=='cash')return;if(t.dataset.xf)xfSync(F,t.dataset.xf);else if(['type','cat','account','bank','cur'].includes(t.name))setTimeout(()=>xfSync(F,t.name))});
@@ -4183,7 +4190,7 @@ function renderModal(){
       ${L.length||rest>0.004?`<p class="note" style="margin:0">잘못 처리한 ${W}을 골라 취소하면 ${isAR?'수금액':'지급액'}이 줄고, 연결된 경리자료 전표도 함께 지워집니다. 날짜·금액·은행만 고치려면 경리자료에서 그 전표를 수정하세요 (자동 반영).</p>
       <table class="tight"><thead><tr><th class="c">취소</th><th class="c">${W}일</th><th>은행</th><th class="n">금액</th><th></th></tr></thead><tbody>
       ${L.map(c=>`<tr><td class="c"><input type="checkbox" data-stc value="${c.id}" aria-label="이 ${W} 취소"></td><td class="c">${esc(c.date)}</td><td>${esc(bankOf(c))}</td><td class="n">${fmtCur(+c.amount||0,c.cur||cur)}</td><td><button type="button" class="act" data-cashgo="${c.id}">경리자료에서 보기</button></td></tr>`).join('')}
-      ${rest>0.004?`<tr><td class="c"><input type="checkbox" data-strest value="${rest}" aria-label="연결 전표 없는 금액 취소"></td><td class="c">–</td><td class="muted">연결된 경리자료 전표 없음</td><td class="n">${fmtCur(rest,cur)}</td><td></td></tr>`:''}</tbody></table>`:`<p class="note" style="margin:0">아직 ${W} 처리된 금액이 없습니다.</p>`}</div>
+      ${rest>0.004?`<tr><td class="c"><input type="checkbox" data-strest value="${rest}" aria-label="연결 전표 없는 금액 취소"></td><td class="c">–</td><td class="muted">연결된 경리자료 전표 없음</td><td class="n">${fmtCur(rest,cur)}</td><td></td></tr>`:''}${isAR&&+r.fee>0?`<tr><td class="c"><input type="checkbox" data-stfee value="1" aria-label="송금수수료 취소"></td><td class="c">${esc(arFeeDate(r))}</td><td class="muted">송금수수료(기타)</td><td class="n">${fmtCur(+r.fee,cur)}</td><td></td></tr>`:''}</tbody></table>`:`<p class="note" style="margin:0">아직 ${W} 처리된 금액이 없습니다.</p>`}</div>
       <footer>${bal>0.5?`<button type="button" class="btn" data-stpay="1">${W} 완료 처리</button>`:''}${L.length||rest>0.004?`<button type="button" class="btn danger" data-stundo="1">선택한 ${W} 취소</button>`:''}<button type="button" class="btn primary" data-close="1">닫기</button></footer></div></div>`;return}
   if(modal&&modal.type==='settle'){
     const isAR=modal.mod==='ar', r=DB[modal.mod].find(x=>x.id===modal.id);if(!r){modal=null;host.innerHTML='';return}
@@ -4195,7 +4202,9 @@ function renderModal(){
         <dt>부가세 · Factura</dt><dd>${esc(r.iva||'–')} · ${esc(r.factura||'–')}</dd></dl>
         <div class="form"><label>${isAR?'입금일':'지급일'}<input type="date" name="sdate" value="${TODAY}" required></label>
           <label>${isAR?'입금 은행':'지급 은행'}<select name="sbank" required>${(bankNames(cur).length?bankNames(cur):bankNames()).map(n=>`<option${n===bankFor(cur)?' selected':''}>${esc(n)}</option>`).join('')}</select></label>
-          <label>${isAR?'입금액':'지급액'}${cur==='USD'?' (US$)':''}<input type="number" step="any" name="samt" value="${bal}" min="0.01" max="${bal}" required></label>
+          <label>${isAR?'입금액':'지급액'}${cur==='USD'?' (US$)':''}<input type="number" step="any" name="samt" value="${bal}" min="0.01" max="${bal}" required data-sbal="${bal}"></label>
+          ${isAR?`<label>송금수수료(기타)${cur==='USD'?' (US$)':''}<input type="number" step="any" name="sfee" value="0" min="0" max="${bal}"></label><div class="vatcalc" data-feecalc aria-live="polite"><span>입금액 + 송금수수료</span><b>${fmtCur(bal,cur)}</b><span>남는 잔액</span><b>${fmtCur(0,cur)}</b></div>
+          <div style="grid-column:1/-1;display:flex;gap:8px;align-items:center;font-size:12px"><button type="button" class="btn" data-feefill="1">차액을 송금수수료로</button><span class="muted">통장에 들어온 금액을 입금액에 넣고 누르면, 잔액과의 차이가 송금수수료(기타)로 들어갑니다.</span></div>`:''}
           ${cur==='USD'?`<label>${isAR?'입금':'지급'}일 환율 (장부 ${bookFx(r)})<input type="number" step="any" name="sfx" value="${fxDay(TODAY)||FX()}" min="0.0001" required></label>`:''}</div>
         <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px"><input type="checkbox" name="snocash" style="margin-top:2px"><span>${OP_START().replace(/-/g,'.')} 이전 ${isAR?'입금':'지급'} · 완료로 표시만 하고 경리자료에는 반영하지 않음<br><span class="muted">${isAR?'입금':'지급'}일이 운영 시작일 전이면 자동으로 체크됩니다.</span></span></label>
         <p class="note" style="margin:0">확인하면 경리자료에 ${isAR?'입금':'출금'} 전표가 만들어지고 ${isAR?'수금액':'지급액'}이 늘어납니다. 금액을 줄이면 일부만 처리되고 잔액이 남습니다. 부가세는 ${isAR?'매출세액':'매입세액'}으로 이 날짜에 잡힙니다.</p></div>
@@ -5061,10 +5070,10 @@ document.addEventListener('click',e=>{
   if(d.docfdi){if(cfdi&&cfdi.rows.some(x=>!x.err&&!x.dup))doCfdi();return}
   if(d.settle){modal={type:'settle',mod:d.m,id:d.settle};renderModal();return}
   if(d.stedit){modal={type:'stedit',mod:d.m,id:d.stedit};renderModal();return}
-  if(d.stundo){const mod=modal.mod,isAR=mod==='ar',r=DB[mod].find(x=>x.id===modal.id);if(!r)return;const F=t.closest('.modal'),ids=[...F.querySelectorAll('[data-stc]:checked')].map(x=>x.value),rest=F.querySelector('[data-strest]:checked');
-    if(!ids.length&&!rest){toast('취소할 '+(isAR?'입금':'지급')+'을 골라 주세요');return}
-    ids.forEach(id=>delRow('cash',id));const k=isAR?'received':'paid';if(rest)r[k]=Math.max(0,r2((+r[k]||0)-(+rest.value||0)));
-    flashId=r.id;save();closeModal();renderMain();toast(`${isAR?'입금':'지급'} ${ids.length+(rest?1:0)}건을 취소했습니다${ids.length?` · 연결된 경리자료 전표 ${ids.length}건도 지웠습니다`:''}`);return}
+  if(d.stundo){const mod=modal.mod,isAR=mod==='ar',r=DB[mod].find(x=>x.id===modal.id);if(!r)return;const F=t.closest('.modal'),ids=[...F.querySelectorAll('[data-stc]:checked')].map(x=>x.value),rest=F.querySelector('[data-strest]:checked'),fz=F.querySelector('[data-stfee]:checked');
+    if(!ids.length&&!rest&&!fz){toast('취소할 '+(isAR?'입금':'지급')+'을 골라 주세요');return}
+    ids.forEach(id=>delRow('cash',id));const k=isAR?'received':'paid';if(rest)r[k]=Math.max(0,r2((+r[k]||0)-(+rest.value||0)));if(fz){delete r.fee;delete r.feeDate}
+    flashId=r.id;save();closeModal();renderMain();toast(`${isAR?'입금':'지급'} ${ids.length+(rest?1:0)+(fz?1:0)}건을 취소했습니다${ids.length?` · 연결된 경리자료 전표 ${ids.length}건도 지웠습니다`:''}`);return}
   if(d.stpay){modal={type:'settle',mod:modal.mod,id:modal.id};renderModal();return}
   if(d.bankopenm){modal={type:'bankopen'};renderModal();return}
   if(d.addrow){modal={type:'add',mod:d.addrow};renderModal();return}
@@ -5291,8 +5300,9 @@ document.addEventListener('submit',e=>{
   if(f.dataset.settle){
     const mod=f.dataset.settle, isAR=mod==='ar', r=DB[mod].find(x=>x.id===modal.id);if(!r)return;
     const date=f.querySelector('[name="sdate"]').value, amt=Math.round(parseFloat(f.querySelector('[name="samt"]').value)*100)/100, bal=(isAR?arBal(r):apBal(r))/rate(r.cur||'MXN');
-    if(!validD(date)||!(amt>0)||amt>bal+0.01){toast('날짜와 금액을 확인해 주세요. 금액은 잔액보다 클 수 없습니다');return}
-    const k=isAR?'received':'paid';r[k]=Math.round(((+r[k]||0)+amt)*100)/100;
+    const fee=isAR?Math.max(0,r2(parseFloat((f.querySelector('[name="sfee"]')||{}).value)||0)):0;
+    if(!validD(date)||!(amt>0)||amt+fee>bal+0.01){toast('날짜와 금액을 확인해 주세요. 입금액과 송금수수료의 합은 잔액보다 클 수 없습니다');return}
+    const k=isAR?'received':'paid';r[k]=Math.round(((+r[k]||0)+amt)*100)/100;if(fee>0){r.fee=r2((+r.fee||0)+fee);r.feeDate=date}
     const nc=f.querySelector('[name="snocash"]');if(nc&&nc.checked){r.preSettle=(r.preSettle||[]).concat({date,amt});flashId=r.id;save();closeModal();renderMain();
       toast(`${isAR?'입금':'지급'} 완료로 표시했습니다 (${date}, 운영 시작 전 ${isAR?'입금':'지급'} · 경리자료 전표 없음)`);return}
     const bank=(f.querySelector('[name="sbank"]')||{}).value||bankFor(r.cur);UI.lastBank=bank;
@@ -5302,7 +5312,7 @@ document.addEventListener('submit',e=>{
     let fxMsg='';
     if(r.cur==='USD'){const sfx=parseFloat((f.querySelector('[name="sfx"]')||{}).value)||FX();DB.cash[0].fx=sfx;const d=amt*(sfx-bookFx(r))*(isAR?1:-1);if(Math.abs(d)>=0.5)fxMsg=` · 외환${d>0?'차익':'차손'} ${plain(Math.abs(d))}`}
     flashId=r.id;save();closeModal();renderMain();
-    toast(`${isAR?'입금':'지급'} 완료 처리했고 경리자료에 ${bank} ${isAR?'입금':'출금'} 전표를 만들었습니다${fxMsg}`,{label:'경리자료 보기',fn:()=>go('cash')});return;
+    toast(`${isAR?'입금':'지급'} 완료 처리했고 경리자료에 ${bank} ${isAR?'입금':'출금'} 전표를 만들었습니다${fee>0?` · 송금수수료(기타) ${plain(fee)}`:''}${fxMsg}`,{label:'경리자료 보기',fn:()=>go('cash')});return;
   }
   if(f.dataset.edit){
     const m=MODS[f.dataset.edit], r=DB[m.data].find(x=>x.id===modal.id);if(!r)return;
