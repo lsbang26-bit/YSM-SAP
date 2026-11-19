@@ -137,6 +137,7 @@ table.stk .mrg.neg{color:var(--bad)}
 .main{min-width:0;padding-block:0 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 .wrap{max-width:1560px;margin:0 auto;padding-inline:clamp(0px,2vw,16px)}
 #main,#modalHost .modal{zoom:var(--zm,1)}
+tr.newrow td{background:color-mix(in srgb,#F59E0B 12%,var(--surface))}.newb{display:inline-block;margin-left:4px;padding:1px 6px;border:0;border-radius:999px;background:#F59E0B;color:#fff;font-size:10px;font-weight:700;cursor:pointer;vertical-align:middle}.newbar{display:flex;gap:10px;align-items:center;padding:8px 14px;margin-bottom:8px;border-radius:10px;background:color-mix(in srgb,#F59E0B 14%,var(--surface));font-size:12.5px}
 .zmctl{display:inline-flex;align-items:center;border:1px solid var(--line-strong);border-radius:8px;overflow:hidden;background:var(--surface)}.zmctl button{border:0;background:none;padding:5px 9px;cursor:pointer;color:inherit;font:inherit;font-size:12px}.zmctl button:hover{background:var(--surface-2)}.zmctl .zv{min-width:46px;font-variant-numeric:tabular-nums;border-inline:1px solid var(--line);color:var(--muted)}
 .top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding:18px 0 12px;display:grid;gap:12px;border-bottom:1px solid var(--line)}
 body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
@@ -1951,8 +1952,9 @@ function tableHTML(m,p,modId){
   const hasSum=cols.some(c=>c.sum);
   const al=c=>isNum(c)?'n':m.tight&&(c.pill||c.t==='date')?'c':m.tight&&c.sug?'clip':'';
   const S=selOf(modId), nOn=rows.filter(r=>S.has(r.id)).length;
-  return `<div class="tw frz"><table${m.tight?' class="tight"':''} data-seltbl="${modId}"><thead><tr><th class="ck"><input type="checkbox" data-selall="${modId}" aria-label="전체 선택"${nOn&&nOn===rows.length?' checked':''}></th>${cols.map(c=>`<th class="${al(c)}" data-ck="${c.k}">${esc(c.l)}<span class="cres" data-cres="${modId}|${c.k}" title="끌어서 칸 폭 조절 · 두 번 클릭하면 원래대로"></span></th>`).join('')}<th class="n">관리</th></tr></thead><tbody>
-    ${rows.map(r=>`<tr data-row="${r.id}" class="${r.id===flashId?'flash':''}${S.has(r.id)?' sel':''}"><td class="ck"><input type="checkbox" data-selrow="${modId}" value="${r.id}" aria-label="선택"${S.has(r.id)?' checked':''}></td>${cols.map(c=>`<td data-ck="${c.k}" class="${al(c)}${c.calc?' calc':''}${c.wide?' w':''}"${m.tight&&(c.wide||c.sug)?` title="${esc(r[c.k])}"`:''}>${cellView(c,r,p,m)}</td>`).join('')}
+  const nNew=(DB[m.data]||[]).filter(r=>r.isNew).length;
+  return `${nNew?`<div class="newbar">🤖 Claude가 새로 넣은 자료 <b>${nNew}건</b> (노란색 줄 · NEW)<button class="btn" data-newall="${em}" style="margin-left:auto;padding:4px 10px;font-size:12px">모두 확인</button></div>`:''}<div class="tw frz"><table${m.tight?' class="tight"':''} data-seltbl="${modId}"><thead><tr><th class="ck"><input type="checkbox" data-selall="${modId}" aria-label="전체 선택"${nOn&&nOn===rows.length?' checked':''}></th>${cols.map(c=>`<th class="${al(c)}" data-ck="${c.k}">${esc(c.l)}<span class="cres" data-cres="${modId}|${c.k}" title="끌어서 칸 폭 조절 · 두 번 클릭하면 원래대로"></span></th>`).join('')}<th class="n">관리</th></tr></thead><tbody>
+    ${rows.map(r=>`<tr data-row="${r.id}" class="${r.id===flashId?'flash':''}${S.has(r.id)?' sel':''}${r.isNew?' newrow':''}"><td class="ck"><input type="checkbox" data-selrow="${modId}" value="${r.id}" aria-label="선택"${S.has(r.id)?' checked':''}>${r.isNew?`<button class="newb" data-newok="${r.id}" data-m="${em}" title="Claude가 새로 넣은 자료 · 누르면 확인 처리">NEW</button>`:''}</td>${cols.map(c=>`<td data-ck="${c.k}" class="${al(c)}${c.calc?' calc':''}${c.wide?' w':''}"${m.tight&&(c.wide||c.sug)?` title="${esc(r[c.k])}"`:''}>${cellView(c,r,p,m)}</td>`).join('')}
       <td><div class="acts"><button class="act" data-editrow="${r.id}" data-m="${em}">수정</button><button class="act danger" data-delrow="${r.id}" data-m="${em}">삭제</button></div></td></tr>`).join('')}
     </tbody>${m.footSplit?splitFoot(m,p,rows,cols):hasSum?footRow(m,cols,`합계 · ${rows.length}건`,'',c=>c.sum?footVal(c,rows,p,m):''):''}</table></div>`;
 }
@@ -4164,6 +4166,7 @@ function renderModal(){
   if(modal&&modal.type==='fsd'){host.innerHTML=fsdModal(modal.k);return}
   if(modal&&modal.type==='fdx'){host.innerHTML=fdxModal();return}
   if(modal&&modal.type==='pedpay'){host.innerHTML=pedPayModal();return}
+  if(modal&&modal.type==='dup'){host.innerHTML=dupModal();return}
   if(modal&&modal.type==='armatch'){host.innerHTML=arMatchModal();const q=host.querySelector('[name="am_amt"]');if(q&&!modal.run)q.focus();return}
   if(modal&&modal.type==='banktx'){host.innerHTML=bankTxModal(modal);return}
   if(modal&&modal.type==='stkprod'){host.innerHTML=stkProdModal(modal);return}
@@ -4935,7 +4938,18 @@ async function ibReconnect(){if(!IB.h)return ibConnect();try{if((await IB.h.requ
 function ibAdd(mod,x){const m=MODS[mod];if(!m||!Array.isArray(DB[m.data]))return 0;const u=String(x.uuid||'').trim().toLowerCase();
   if(u&&DB[m.data].concat(mod==='ap'?DB.cash:[]).some(r=>String(r.uuid||'').trim().toLowerCase()===u))return 0;
   if(x.ibKey&&DB[m.data].some(r=>r.ibKey===x.ibKey))return 0;
-  const r=Object.assign({},m.blank?m.blank(curPeriod()):{},x,{id:uid(),byClaude:1});delete r.inboxNote;const f=fixRow(m,r)||r;DB[m.data].unshift(f);return 1}
+  const r=Object.assign({},m.blank?m.blank(curPeriod()):{},x,{id:uid(),byClaude:1,isNew:1,newChk:1});delete r.inboxNote;const f=fixRow(m,r)||r;
+  const dp=folioDup(mod,f);if(dp&&!x.forceDup){(IB.dups=IB.dups||[]).push({mod,row:f,dup:dp});return 0}
+  DB[m.data].unshift(f);return 1}
+// 같은 거래처의 같은 Factura #가 이미 있으면 그 건을 돌려줌 (외상매입·외상매출)
+function folioDup(mod,r){if(mod!=='ap'&&mod!=='ar')return null;const fo=String(r.folio||'').trim().replace(/^0+/,'').toUpperCase();if(!fo)return null;const pk=mod==='ap'?'vendor':'customer',pn=normName(r[pk]||'');
+  return DB[mod].find(x=>x.id!==r.id&&String(x.folio||'').trim().replace(/^0+/,'').toUpperCase()===fo&&normName(x[pk]||'')===pn&&(+x.amount<0)===(+r.amount<0))||null}
+function dupModal(){const L=modal.list||[],one=L[0];
+  return `<div class="modal-bg"><div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="mt"><header><h3 id="mt">⚠ Factura # 중복</h3><button type="button" class="x" data-close="1" aria-label="닫기">×</button></header>
+    <div class="mbody" style="display:grid;gap:12px"><p style="margin:0">같은 거래처에 같은 Factura 번호가 이미 등록되어 있습니다. ${modal.src==='ib'?'Claude 자료함의 이 자료는 아직 넣지 않았습니다.':'아직 등록하지 않았습니다.'}</p>
+      <div class="tw"><table class="tight"><thead><tr><th>구분</th><th>거래처</th><th>Factura #</th><th>새 자료 (일자 · 합계)</th><th>기존 자료 (일자 · 합계)</th></tr></thead><tbody>
+      ${L.map(x=>{const pk=x.mod==='ap'?'vendor':'customer';return `<tr><td>${esc(MODS[x.mod].name)}</td><td>${esc(x.row[pk]||'')}</td><td><b>${esc(x.row.folio)}</b></td><td>${esc(x.row.date||'')} · ${fmtCur(+x.row.amount||0,x.row.cur||'MXN')}</td><td>${esc(x.dup.date||'')} · ${fmtCur(+x.dup.amount||0,x.dup.cur||'MXN')}</td></tr>`}).join('')}</tbody></table></div></div>
+    <footer><button type="button" class="btn" data-close="1">${modal.src==='ib'?'넣지 않기':'취소'}</button><button type="button" class="btn danger" data-dupforce="1">그래도 ${modal.src==='ib'?'넣기':'등록'}</button></footer></div></div>`}
 async function ibScan(quiet){if(!IB.h||!IB.ok||IB.busy)return 0;IB.busy=true;let n=0,files=0;const by={};
   // 자료함 바로 아래와 하위 폴더(외상매입·외상매출·급여 …)까지 읽음. 각 폴더의 "반영완료"는 건너뜀
   const walk=async(dir,path,depth)=>{let done=null;for await(const [nm,e] of dir.entries()){
@@ -4946,9 +4960,11 @@ async function ibScan(quiet){if(!IB.h||!IB.ok||IB.busy)return 0;IB.busy=true;let
       try{done=done||await dir.getDirectoryHandle('반영완료',{create:true});const t=await (await done.getFileHandle(nm,{create:true})).createWritable();await t.write(txt);await t.close();await dir.removeEntry(nm)}catch(_){}}};
   try{await walk(IB.h,'',0);
     IB.last=new Date();if(files){save();renderMain()}
+    if(IB.dups&&IB.dups.length&&!modal){modal={type:'dup',src:'ib',list:IB.dups};IB.dups=[];renderModal()}
     if(n)toast(`Claude가 넣은 자료 ${n}건을 반영했습니다 (${Object.entries(by).map(([k,v])=>`${(MODS[k]||{}).name||k} ${v}건`).join(', ')})`,{label:'보기',fn:()=>go(Object.keys(by)[0])});
     else if(files&&!quiet)toast('자료함 파일을 읽었지만 새 자료가 없습니다 (이미 등록된 CFDI UUID)');else if(!quiet)toast('자료함에 새 파일이 없습니다')}
   catch(e){IB.ok=false;try{renderNav()}catch(_){}}IB.busy=false;return n}
+(()=>{let k=0;IB_MODS.forEach(mod=>{const m=MODS[mod];(m&&DB[m.data]||[]).forEach(r=>{if(r.byClaude&&!r.newChk){r.newChk=1;r.isNew=1;k++}})});if(k)save()})();
 (async()=>{const h=await bkIDB('readonly',st=>st.get('ib'));if(!h)return;IB.h=h;IB.name=h.name;try{IB.ok=(await h.queryPermission({mode:'readwrite'}))==='granted'}catch(e){IB.ok=false}
   if(IB.ok)await ibScan(true);try{renderNav()}catch(e){}})();
 setInterval(()=>{if(IB.ok&&document.visibilityState==='visible')ibScan(true)},60000);
@@ -5164,6 +5180,11 @@ document.addEventListener('click',e=>{
   if(d.reset==='ask'){resetAsk=true;renderNav();return}
   if(d.reset==='no'){resetAsk=false;renderNav();return}
   if(d.bk){({conn:bkConnect,re:bkReconnect,down:bkDownload,up:bkUpload}[d.bk]||(()=>{}))();return}
+  if(d.dupforce&&modal&&modal.type==='dup'){const L=modal.list,src=modal.src,F=modal.form;closeModal();
+    if(src==='ib'){L.forEach(x=>DB[MODS[x.mod].data].unshift(x.row));save();renderMain();toast(`중복 Factura ${L.length}건을 그래도 넣었습니다`)}
+    else{L.forEach(x=>{DB[MODS[x.mod].data].unshift(x.row);flashId=x.row.id});UI.q='';save();renderMain();toast('중복 Factura지만 등록했습니다')}return}
+  if(d.newok){const m=MODS[d.m],r=m&&DB[m.data].find(x=>x.id===d.newok);if(r){delete r.isNew;save();renderMain()}return}
+  if(d.newall){const m=MODS[d.newall];if(m){DB[m.data].forEach(r=>delete r.isNew);save();renderMain();toast('신규 표시를 모두 지웠습니다')}return}
   if(d.ib){({conn:ibConnect,re:ibReconnect,scan:()=>ibScan(false)}[d.ib]||(()=>{}))();return}
   if(d.reset==='yes'){resetAsk=false;DB=migrate(seed());seedTaxPays();save();render();toast('샘플 데이터로 초기화했습니다');return}
   if(t.id==='burger'){$('#side').classList.add('open');$('#scrim').classList.add('open');return}
@@ -5301,6 +5322,7 @@ document.addEventListener('submit',e=>{
   if(f.dataset.armform){const g=k=>(f.querySelector(`[name="am_${k}"]`)||{}).value;Object.assign(modal,{cust:g('cust'),amt:pnum(g('amt'))||0,cur:g('cur'),date:validD(g('date'))?g('date'):TODAY,terms:pnum(g('terms'))||30,tol:pnum(g('tol'))||0,run:1});renderModal();return}
   if(f.dataset.reg){
     const id=f.dataset.reg, m=MODS[id], row=fixRow(m,Object.assign({id:uid()},m.blank(curPeriod()),readForm(f,m)));
+    if(f.dataset.dupok)delete f.dataset.dupok;else{const dp=folioDup(id,row);if(dp){modal={type:'dup',src:'reg',form:id,list:[{mod:id,row,dup:dp}]};renderModal();return}}
     if(id==='sever'){const e=DB.employees.find(x=>x.name===row.emp);if(e&&!validD(e.leave)&&validD(row.date))e.leave=row.date}
     DB[m.data].unshift(row);if(id==='ar')cnApply(f,row);const xm=id==='cash'?xfApply(f,row):'';flashId=row.id;UI.q='';save();if(modal&&modal.type==='add')closeModal();renderMain();
     const tr=document.querySelector(`[data-row="${row.id}"]`);
