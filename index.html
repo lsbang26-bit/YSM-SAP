@@ -1952,8 +1952,8 @@ function tableHTML(m,p,modId){
   const hasSum=cols.some(c=>c.sum);
   const al=c=>isNum(c)?'n':m.tight&&(c.pill||c.t==='date')?'c':m.tight&&c.sug?'clip':'';
   const S=selOf(modId), nOn=rows.filter(r=>S.has(r.id)).length;
-  const nNew=(DB[m.data]||[]).filter(r=>r.isNew).length,nCls=(DB[m.data]||[]).filter(r=>r.needCls).length;
-  return `${nNew?`<div class="newbar">🤖 Claude가 새로 넣은 자료 <b>${nNew}건</b> (노란색 줄 · NEW)${nCls?` · <b style="color:var(--bad)">처음 보는 거래처 ${nCls}건은 분류를 확인해 주세요</b> (Claude에게 "분류해줘"라고 하셔도 됩니다)`:''}<button class="btn" data-newall="${em}" style="margin-left:auto;padding:4px 10px;font-size:12px">모두 확인</button></div>`:''}<div class="tw frz"><table${m.tight?' class="tight"':''} data-seltbl="${modId}"><thead><tr><th class="ck"><input type="checkbox" data-selall="${modId}" aria-label="전체 선택"${nOn&&nOn===rows.length?' checked':''}></th>${cols.map(c=>`<th class="${al(c)}" data-ck="${c.k}">${esc(c.l)}<span class="cres" data-cres="${modId}|${c.k}" title="끌어서 칸 폭 조절 · 두 번 클릭하면 원래대로"></span></th>`).join('')}<th class="n">관리</th></tr></thead><tbody>
+  const nNew=(DB[m.data]||[]).filter(r=>r.isNew).length,nCls=(DB[m.data]||[]).filter(r=>r.needCls).length,nKo=typeof koRows==='function'?koRows().filter(r=>(DB[m.data]||[]).includes(r)).length:0;
+  return `${nNew?`<div class="newbar">🤖 Claude가 새로 넣은 자료 <b>${nNew}건</b> (노란색 줄 · NEW)${nCls?` · <b style="color:var(--bad)">처음 보는 거래처 ${nCls}건은 분류를 확인해 주세요</b> (Claude에게 "분류해줘"라고 하셔도 됩니다)`:''}${nKo?`<button class="btn" data-kofix="1" style="padding:4px 10px;font-size:12px">🌐 스페인어 품목 ${nKo}건 번역</button>`:''}<button class="btn" data-newall="${em}" style="margin-left:auto;padding:4px 10px;font-size:12px">모두 확인</button></div>`:''}<div class="tw frz"><table${m.tight?' class="tight"':''} data-seltbl="${modId}"><thead><tr><th class="ck"><input type="checkbox" data-selall="${modId}" aria-label="전체 선택"${nOn&&nOn===rows.length?' checked':''}></th>${cols.map(c=>`<th class="${al(c)}" data-ck="${c.k}">${esc(c.l)}<span class="cres" data-cres="${modId}|${c.k}" title="끌어서 칸 폭 조절 · 두 번 클릭하면 원래대로"></span></th>`).join('')}<th class="n">관리</th></tr></thead><tbody>
     ${rows.map(r=>`<tr data-row="${r.id}" class="${r.id===flashId?'flash':''}${S.has(r.id)?' sel':''}${r.isNew?' newrow':''}"><td class="ck"><input type="checkbox" data-selrow="${modId}" value="${r.id}" aria-label="선택"${S.has(r.id)?' checked':''}>${r.isNew?`<button class="newb" data-newok="${r.id}" data-m="${em}" title="${r.needCls?'처음 보는 거래처라 분류를 추정했습니다 · 확인 후 누르세요':'새로 들어온 자료 · 누르면 확인 처리'}">${r.needCls?'분류 확인':'NEW'}</button>`:''}</td>${cols.map(c=>`<td data-ck="${c.k}" class="${al(c)}${c.calc?' calc':''}${c.wide?' w':''}"${m.tight&&(c.wide||c.sug)?` title="${esc(r[c.k])}"`:''}>${cellView(c,r,p,m)}</td>`).join('')}
       <td><div class="acts"><button class="act" data-editrow="${r.id}" data-m="${em}">수정</button><button class="act danger" data-delrow="${r.id}" data-m="${em}">삭제</button></div></td></tr>`).join('')}
     </tbody>${m.footSplit?splitFoot(m,p,rows,cols):hasSum?footRow(m,cols,`합계 · ${rows.length}건`,'',c=>c.sum?footVal(c,rows,p,m):''):''}</table></div>`;
@@ -4957,6 +4957,17 @@ function ibXml(txt,path){if(!/Comprobante/.test(txt))return null;const x=cfdiFro
   if(x.lines.length&&Math.abs(x.lines.reduce((s,l)=>s+l.qty*l.price,0)-sub)<0.05&&x.lines.length>1)r.lines=x.lines.map(l=>{const k=esKo(l.item);return {item:k,itemEs:k!==l.item?l.item:undefined,qty:l.qty,price:sg*l.price}});
   else if(x.lines.length===1){r.qty=x.lines[0].qty;r.price=r2(sg*x.lines[0].price)}
   return {rows:{[isAR?'ar':'ap']:[r]},xml:1}}
+/* ---------- 스페인어 품목 자동 번역: Chrome 내장 번역(Translator API, PC 안에서 처리 · 무료). 사전(esKo)으로 못 바꾼 품목만 ---------- */
+let KOTR=null;
+async function koTr(gesture){if(KOTR)return KOTR;if(!('Translator' in self))return null;try{const o={sourceLanguage:'es',targetLanguage:'ko'},av=await Translator.availability(o);if(av==='unavailable'||(av!=='available'&&!gesture))return null;KOTR=await Translator.create(o);return KOTR}catch(e){return null}}
+const latinN=t=>(String(t||'').match(/[A-Za-zÁÉÍÓÚÑáéíóúñ]{4,}/g)||[]).length;
+const needKo=x=>!!x&&!!x.item&&latinN(x.item)>=2&&(!/[가-힣]/.test(x.item)||latinN(x.item)>=3);
+const koRows=()=>['ap','ar','cash'].flatMap(k=>(DB[k]||[]).filter(r=>r.src==='CFDI XML'&&(needKo(r)||(r.lines||[]).some(needKo))));
+async function koFix(gesture){const L=koRows();if(!L.length)return 0;const T=await koTr(gesture);if(!T){if(gesture)toast('이 브라우저는 내장 번역을 지원하지 않습니다. Chrome을 최신 버전으로 업데이트해 주세요');return -1}
+  const tr=async x=>{const src=x.itemEs&&latinN(x.itemEs)>=latinN(x.item)?x.itemEs:x.item;try{const t=String(await T.translate(src)).trim();if(t&&/[가-힣]/.test(t)){if(!x.itemEs)x.itemEs=src;x.item=t.slice(0,120);return 1}}catch(_){}return 0};
+  let n=0;for(const r of L){if(r.lines&&r.lines.length){for(const l of r.lines)if(needKo(l))n+=await tr(l);if(needKo(r)&&!(await tr(r)))r.item=r.lines[0].item+(r.lines.length>1?` 외 ${r.lines.length-1}건`:'')}else n+=await tr(r)}
+  if(n){save();renderMain();if(gesture)toast(`품목 ${n}건을 한국어로 번역했습니다`)}return n}
+setTimeout(()=>koFix(false),3000);
 function ibAdd(mod,x){const m=MODS[mod];if(!m||!Array.isArray(DB[m.data]))return 0;const u=String(x.uuid||'').trim().toLowerCase();
   // Claude가 분류를 고쳐 보내는 경우 (upd:1): 같은 CFDI UUID 건의 분류·계정·품목만 바꿈
   if(x.upd&&u){const r=DB[m.data].find(r=>String(r.uuid||'').trim().toLowerCase()===u);if(!r)return 0;['cat','dept','account','item','itemEs','terms','due'].forEach(k=>{if(x[k]!=null&&x[k]!=='')r[k]=x[k]});delete r.needCls;r.isNew=1;fixRow(m,r);return 1}
@@ -4983,7 +4994,7 @@ async function ibScan(quiet){if(!IB.h||!IB.ok||IB.busy)return 0;IB.busy=true;let
       (DB.inboxLog=DB.inboxLog||[]).unshift({file:path+nm,at:new Date().toISOString(),n:k});DB.inboxLog=DB.inboxLog.slice(0,50);
       try{done=done||await dir.getDirectoryHandle('반영완료',{create:true});const t=await (await done.getFileHandle(nm,{create:true})).createWritable();await t.write(txt);await t.close();await dir.removeEntry(nm)}catch(_){}}};
   try{await walk(IB.h,'',0);
-    IB.last=new Date();if(files){save();renderMain()}
+    IB.last=new Date();if(files){save();renderMain();if(n)koFix(false)}
     if(IB.dups&&IB.dups.length&&!modal){modal={type:'dup',src:'ib',list:IB.dups};IB.dups=[];renderModal()}
     if(n)toast(`자료함 자료 ${n}건을 반영했습니다 (${Object.entries(by).map(([k,v])=>`${(MODS[k]||{}).name||k} ${v}건`).join(', ')})`,{label:'보기',fn:()=>go(Object.keys(by)[0])});
     else if(files&&!quiet)toast('자료함 파일을 읽었지만 새 자료가 없습니다 (이미 등록된 CFDI UUID)');else if(!quiet)toast('자료함에 새 파일이 없습니다')}
@@ -4993,7 +5004,7 @@ async function ibScan(quiet){if(!IB.h||!IB.ok||IB.busy)return 0;IB.busy=true;let
   if(IB.ok)await ibScan(true);try{renderNav()}catch(e){}})();
 setInterval(()=>{if(IB.ok&&document.visibilityState==='visible')ibScan(true)},60000);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261119-173053';let VER_NEW=false;
+const APP_VER='20261119-182908';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
 function verTry(){if(!VER_NEW)return;const a=document.activeElement,busy=modal||(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)&&a.closest('form'));if(busy){setTimeout(verTry,5000);return}
   try{save()}catch(_){}toast('새 버전이 올라와서 화면을 새로고침합니다');setTimeout(()=>location.reload(),1500)}
@@ -5214,6 +5225,7 @@ document.addEventListener('click',e=>{
   if(d.dupforce&&modal&&modal.type==='dup'){const L=modal.list,src=modal.src,F=modal.form;closeModal();
     if(src==='ib'){L.forEach(x=>DB[MODS[x.mod].data].unshift(x.row));save();renderMain();toast(`중복 Factura ${L.length}건을 그래도 넣었습니다`)}
     else{L.forEach(x=>{DB[MODS[x.mod].data].unshift(x.row);flashId=x.row.id});UI.q='';save();renderMain();toast('중복 Factura지만 등록했습니다')}return}
+  if(d.kofix){koFix(true);return}
   if(d.newok){const m=MODS[d.m],r=m&&DB[m.data].find(x=>x.id===d.newok);if(r){delete r.isNew;delete r.needCls;save();renderMain()}return}
   if(d.newall){const m=MODS[d.newall];if(m){DB[m.data].forEach(r=>{delete r.isNew;delete r.needCls});save();renderMain();toast('신규 표시를 모두 지웠습니다')}return}
   if(d.saveas){const f=t.closest('form');if(f){f.dataset.saveas='1';f.requestSubmit()}return}
