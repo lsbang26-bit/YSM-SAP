@@ -3471,9 +3471,9 @@ async function fxFetch0(quiet){const S=DB.settings||(DB.settings={}),tk=String(S
     if(!res.ok)throw new Error(res.status===401||res.status===403?'토큰이 맞지 않습니다':'응답 오류 '+res.status);
     const j=await res.json(),L=(((j.bmx||{}).series||[])[0]||{}).datos||[];if(S.bmxSer!==ser){Object.keys(M).forEach(k=>delete M[k]);S.bmxSer=ser}
     let n=0;L.forEach(x=>{const m=String(x.fecha||'').match(/^(\d{2})\/(\d{2})\/(\d{4})$/),v=parseFloat(String(x.dato||'').replace(/,/g,''));if(m&&v>0){const d=`${m[3]}-${m[2]}-${m[1]}`;if(M[d]!==v)n++;M[d]=v}});
-    FXDK=null;const r=fxApply();S.bmxAt=new Date().toISOString();S.bmxErr='';save();renderMain();
+    FXDK=null;const r=fxApply();S.bmxAt=new Date().toISOString();S.bmxErr='';save();quiet?bgRender():renderMain();
     if(!quiet||n)toast(`Banxico 환율 ${n}일치를 받았습니다${r.rows?` · US$ 전표 ${r.rows}건에 환율 입력`:''}${r.last?` · 오늘 환율 ${r.last}`:''}`);return n}
-  catch(e){S.bmxErr=String(e.message||e);save();if(!quiet)toast('Banxico 환율을 가져오지 못했습니다: '+S.bmxErr);renderMain();return 0}}
+  catch(e){S.bmxErr=String(e.message||e);save();if(!quiet)toast('Banxico 환율을 가져오지 못했습니다: '+S.bmxErr);quiet?bgRender():renderMain();return 0}}
 // 받은 환율을 반영: 오늘 환율 설정, 월말 환율(외화환산 기준), 환율이 비어 있는 US$ 전표
 function fxApply(){const M=DB.fxDaily||{},ks=Object.keys(M).sort();if(!ks.length)return {rows:0};const last=M[ks[ks.length-1]];DB.settings.fx=last;
   DB.fxHist=DB.fxHist||[];let d=monthOf(ks[0]).end;while(d<TODAY){const v=fxDay(d);if(v){const h=DB.fxHist.find(x=>x.date===d);if(h){h.rate=v;h.src='banxico'}else DB.fxHist.push({date:d,rate:v,src:'banxico'})}d=monthOf(addDs(d,1)).end}
@@ -4978,9 +4978,14 @@ async function koFix_(L,gesture){const T=await koTr(gesture);
       try{t=/[가-힣]/.test(h)?h:String(await T.translate(h.charAt(0).toUpperCase()+h.slice(1).toLowerCase())).trim().replace(/[.。]$/,'')}catch(_){}
       if(!/[가-힣]/.test(t)){const k=esKo(h);t=/[가-힣]/.test(k)?k:''}
       if(t){if(!r.itemEs)r.itemEs=src;r.item=t.slice(0,40);r.koShort=1;n++}}}
-  if(n){save();renderMain();toast(`스페인어 품목 ${n}건을 한국어로 번역했습니다`)}return n}
+  if(n){save();bgRender()}return n}
 setTimeout(()=>koFix(false),3000);setInterval(()=>{if(document.visibilityState==='visible')koFix(false)},60000);
 document.addEventListener('pointerdown',()=>{if(!(KOTR&&KOTR!==KOWEB))koFix(true)},true);
+/* ---------- 백그라운드 갱신(자료함·번역·환율)은 입력 중에는 화면을 다시 그리지 않음: 입력 칸에 커서가 있거나, 신규 등록 칸에 입력한 내용이 있거나, 팝업이 열려 있으면 미룸 ---------- */
+function userBusy(){if(modal)return true;const a=document.activeElement;if(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)&&a.closest&&a.closest('form'))return true;return [...document.querySelectorAll('form')].some(f=>f.dataset.dirty==='1'&&document.body.contains(f))}
+let BG_PEND=false;function bgRender(){if(userBusy()){BG_PEND=true;return}BG_PEND=false;renderMain()}
+setInterval(()=>{if(BG_PEND&&!userBusy())bgRender()},3000);
+['input','change'].forEach(ev=>document.addEventListener(ev,e=>{const f=e.target&&e.target.form;if(f&&(f.dataset.reg||f.dataset.edit))f.dataset.dirty='1'},true));
 function ibAdd(mod,x){const m=MODS[mod];if(!m||!Array.isArray(DB[m.data]))return 0;const u=String(x.uuid||'').trim().toLowerCase();
   // Claude가 분류를 고쳐 보내는 경우 (upd:1): 같은 CFDI UUID 건의 분류·계정·품목만 바꿈
   if(x.upd&&u){const r=DB[m.data].find(r=>String(r.uuid||'').trim().toLowerCase()===u);if(!r)return 0;['cat','dept','account','item','itemEs','terms','due'].forEach(k=>{if(x[k]!=null&&x[k]!=='')r[k]=x[k]});delete r.needCls;r.isNew=1;fixRow(m,r);return 1}
@@ -5007,7 +5012,7 @@ async function ibScan(quiet){if(!IB.h||!IB.ok||IB.busy)return 0;IB.busy=true;let
       (DB.inboxLog=DB.inboxLog||[]).unshift({file:path+nm,at:new Date().toISOString(),n:k});DB.inboxLog=DB.inboxLog.slice(0,50);
       try{done=done||await dir.getDirectoryHandle('반영완료',{create:true});const t=await (await done.getFileHandle(nm,{create:true})).createWritable();await t.write(txt);await t.close();await dir.removeEntry(nm)}catch(_){}}};
   try{await walk(IB.h,'',0);
-    IB.last=new Date();if(files){save();renderMain();if(n)koFix(false)}
+    IB.last=new Date();if(files){save();quiet?bgRender():renderMain();if(n)koFix(false)}
     if(IB.dups&&IB.dups.length&&!modal){modal={type:'dup',src:'ib',list:IB.dups};IB.dups=[];renderModal()}
     if(n)toast(`자료함 자료 ${n}건을 반영했습니다 (${Object.entries(by).map(([k,v])=>`${(MODS[k]||{}).name||k} ${v}건`).join(', ')})`,{label:'보기',fn:()=>go(Object.keys(by)[0])});
     else if(files&&!quiet)toast('자료함 파일을 읽었지만 새 자료가 없습니다 (이미 등록된 CFDI UUID)');else if(!quiet)toast('자료함에 새 파일이 없습니다')}
@@ -5019,9 +5024,9 @@ setInterval(()=>{if(IB.ok&&document.visibilityState==='visible')ibScan(true)},60
 // 새로고침 뒤에는 Chrome이 폴더 권한을 다시 물을 수 있음: 화면을 처음 누를 때 자동으로 다시 연결 (권한 창에서 "방문할 때마다 허용"을 고르면 다음부터는 묻지 않음)
 let IB_TRY=false;document.addEventListener('pointerdown',()=>{if(IB.h&&!IB.ok&&!IB_TRY){IB_TRY=true;ibReconnect()}},true);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261119-184859';let VER_NEW=false;
+const APP_VER='20261119-190000';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
-function verTry(){if(!VER_NEW)return;const a=document.activeElement,busy=modal||(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)&&a.closest('form'));if(busy){setTimeout(verTry,5000);return}
+function verTry(){if(!VER_NEW)return;const busy=userBusy();if(busy){setTimeout(verTry,5000);return}
   try{save()}catch(_){}toast('새 버전이 올라와서 화면을 새로고침합니다');setTimeout(()=>location.reload(),1500)}
 setTimeout(verCheck,5000);setInterval(()=>{if(document.visibilityState==='visible')verCheck()},120000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')verCheck()});
