@@ -4223,7 +4223,7 @@ function renderModal(){
     host.innerHTML=`<div class="modal-bg"><div class="modal${m.big?' lg':''}" role="dialog" aria-modal="true" aria-labelledby="mt"><form data-edit="${modal.mod}" data-iva-orig="${esc(String(r.ivaAmt??''))}">
       <header><h3 id="mt">${esc(m.editTitle||m.name)} 수정</h3><button type="button" class="x" data-close="1" aria-label="닫기">×</button></header>
       <div class="mbody"><div class="form">${formFields(m,r,'ed')}</div></div>
-      <footer><button type="button" class="btn" data-close="1">취소</button>${['vendors','customers','employees','entities'].includes(m.data)?'':`<button type="submit" class="btn" name="saveas" value="1" title="원래 건은 그대로 두고 수정한 내용을 새 건으로 추가">다른 이름으로 저장 (새로 추가)</button>`}<button type="submit" class="btn primary">저장</button></footer></form></div></div>`;
+      <footer><button type="button" class="btn" data-close="1">취소</button>${['vendors','customers','employees','entities'].includes(m.data)?'':`<button type="button" class="btn" data-saveas="1" title="원래 건은 그대로 두고 수정한 내용을 새 건으로 추가">다른 이름으로 저장 (새로 추가)</button>`}<button type="submit" class="btn primary">저장</button></footer></form></div></div>`;
     const f=host.querySelector('.mbody input,.mbody select');if(f)f.focus();
   }else{
     const p=curPeriod(), show=m.cols.filter(c=>!c.calc&&c.k!=='cur').slice(0,5);
@@ -5185,6 +5185,7 @@ document.addEventListener('click',e=>{
     else{L.forEach(x=>{DB[MODS[x.mod].data].unshift(x.row);flashId=x.row.id});UI.q='';save();renderMain();toast('중복 Factura지만 등록했습니다')}return}
   if(d.newok){const m=MODS[d.m],r=m&&DB[m.data].find(x=>x.id===d.newok);if(r){delete r.isNew;save();renderMain()}return}
   if(d.newall){const m=MODS[d.newall];if(m){DB[m.data].forEach(r=>delete r.isNew);save();renderMain();toast('신규 표시를 모두 지웠습니다')}return}
+  if(d.saveas){const f=t.closest('form');if(f){f.dataset.saveas='1';f.requestSubmit()}return}
   if(d.ib){({conn:ibConnect,re:ibReconnect,scan:()=>ibScan(false)}[d.ib]||(()=>{}))();return}
   if(d.reset==='yes'){resetAsk=false;DB=migrate(seed());seedTaxPays();save();render();toast('샘플 데이터로 초기화했습니다');return}
   if(t.id==='burger'){$('#side').classList.add('open');$('#scrim').classList.add('open');return}
@@ -5373,7 +5374,8 @@ document.addEventListener('submit',e=>{
   if(f.dataset.edit){
     const m=MODS[f.dataset.edit], r=DB[m.data].find(x=>x.id===modal.id);if(!r)return;
     const v=readForm(f,m);
-    if(e.submitter&&e.submitter.name==='saveas'){
+    const sa=f.dataset.saveas==='1';delete f.dataset.saveas;
+    if(sa||(e.submitter&&e.submitter.name==='saveas')){
       // 다른 이름으로 저장: 원래 건은 그대로 두고 수정한 내용으로 새 건을 추가 (지급·수금 내역과 연결은 복사하지 않음)
       const base=JSON.parse(JSON.stringify(r));['id','link','linkMod','detail','paid','received','arId'].forEach(k=>delete base[k]);
       if('paid' in r)base.paid=0;if('received' in r)base.received=0;
