@@ -1267,7 +1267,8 @@ const advOn=r=>(r.advUse||[]).reduce((a,x)=>a+(+x.amt||0),0);
 const advUsedOf=a=>DB.ap.reduce((s,r)=>s+(r.advUse||[]).filter(x=>x.id===a.id).reduce((t,x)=>t+(+x.amt||0),0),0);
 const advLeft=a=>Math.round(((+a.amount||0)-advUsedOf(a))*100)/100;
 const rowFx=r=>+r.amount?mx(r,'amount')/(+r.amount):rate(r.cur);
-const apBal=r=>mx(r,'amount')-mx(r,'paid')-advOn(r)*rowFx(r);
+// 선지급 건의 잔액 = Factura에 적용한 금액 − 선지급액 (아직 물건·Factura를 못 받은 만큼 − 로 표시, 다 적용되면 0)
+const apBal=r=>isAdv(r)?(advUsedOf(r)-(+r.paid||0))*rowFx(r):mx(r,'amount')-mx(r,'paid')-advOn(r)*rowFx(r);
 // Credit Note: 음수 외상매출 건에 적용 Factura(cnFor = 같은 고객사·통화의 Factura 번호)를 고르면 그 Factura 잔액에서 빠지고, Credit Note 자체 잔액은 0
 var CNIX=null,CNDB=null;const cnU=u=>String(u||'').trim().toUpperCase();const cnNm=c=>String(c||'').trim().replace(/\s+/g,' ').toLowerCase();
 function cnIndex(){if(CNIX&&CNDB===DB)return CNIX;CNDB=DB;const T=new Map(),C=new Map(),key=(c,cur,f)=>cnNm(c)+'|'+(cur||'MXN')+'|'+String(f||'').trim().toLowerCase();
@@ -1505,14 +1506,14 @@ function balance(end){
   const ar=sumBy(DB.ar.filter(r=>r.date<=end),arBal);
   const iv=invVal(end), inv=iv.rm+iv.fg;
   const fixed=sumBy(DB.assets.filter(r=>r.acq<=end),r=>mx(r,'cost')-assetAccum(r,end));
-  const ap=sumBy(DB.ap.filter(r=>r.date<=end),apBal);
+  const ap0=sumBy(DB.ap.filter(r=>r.date<=end&&!isAdv(r)),apBal);
   const loans=sumBy(DB.loans.filter(r=>r.date<=end),loanBal);
   const stLoan=sumBy(DB.cash.filter(r=>r.cat==='유동부채'&&r.account==='단기차입금'&&validD(r.date)&&r.date<=end),r=>(r.type==='입금'?1:-1)*mx(r,'amount'));
   const accr=sumBy(DB.employees,e=>{const y=payableYTD(e,end);return y.ag+y.vp+y.sf});
   const v=vatCalc({start:'0000-01-01',end}), vatRec=vatAP(end), vatLiab=v.net-v.paid+vatAR(end);
   const y0=end.slice(0,4)+'-01-01', citLiab=citCalc({start:y0,end}).isr-sumBy(DB.cash.filter(r=>r.account==='법인세 납부'&&r.date>=y0&&r.date<=end),M('amount'));
-  const prepaid=sumBy(DB.ap.filter(a=>isAdv(a)&&a.date<=end),a=>{const used=DB.ap.filter(r=>r.date<=end).reduce((s,r)=>s+(r.advUse||[]).filter(x=>x.id===a.id).reduce((t,x)=>t+(+x.amt||0),0),0);return Math.max(0,(+a.amount||0)-used)*rowFx(a)});
-  const assets=cashBal+ar+inv+fixed+vatRec+prepaid, liab=ap+loans+stLoan+accr+vatLiab+citLiab;
+  let prepaid=0,apAdv=0;DB.ap.filter(a=>isAdv(a)&&a.date<=end).forEach(a=>{const used=DB.ap.filter(r=>r.date<=end).reduce((s,r)=>s+(r.advUse||[]).filter(x=>x.id===a.id).reduce((t,x)=>t+(+x.amt||0),0),0),v=(used-(+a.paid||0))*rowFx(a);if(v<0)prepaid-=v;else apAdv+=v});
+  const ap=ap0+apAdv,assets=cashBal+ar+inv+fixed+vatRec+prepaid, liab=ap+loans+stLoan+accr+vatLiab+citLiab;
   return {cashBal,ar,inv,fixed,vatRec,prepaid,assets,ap,loans,stLoan,accr,vatLiab,citLiab,liab,equity:assets-liab};
 }
 
@@ -1640,7 +1641,7 @@ const MODS={
     filters:[['vendor','공급사'],['folio','Factura','text'],['cat','분류'],['dept','부서'],['account','계정과목'],['item','품목','text'],['cur','통화'],['amount','합계','range'],['st','상태']],fsum:1,
     cols:[C('date','거래일','date',{opt:1}),C('vendor','공급사','text',{sug:'suppliers'}),C('folio','Factura #','text',{opt:1,view:r=>(String(r.folio||'').trim()?esc(r.folio):'<span class="muted">–</span>')+(isAdv(r)?` <span class="cnto" title="선지급한 금액 중 아직 Factura에 적용하지 않은 금액">선급금 잔액 ${fmtCur(advLeft(r),r.cur||'MXN',1)}</span>`:'')+(advOn(r)>0.004?` <span class="cnto" title="선급금에서 적용한 금액">선급금 −${nf2.format(advOn(r))}</span>`:'')}),C('cat','분류','sel',{opts:CATS4,pill:1}),C('dept','부서','sel',{opts:['',...DEPTS],opt:1}),ACCT,C('item','품목','text',{wide:1}),C('qty','수량','num',{opt:1,keepBlank:1,view:r=>+r.qty?nfq.format(+r.qty):''}),C('price','단가','money2',{opt:1,keepBlank:1,view:r=>+r.price?fmtCur(+r.price,r.cur,1):''}),UUIDC,CUR,
       C('fx','환율 (US$ 건)','num',{noTable:1,opt:1,regHide:1}),SUB({sum:1}),C('disc','할인','money',{sum:1,opt:1}),C('ivaRet','부가세 Ret','money',{sum:1,opt:1}),C('isrRet','ISR Ret','money',{sum:1,opt:1}),Object.assign({},IVAF,{regHide:1,opt:1}),C('ivaAmt','부가세','money',{noTable:1,opt:1,keepBlank:1}),VATR({sum:1,l:'부가세'}),TOT({sum:1,form:1,keepBlank:1}),Object.assign({},FACTC,{noTable:1,regHide:1,opt:1}),C('paid','지급액','money',{sum:1,regHide:1,opt:1}),C('terms','크레딧 텀(일)','num',{opt:1,keepBlank:1}),C('due','지급기일','date',{opt:1}),
-      C('bal','잔액','money',{sum:1,calc:apBal}),C('st','상태','calc',{calc:r=>dueStatus(apBal(r),r.due),pill:1,act:{mod:'ap',label:'지급 완료',show:r=>apBal(r)>0.5}})],
+      C('bal','잔액','money',{sum:1,calc:apBal}),C('st','상태','calc',{calc:r=>isAdv(r)&&apBal(r)<-0.005?'선급':dueStatus(apBal(r),r.due),pill:1,act:{mod:'ap',label:'지급 완료',show:r=>apBal(r)>0.5}})],
     kpis:(rows,p)=>{const all=DB.ap.filter(r=>r.date<=p.end),od=all.filter(r=>dueStatus(apBal(r),r.due)==='연체');return[kv('기간 매입액',money(sumBy(rows,M('amount'))),rows.length+'건'),kv('기간분 미지급',money(sumBy(rows,apBal))),
       kv('전체 미지급 잔액',money(sumBy(all,apBal)),p.end+' 기준','warn'),kv('연체',od.length+'건',plain(sumBy(od,apBal)),od.length?'bad':'')]},
     trend:{l:'기간별 매입액',fn:rows=>sumBy(rows,M('amount')),money:1},
@@ -4332,7 +4333,7 @@ function coverHTML(){
   const byCur=(rows,f)=>{const o={MXN:0,USD:0};rows.forEach(r=>{const c=r.cur==='USD'?'USD':'MXN';o[c]+=f(r)||0});return o};
   const cashC=(()=>{const o={MXN:0,USD:0},n=bankNames(),e=addDs(TODAY,1);BANKS().forEach(b=>{const c=b.cur==='USD'?'USD':'MXN';o[c]+=bankBefore(b,e)/rate(c)});DB.cash.filter(r=>r.date<e&&!n.includes(bankOf(r))).forEach(r=>{const c=r.cur==='USD'?'USD':'MXN';o[c]+=(r.type==='출금'?-1:1)*(+r.amount||0)});return o})();
   const m0=ds(new Date(d.getFullYear(),d.getMonth(),1));
-  const info=[['현금 잔액',cashC,'bank'],['미수 잔액',byCur(DB.ar,r=>(+r.amount||0)-(+r.received||0)),'ar'],['미지급 잔액',byCur(DB.ap,r=>(+r.amount||0)-(+r.paid||0)-advOn(r)),'ap'],['이번 달 매출',byCur(DB.outbound.filter(r=>r.date>=m0&&r.date<=TODAY),r=>(+r.qty||0)*(+r.price||0)),'outbound']];
+  const info=[['현금 잔액',cashC,'bank'],['미수 잔액',byCur(DB.ar,r=>(+r.amount||0)-(+r.received||0)),'ar'],['미지급 잔액',byCur(DB.ap,r=>isAdv(r)?advUsedOf(r)-(+r.paid||0):(+r.amount||0)-(+r.paid||0)-advOn(r)),'ap'],['이번 달 매출',byCur(DB.outbound.filter(r=>r.date>=m0&&r.date<=TODAY),r=>(+r.qty||0)*(+r.price||0)),'outbound']];
   const mmAmt=o=>{return `<b class="krw">₩${nf0.format(Math.round(o.MXN*KRWM()+o.USD*KRWU()))}</b><em><i>MXN</i>${nf2.format(o.MXN)}</em><em><i>US$</i>${nf2.format(o.USD)}</em>`};
   return `<style>${hl}</style>
   <div class="mm-hud">
@@ -5054,7 +5055,7 @@ setInterval(()=>{if(IB.ok&&document.visibilityState==='visible')ibScan(true)},60
 // 새로고침 뒤에는 Chrome이 폴더 권한을 다시 물을 수 있음: 화면을 처음 누를 때 자동으로 다시 연결 (권한 창에서 "방문할 때마다 허용"을 고르면 다음부터는 묻지 않음)
 let IB_TRY=false;document.addEventListener('pointerdown',()=>{if(IB.h&&!IB.ok&&!IB_TRY){IB_TRY=true;ibReconnect()}},true);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261119-221349';let VER_NEW=false;
+const APP_VER='20261119-222221';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
 function verTry(){if(!VER_NEW)return;const busy=userBusy();if(busy){setTimeout(verTry,5000);return}
   try{save()}catch(_){}toast('새 버전이 올라와서 화면을 새로고침합니다');setTimeout(()=>location.reload(),1500)}
