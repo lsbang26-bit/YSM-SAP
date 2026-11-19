@@ -4968,6 +4968,13 @@ async function ibScan(quiet){if(!IB.h||!IB.ok||IB.busy)return 0;IB.busy=true;let
 (async()=>{const h=await bkIDB('readonly',st=>st.get('ib'));if(!h)return;IB.h=h;IB.name=h.name;try{IB.ok=(await h.queryPermission({mode:'readwrite'}))==='granted'}catch(e){IB.ok=false}
   if(IB.ok)await ibScan(true);try{renderNav()}catch(e){}})();
 setInterval(()=>{if(IB.ok&&document.visibilityState==='visible')ibScan(true)},60000);
+/* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
+const APP_VER='20261119-153637';let VER_NEW=false;
+async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
+function verTry(){if(!VER_NEW)return;const a=document.activeElement,busy=modal||(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)&&a.closest('form'));if(busy){setTimeout(verTry,5000);return}
+  try{save()}catch(_){}toast('새 버전이 올라와서 화면을 새로고침합니다');setTimeout(()=>location.reload(),1500)}
+setTimeout(verCheck,5000);setInterval(()=>{if(document.visibilityState==='visible')verCheck()},120000);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')verCheck()});
 window.addEventListener('focus',()=>{if(IB.ok)ibScan(true)});
 function bkFoot(){
   const st=BK.h?(BK.ok?`<span class="bkst ok">💾 ${esc(BK.name)} 자동 저장${BK.at?' · '+bkTime(BK.at):''}</span>`:`<button class="bkbtn warn" data-bk="re">💾 백업 파일 다시 연결 (${esc(BK.name)})</button>`)
