@@ -4947,14 +4947,14 @@ function ibXml(txt,path){txt=String(txt).replace(/^\uFEFF/,'');if(!/Comprobante/
   const sub=numM(a(c,'SubTotal')),disc=numM(a(c,'Descuento')),total=numM(a(c,'Total')),iva=r2(x.iva),rate=iva<=0.004?'0%':iva/Math.max(0.01,sub-disc)<0.11?'8%':'16%';
   const party=isAR?a(rc,'Nombre'):x.vendor,prf=isAR?rRfc:x.rfc,pk=isAR?'customer':'vendor',L=DB[isAR?'ar':'ap']||[];
   const prev=L.filter(r=>!r.needCls&&((prf&&String(r.rfc||'').toUpperCase()===prf)||normName(r[pk]||'')===normName(party))).sort((p,q)=>p.date<q.date?1:-1)[0];
-  const es=x.lines.map(l=>l.item).filter(Boolean).join(', '),ko=esKo(x.item||es);
+  const es=x.lines.map(l=>l.item).filter(Boolean).join(', '),ko=esKo(headEs(es||x.item));
   const r={date:x.date,[pk]:prev?prev[pk]:party,rfc:prf,folio:x.folio,cur:x.cur,fx:x.cur==='USD'?(x.fx||''):'',sub:r2(sg*sub),disc:r2(sg*disc),ivaAmt:r2(sg*iva),iva:rate,
     ivaRet:r2(sg*ret('002')),isrRet:isAR?0:r2(sg*ret('001')),factura:'발행',uuid:x.uuid,itemEs:es.slice(0,300),src:'CFDI XML',ibFile:path};
-  if(isAR){r.item=prev&&prev.item||ko;r.terms=prev&&prev.terms!=null&&prev.terms!==''?+prev.terms:30;r.received=0}
+  if(isAR){r.item=prev&&prev.item||ko;if(prev&&prev.item)r.koShort=1;r.terms=prev&&prev.terms!=null&&prev.terms!==''?+prev.terms:30;r.received=0}
   else{r.paid=0;r.terms=prev&&+prev.terms>=0&&prev.terms!==''?+prev.terms:30;r.due=addDs(x.date,r.terms);
-    if(prev){r.cat=prev.cat;r.dept=prev.dept;r.account=prev.account;r.item=prev.item&&x.lines.length&&normName(prev.itemEs||'')===normName(es)?prev.item:ko}
+    if(prev){r.cat=prev.cat;r.dept=prev.dept;r.account=prev.account;r.item=prev.item&&x.lines.length&&normName(prev.itemEs||'')===normName(es)?prev.item:ko;if(r.item===prev.item)r.koShort=1}
     else{const cat='제조비용',k=kgaapAcc(x.hint||((x.item||'')+' '+party),cat);Object.assign(r,{cat,dept:'생산',account:k||'소모품비',item:ko,needCls:1})}}
-  if(x.lines.length&&Math.abs(x.lines.reduce((s,l)=>s+l.qty*l.price,0)-sub)<0.05&&x.lines.length>1)r.lines=x.lines.map(l=>{const k=esKo(l.item);return {item:k,itemEs:k!==l.item?l.item:undefined,qty:l.qty,price:sg*l.price}});
+  if(x.lines.length&&Math.abs(x.lines.reduce((s,l)=>s+l.qty*l.price,0)-sub)<0.05&&x.lines.length>1)r.lines=x.lines.map(l=>({item:l.item,itemEs:l.item,qty:l.qty,price:sg*l.price}));
   else if(x.lines.length===1){r.qty=x.lines[0].qty;r.price=r2(sg*x.lines[0].price)}
   return {rows:{[isAR?'ar':'ap']:[r]},xml:1}}
 /* ---------- 스페인어 품목 자동 번역: Chrome 내장 번역(Translator API, PC 안에서 처리 · 무료). 사전(esKo)으로 못 바꾼 품목만 ---------- */
@@ -4963,13 +4963,21 @@ let KOTR=null;
 const KOWEB={translate:async t=>{const r=await fetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl=es&tl=ko&dt=t&q='+encodeURIComponent(t));if(!r.ok)throw new Error(r.status);const j=await r.json();return (j[0]||[]).map(x=>x[0]).join('')}};
 async function koTr(gesture){if(KOTR)return KOTR;try{if('Translator' in self){const o={sourceLanguage:'es',targetLanguage:'ko'},av=await Translator.availability(o);if(av==='available'||(av!=='unavailable'&&gesture)){KOTR=await Translator.create(o);return KOTR}}}catch(e){}return KOWEB}
 const latinN=t=>(String(t||'').match(/[A-Za-zÁÉÍÓÚÑáéíóúñ]{4,}/g)||[]).length;
-const needKo=x=>!!x&&!!x.item&&latinN(x.item)>=2&&(!/[가-힣]/.test(x.item)||latinN(x.item)>=3);
-const koRows=()=>['ap','ar','cash'].flatMap(k=>(DB[k]||[]).filter(r=>r.src==='CFDI XML'&&(needKo(r)||(r.lines||[]).some(needKo))));
+const needKo=x=>!!x&&!!x.item&&(!/[가-힣]/.test(x.item)?latinN(x.item)>=1:latinN(x.item)>=3);
+// 대표 품목: 첫 품목 설명의 첫 명사 하나 (예: "Tinta indeleble de secado rapido…" → Tinta → 잉크). 서비스·임차 같은 말은 "~ de 무엇"까지
+const KO_GEN=/^(SERV|SERVICIO|SERVICIOS|RENTA|ARRENDAMIENTO|MANTENIMIENTO|REPARACION|FLETE|CUOTA|PAGO|MENSUALIDAD|CONSUMO|HONORARIOS|SUMINISTRO|COMPRA|ENVIO|TRANSPORTE|INSTALACION)$/;
+function headEs(src){const t=String(src||'').split(/[,;(]/)[0].replace(/\[[^\]]*\]/g,' '),w=t.split(/\s+/).filter(x=>/[A-Za-zÁÉÍÓÚÑáéíóúñ]{2,}/.test(x)&&!/\d/.test(x));if(!w.length)return t.trim()||String(src||'');
+  if(KO_GEN.test(noAcc(w[0]).toUpperCase())&&w[2]&&/^(de|del|para)$/i.test(w[1]))return `${w[0]} ${w[1]} ${w[2]}`;return w[0]}
+const koRows=()=>['ap','ar','cash'].flatMap(k=>(DB[k]||[]).filter(r=>r.src==='CFDI XML'&&(!r.koShort||(r.lines||[]).some(needKo))));
 let KOBUSY=false;
 async function koFix(gesture){if(KOBUSY)return 0;const L=koRows();if(!L.length)return 0;KOBUSY=true;try{return await koFix_(L,gesture)}finally{KOBUSY=false}}
 async function koFix_(L,gesture){const T=await koTr(gesture);
   const tr=async x=>{const src=x.itemEs&&latinN(x.itemEs)>=latinN(x.item)?x.itemEs:x.item;try{const t=String(await T.translate(src)).trim();if(t&&/[가-힣]/.test(t)){if(!x.itemEs)x.itemEs=src;x.item=t.slice(0,120);return 1}}catch(_){}return 0};
-  let n=0;for(const r of L){if(r.lines&&r.lines.length){for(const l of r.lines)if(needKo(l))n+=await tr(l);if(needKo(r)&&!(await tr(r)))r.item=r.lines[0].item+(r.lines.length>1?` 외 ${r.lines.length-1}건`:'')}else n+=await tr(r)}
+  let n=0;for(const r of L){if(r.lines&&r.lines.length)for(const l of r.lines)if(needKo(l))n+=await tr(l);
+    if(!r.koShort){const src=r.itemEs||(r.lines&&r.lines[0]&&(r.lines[0].itemEs||r.lines[0].item))||r.item,h=headEs(src);let t='';
+      try{t=/[가-힣]/.test(h)?h:String(await T.translate(h.charAt(0).toUpperCase()+h.slice(1).toLowerCase())).trim().replace(/[.。]$/,'')}catch(_){}
+      if(!/[가-힣]/.test(t)){const k=esKo(h);t=/[가-힣]/.test(k)?k:''}
+      if(t){if(!r.itemEs)r.itemEs=src;r.item=t.slice(0,40);r.koShort=1;n++}}}
   if(n){save();renderMain();toast(`스페인어 품목 ${n}건을 한국어로 번역했습니다`)}return n}
 setTimeout(()=>koFix(false),3000);setInterval(()=>{if(document.visibilityState==='visible')koFix(false)},60000);
 document.addEventListener('pointerdown',()=>{if(!(KOTR&&KOTR!==KOWEB))koFix(true)},true);
@@ -5011,7 +5019,7 @@ setInterval(()=>{if(IB.ok&&document.visibilityState==='visible')ibScan(true)},60
 // 새로고침 뒤에는 Chrome이 폴더 권한을 다시 물을 수 있음: 화면을 처음 누를 때 자동으로 다시 연결 (권한 창에서 "방문할 때마다 허용"을 고르면 다음부터는 묻지 않음)
 let IB_TRY=false;document.addEventListener('pointerdown',()=>{if(IB.h&&!IB.ok&&!IB_TRY){IB_TRY=true;ibReconnect()}},true);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261119-184404';let VER_NEW=false;
+const APP_VER='20261119-184859';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
 function verTry(){if(!VER_NEW)return;const a=document.activeElement,busy=modal||(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)&&a.closest('form'));if(busy){setTimeout(verTry,5000);return}
   try{save()}catch(_){}toast('새 버전이 올라와서 화면을 새로고침합니다');setTimeout(()=>location.reload(),1500)}
@@ -5423,7 +5431,7 @@ document.addEventListener('submit',e=>{
   }
   if(f.dataset.edit){
     const m=MODS[f.dataset.edit], r=DB[m.data].find(x=>x.id===modal.id);if(!r)return;
-    const v=readForm(f,m);delete r.needCls;
+    const v=readForm(f,m);delete r.needCls;if(v.item!=null&&v.item!==r.item)r.koShort=1;
     const sa=f.dataset.saveas==='1';delete f.dataset.saveas;
     if(sa||(e.submitter&&e.submitter.name==='saveas')){
       // 다른 이름으로 저장: 원래 건은 그대로 두고 수정한 내용으로 새 건을 추가 (지급·수금 내역과 연결은 복사하지 않음)
