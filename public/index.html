@@ -4925,7 +4925,7 @@ function bkUpload(){const i=document.createElement('input');i.type='file';i.acce
 (async()=>{const h=await bkIDB('readonly',st=>st.get('h'));if(!h)return;BK.h=h;BK.name=h.name;
   try{BK.ok=(await h.queryPermission({mode:'readwrite'}))==='granted'}catch(e){BK.ok=false}
   if(BK.ok)await bkSync();try{renderNav()}catch(e){}})();
-/* ---------- Claude 자료함: PC 폴더(예: 바탕화면\work\YSM 자료함)에 Claude가 넣어 둔 *.ysm.json을 읽어 자료에 바로 반영 ----------
+/* ---------- Claude 자료함: PC 폴더(예: 바탕화면\work\YSM 자료함)와 그 하위 폴더에 Claude가 넣어 둔 *.ysm.json을 읽어 자료에 바로 반영 ----------
    파일 형식: {"app":"YSM SAP inbox","rows":{"ap":[{...}],"ar":[...],"cash":[...],"ped":[...]}} · 반영한 파일은 "반영완료" 하위 폴더로 옮김 · CFDI UUID가 이미 있으면 건너뜀 */
 const IB={h:null,ok:false,name:'',busy:false,last:null},IB_MODS=['ap','ar','cash','ped','inbound','outbound','hq','paid'];
 async function ibConnect(){if(!window.showDirectoryPicker){toast('이 브라우저는 폴더 연결을 지원하지 않습니다. Chrome이나 Edge에서 열어 주세요');return}
@@ -4937,10 +4937,14 @@ function ibAdd(mod,x){const m=MODS[mod];if(!m||!Array.isArray(DB[m.data]))return
   if(x.ibKey&&DB[m.data].some(r=>r.ibKey===x.ibKey))return 0;
   const r=Object.assign({},m.blank?m.blank(curPeriod()):{},x,{id:uid(),byClaude:1});delete r.inboxNote;const f=fixRow(m,r)||r;DB[m.data].unshift(f);return 1}
 async function ibScan(quiet){if(!IB.h||!IB.ok||IB.busy)return 0;IB.busy=true;let n=0,files=0;const by={};
-  try{let done=null;for await(const [nm,e] of IB.h.entries()){if(e.kind!=='file'||!/\.ysm\.json$/i.test(nm))continue;let j=null;try{j=JSON.parse(await (await e.getFile()).text())}catch(_){}
-      if(!j||!j.rows){continue}files++;let k=0;IB_MODS.forEach(mod=>(j.rows[mod]||[]).forEach(x=>{const a=ibAdd(mod,x);k+=a;if(a)by[mod]=(by[mod]||0)+a}));n+=k;
-      (DB.inboxLog=DB.inboxLog||[]).unshift({file:nm,at:new Date().toISOString(),n:k});DB.inboxLog=DB.inboxLog.slice(0,50);
-      try{done=done||await IB.h.getDirectoryHandle('반영완료',{create:true});const t=await (await done.getFileHandle(nm,{create:true})).createWritable();await t.write(await (await e.getFile()).text());await t.close();await IB.h.removeEntry(nm)}catch(_){}}
+  // 자료함 바로 아래와 하위 폴더(외상매입·외상매출·급여 …)까지 읽음. 각 폴더의 "반영완료"는 건너뜀
+  const walk=async(dir,path,depth)=>{let done=null;for await(const [nm,e] of dir.entries()){
+      if(e.kind==='directory'){if(nm!=='반영완료'&&depth<2)await walk(e,path+nm+'/',depth+1);continue}
+      if(!/\.ysm\.json$/i.test(nm))continue;let j=null,txt='';try{txt=await (await e.getFile()).text();j=JSON.parse(txt)}catch(_){}
+      if(!j||!j.rows)continue;files++;let k=0;IB_MODS.forEach(mod=>(j.rows[mod]||[]).forEach(x=>{const a=ibAdd(mod,x);k+=a;if(a)by[mod]=(by[mod]||0)+a}));n+=k;
+      (DB.inboxLog=DB.inboxLog||[]).unshift({file:path+nm,at:new Date().toISOString(),n:k});DB.inboxLog=DB.inboxLog.slice(0,50);
+      try{done=done||await dir.getDirectoryHandle('반영완료',{create:true});const t=await (await done.getFileHandle(nm,{create:true})).createWritable();await t.write(txt);await t.close();await dir.removeEntry(nm)}catch(_){}}};
+  try{await walk(IB.h,'',0);
     IB.last=new Date();if(files){save();renderMain()}
     if(n)toast(`Claude가 넣은 자료 ${n}건을 반영했습니다 (${Object.entries(by).map(([k,v])=>`${(MODS[k]||{}).name||k} ${v}건`).join(', ')})`,{label:'보기',fn:()=>go(Object.keys(by)[0])});
     else if(files&&!quiet)toast('자료함 파일을 읽었지만 새 자료가 없습니다 (이미 등록된 CFDI UUID)');else if(!quiet)toast('자료함에 새 파일이 없습니다')}
