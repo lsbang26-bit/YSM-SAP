@@ -1953,7 +1953,7 @@ function tableHTML(m,p,modId){
   const al=c=>isNum(c)?'n':m.tight&&(c.pill||c.t==='date')?'c':m.tight&&c.sug?'clip':'';
   const S=selOf(modId), nOn=rows.filter(r=>S.has(r.id)).length;
   const nNew=(DB[m.data]||[]).filter(r=>r.isNew).length,nCls=(DB[m.data]||[]).filter(r=>r.needCls).length,nKo=typeof koRows==='function'?koRows().filter(r=>(DB[m.data]||[]).includes(r)).length:0;
-  return `${nNew?`<div class="newbar">🤖 Claude가 새로 넣은 자료 <b>${nNew}건</b> (노란색 줄 · NEW)${nCls?` · <b style="color:var(--bad)">처음 보는 거래처 ${nCls}건은 분류를 확인해 주세요</b> (Claude에게 "분류해줘"라고 하셔도 됩니다)`:''}${nKo?`<button class="btn" data-kofix="1" style="padding:4px 10px;font-size:12px">🌐 스페인어 품목 ${nKo}건 번역</button>`:''}<button class="btn" data-newall="${em}" style="margin-left:auto;padding:4px 10px;font-size:12px">모두 확인</button></div>`:''}<div class="tw frz"><table${m.tight?' class="tight"':''} data-seltbl="${modId}"><thead><tr><th class="ck"><input type="checkbox" data-selall="${modId}" aria-label="전체 선택"${nOn&&nOn===rows.length?' checked':''}></th>${cols.map(c=>`<th class="${al(c)}" data-ck="${c.k}">${esc(c.l)}<span class="cres" data-cres="${modId}|${c.k}" title="끌어서 칸 폭 조절 · 두 번 클릭하면 원래대로"></span></th>`).join('')}<th class="n">관리</th></tr></thead><tbody>
+  return `${nNew?`<div class="newbar">🤖 Claude가 새로 넣은 자료 <b>${nNew}건</b> (노란색 줄 · NEW)${nCls?` · <b style="color:var(--bad)">처음 보는 거래처 ${nCls}건은 분류를 확인해 주세요</b> (Claude에게 "분류해줘"라고 하셔도 됩니다)`:''}<button class="btn" data-newall="${em}" style="margin-left:auto;padding:4px 10px;font-size:12px">모두 확인</button></div>`:''}<div class="tw frz"><table${m.tight?' class="tight"':''} data-seltbl="${modId}"><thead><tr><th class="ck"><input type="checkbox" data-selall="${modId}" aria-label="전체 선택"${nOn&&nOn===rows.length?' checked':''}></th>${cols.map(c=>`<th class="${al(c)}" data-ck="${c.k}">${esc(c.l)}<span class="cres" data-cres="${modId}|${c.k}" title="끌어서 칸 폭 조절 · 두 번 클릭하면 원래대로"></span></th>`).join('')}<th class="n">관리</th></tr></thead><tbody>
     ${rows.map(r=>`<tr data-row="${r.id}" class="${r.id===flashId?'flash':''}${S.has(r.id)?' sel':''}${r.isNew?' newrow':''}"><td class="ck"><input type="checkbox" data-selrow="${modId}" value="${r.id}" aria-label="선택"${S.has(r.id)?' checked':''}>${r.isNew?`<button class="newb" data-newok="${r.id}" data-m="${em}" title="${r.needCls?'처음 보는 거래처라 분류를 추정했습니다 · 확인 후 누르세요':'새로 들어온 자료 · 누르면 확인 처리'}">${r.needCls?'분류 확인':'NEW'}</button>`:''}</td>${cols.map(c=>`<td data-ck="${c.k}" class="${al(c)}${c.calc?' calc':''}${c.wide?' w':''}"${m.tight&&(c.wide||c.sug)?` title="${esc(r[c.k])}"`:''}>${cellView(c,r,p,m)}</td>`).join('')}
       <td><div class="acts"><button class="act" data-editrow="${r.id}" data-m="${em}">수정</button><button class="act danger" data-delrow="${r.id}" data-m="${em}">삭제</button></div></td></tr>`).join('')}
     </tbody>${m.footSplit?splitFoot(m,p,rows,cols):hasSum?footRow(m,cols,`합계 · ${rows.length}건`,'',c=>c.sum?footVal(c,rows,p,m):''):''}</table></div>`;
@@ -4959,15 +4959,20 @@ function ibXml(txt,path){txt=String(txt).replace(/^\uFEFF/,'');if(!/Comprobante/
   return {rows:{[isAR?'ar':'ap']:[r]},xml:1}}
 /* ---------- 스페인어 품목 자동 번역: Chrome 내장 번역(Translator API, PC 안에서 처리 · 무료). 사전(esKo)으로 못 바꾼 품목만 ---------- */
 let KOTR=null;
-async function koTr(gesture){if(KOTR)return KOTR;if(!('Translator' in self))return null;try{const o={sourceLanguage:'es',targetLanguage:'ko'},av=await Translator.availability(o);if(av==='unavailable'||(av!=='available'&&!gesture))return null;KOTR=await Translator.create(o);return KOTR}catch(e){return null}}
+// 1순위 Chrome 내장 번역(PC 안에서 처리), 안 되면 Google 번역 웹(품목 문구만 보냄)
+const KOWEB={translate:async t=>{const r=await fetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl=es&tl=ko&dt=t&q='+encodeURIComponent(t));if(!r.ok)throw new Error(r.status);const j=await r.json();return (j[0]||[]).map(x=>x[0]).join('')}};
+async function koTr(gesture){if(KOTR)return KOTR;try{if('Translator' in self){const o={sourceLanguage:'es',targetLanguage:'ko'},av=await Translator.availability(o);if(av==='available'||(av!=='unavailable'&&gesture)){KOTR=await Translator.create(o);return KOTR}}}catch(e){}return KOWEB}
 const latinN=t=>(String(t||'').match(/[A-Za-zÁÉÍÓÚÑáéíóúñ]{4,}/g)||[]).length;
 const needKo=x=>!!x&&!!x.item&&latinN(x.item)>=2&&(!/[가-힣]/.test(x.item)||latinN(x.item)>=3);
 const koRows=()=>['ap','ar','cash'].flatMap(k=>(DB[k]||[]).filter(r=>r.src==='CFDI XML'&&(needKo(r)||(r.lines||[]).some(needKo))));
-async function koFix(gesture){const L=koRows();if(!L.length)return 0;const T=await koTr(gesture);if(!T){if(gesture)toast('이 브라우저는 내장 번역을 지원하지 않습니다. Chrome을 최신 버전으로 업데이트해 주세요');return -1}
+let KOBUSY=false;
+async function koFix(gesture){if(KOBUSY)return 0;const L=koRows();if(!L.length)return 0;KOBUSY=true;try{return await koFix_(L,gesture)}finally{KOBUSY=false}}
+async function koFix_(L,gesture){const T=await koTr(gesture);
   const tr=async x=>{const src=x.itemEs&&latinN(x.itemEs)>=latinN(x.item)?x.itemEs:x.item;try{const t=String(await T.translate(src)).trim();if(t&&/[가-힣]/.test(t)){if(!x.itemEs)x.itemEs=src;x.item=t.slice(0,120);return 1}}catch(_){}return 0};
   let n=0;for(const r of L){if(r.lines&&r.lines.length){for(const l of r.lines)if(needKo(l))n+=await tr(l);if(needKo(r)&&!(await tr(r)))r.item=r.lines[0].item+(r.lines.length>1?` 외 ${r.lines.length-1}건`:'')}else n+=await tr(r)}
-  if(n){save();renderMain();if(gesture)toast(`품목 ${n}건을 한국어로 번역했습니다`)}return n}
-setTimeout(()=>koFix(false),3000);
+  if(n){save();renderMain();toast(`스페인어 품목 ${n}건을 한국어로 번역했습니다`)}return n}
+setTimeout(()=>koFix(false),3000);setInterval(()=>{if(document.visibilityState==='visible')koFix(false)},60000);
+document.addEventListener('pointerdown',()=>{if(!(KOTR&&KOTR!==KOWEB))koFix(true)},true);
 function ibAdd(mod,x){const m=MODS[mod];if(!m||!Array.isArray(DB[m.data]))return 0;const u=String(x.uuid||'').trim().toLowerCase();
   // Claude가 분류를 고쳐 보내는 경우 (upd:1): 같은 CFDI UUID 건의 분류·계정·품목만 바꿈
   if(x.upd&&u){const r=DB[m.data].find(r=>String(r.uuid||'').trim().toLowerCase()===u);if(!r)return 0;['cat','dept','account','item','itemEs','terms','due'].forEach(k=>{if(x[k]!=null&&x[k]!=='')r[k]=x[k]});delete r.needCls;r.isNew=1;fixRow(m,r);return 1}
@@ -5006,7 +5011,7 @@ setInterval(()=>{if(IB.ok&&document.visibilityState==='visible')ibScan(true)},60
 // 새로고침 뒤에는 Chrome이 폴더 권한을 다시 물을 수 있음: 화면을 처음 누를 때 자동으로 다시 연결 (권한 창에서 "방문할 때마다 허용"을 고르면 다음부터는 묻지 않음)
 let IB_TRY=false;document.addEventListener('pointerdown',()=>{if(IB.h&&!IB.ok&&!IB_TRY){IB_TRY=true;ibReconnect()}},true);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261119-183516';let VER_NEW=false;
+const APP_VER='20261119-184404';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
 function verTry(){if(!VER_NEW)return;const a=document.activeElement,busy=modal||(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)&&a.closest('form'));if(busy){setTimeout(verTry,5000);return}
   try{save()}catch(_){}toast('새 버전이 올라와서 화면을 새로고침합니다');setTimeout(()=>location.reload(),1500)}
