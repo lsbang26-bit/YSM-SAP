@@ -3281,6 +3281,22 @@ const pyRow=(x={})=>`<div class="pyrow"><select data-py="kind">${['원금','이�
 function pyBox(r){const L=r.pays||[],S=k=>L.filter(x=>x.kind===k).reduce((a,x)=>a+(+x.amount||0),0);return `<div class="pygrid">${plBox(r)}<div class="lnbox" data-pylines><div class="lnhead"><b>상환 내역</b><span class="dim" data-pysum>${L.length?`원금 ${nf2.format(S('원금'))} · 이자 ${nf2.format(S('이자'))} · ${L.length}건`:'원금·이자 지급을 넣으면 상환액이 자동 합산됩니다'}</span><button type="button" class="btn" data-pyadd="1">＋ 지급 추가</button></div>
   <div class="pycols"${L.length?'':' hidden'}><span>구분</span><span>지급일</span><span>금액</span><span></span></div><div class="lnrows pyrows">${L.map(pyRow).join('')}</div></div></div>`}
 function pyRead(F){const B=F.querySelector('[data-pylines]');if(!B)return null;return [...B.querySelectorAll('.pyrow')].map(x=>{const g=k=>x.querySelector(`[data-py="${k}"]`).value.trim(),a=pnum(g('amount'));return {kind:g('kind'),date:g('date'),amount:isFinite(a)?r2(a):0}}).filter(x=>x.date||x.amount)}
+// 차입금 상환 내역 → 경리자료 출금 전표 (운영 시작일 이후 지급만). 같은 구분·지급일·금액의 전표가 이미 있으면 새로 만들지 않고 연결함
+const LOAN_ACC={'원금':'원금 상환','이자':'이자비용'},loanPayKey=x=>`${x.kind}|${x.date}|${r2(+x.amount||0).toFixed(2)}`;
+function loanCashSync(r){const out={add:0,link:0,upd:0,del:0};if(!r||!Array.isArray(r.pays))return out;const off=new Set(r.cashOff||[]),cur=r.cur||'MXN',os=OP_START();
+  const want=r.pays.filter(x=>LOAN_ACC[x.kind]&&validD(x.date)&&x.date>=os&&+x.amount>0&&!off.has(loanPayKey(x)));
+  const L=DB.cash.filter(c=>c.link===r.id&&c.linkMod==='loans'),used=new Set(),same=(c,x)=>c.account===LOAN_ACC[x.kind]&&Math.abs((+c.amount||0)-(+x.amount))<0.01;
+  const memo=x=>`${r.bank||'차입금'} ${r.type||''} ${x.kind==='원금'?'원금 상환':'이자 지급'} (차입금현황 연계)`.replace(/\s+/g,' ');
+  const todo=[];want.forEach(x=>{const c=L.find(c=>!used.has(c)&&same(c,x)&&c.date===x.date);if(c)used.add(c);else todo.push(x)});
+  const todo2=[];todo.forEach(x=>{const c=DB.cash.find(c=>!c.link&&c.type==='출금'&&c.date===x.date&&same(c,x)&&(c.cur||'MXN')===cur);
+    if(c){Object.assign(c,{link:r.id,linkMod:'loans'});used.add(c);out.link++}else todo2.push(x)});
+  todo2.forEach(x=>{const c=L.find(c=>!used.has(c)&&c.account===LOAN_ACC[x.kind]&&(c.date===x.date||Math.abs((+c.amount||0)-(+x.amount))<0.01));
+    if(c){used.add(c);Object.assign(c,{date:x.date,amount:r2(+x.amount),sub:r2(+x.amount),memo:memo(x)});if(cur==='USD')delete c.fx;fixRow(MODS.cash,c);out.upd++;return}
+    const n={id:uid(),date:x.date,bank:bankFor(cur),type:'출금',cat:'차입금',account:LOAN_ACC[x.kind],party:r.bank||'',memo:memo(x),cur,amount:r2(+x.amount),sub:r2(+x.amount),iva:'면세',factura:'발행',uuid:'',link:r.id,linkMod:'loans'};
+    fixRow(MODS.cash,n);DB.cash.unshift(n);used.add(n);out.add++});
+  L.forEach(c=>{if(used.has(c))return;const j=DB.cash.indexOf(c);if(j>=0){DB.cash.splice(j,1);out.del++}});
+  return out}
+const loanCashMsg=o=>{const t=[o.add&&`새 전표 ${o.add}건`,o.link&&`기존 전표 ${o.link}건 연결`,o.upd&&`전표 ${o.upd}건 수정`,o.del&&`전표 ${o.del}건 삭제`].filter(Boolean);return t.length?` · 경리자료 ${t.join(', ')}`:''};
 function pySync(F){const B=F.querySelector('[data-pylines]');if(!B)return;const L=pyRead(F)||[],S=k=>L.filter(x=>x.kind===k).reduce((a,x)=>a+(+x.amount||0),0);B.querySelector('.pycols').hidden=!B.querySelector('.pyrow');
   B.querySelector('[data-pysum]').textContent=L.length?`원금 ${nf2.format(S('원금'))} · 이자 ${nf2.format(S('이자'))} · ${L.length}건`:'원금·이자 지급을 넣으면 상환액이 자동 합산됩니다';const R=F.querySelector('[name="repaid"]');if(R&&L.length)R.value=r2(S('원금')).toFixed(2)}
 document.addEventListener('click',e=>{const t=e.target;if(!t.closest)return;const add=t.closest('[data-pyadd]'),del=t.closest('[data-pydel]');if(!add&&!del)return;e.preventDefault();e.stopPropagation();
@@ -4272,9 +4288,12 @@ function delRow(mod,id){
   const m=MODS[mod],arr=DB[m.data],i=arr.findIndex(r=>r.id===id),row=arr[i];if(i<0)return;
   if(mod==='cash'&&row.xfer){const j=arr.findIndex(x=>x.id===row.xfer&&x.xfer===row.id);if(j>=0){arr.splice(j,1);return delRow(mod,id)}}
   if(mod==='ped')DB.cash=DB.cash.filter(c=>!(c.link===id&&c.linkMod==='ped'));
+  if(mod==='loans')DB.cash=DB.cash.filter(c=>!(c.link===id&&c.linkMod==='loans'));
+  // 차입금에서 만든 전표를 지우면 그 지급은 다시 만들지 않음
+  if(row.link&&row.linkMod==='loans'){const L=DB.loans.find(x=>x.id===row.link),x=L&&(L.pays||[]).find(x=>LOAN_ACC[x.kind]===row.account&&x.date===row.date&&Math.abs((+x.amount||0)-(+row.amount||0))<0.01);if(x){L.cashOff=L.cashOff||[];const k=loanPayKey(x);if(!L.cashOff.includes(k))L.cashOff.push(k)}}
   if(row.link&&row.linkMod==='ped'){const P=DB.ped.find(x=>x.id===row.link);if(P&&!arr.some(x=>x!==row&&x.link===P.id&&x.linkMod==='ped'))delete P.pay}
   if(row.link&&row.linkMod==='sever'){const L=DB.sever.find(x=>x.id===row.link);if(L){L.status='정산 대기';L.pdate=''}}
-  else if(row.link&&row.linkMod!=='ped'&&DB[row.linkMod]){const L=DB[row.linkMod].find(x=>x.id===row.link),k=row.linkMod==='ar'?'received':'paid';if(L)L[k]=Math.max(0,Math.round(((+L[k]||0)-(+row.amount||0))*100)/100)}
+  else if(row.link&&row.linkMod!=='ped'&&row.linkMod!=='loans'&&DB[row.linkMod]){const L=DB[row.linkMod].find(x=>x.id===row.link),k=row.linkMod==='ar'?'received':'paid';if(L)L[k]=Math.max(0,Math.round(((+L[k]||0)-(+row.amount||0))*100)/100)}
   if(mod==='outbound'&&row.arId){DB.obSkip=DB.obSkip||[];if(!DB.obSkip.includes(row.arId))DB.obSkip.push(row.arId)}
   arr.splice(i,1);
 }
@@ -5062,7 +5081,7 @@ setInterval(()=>{if(IB.ok&&document.visibilityState==='visible')ibScan(true)},60
 // 새로고침 뒤에는 Chrome이 폴더 권한을 다시 물을 수 있음: 화면을 처음 누를 때 자동으로 다시 연결 (권한 창에서 "방문할 때마다 허용"을 고르면 다음부터는 묻지 않음)
 let IB_TRY=false;document.addEventListener('pointerdown',()=>{if(IB.h&&!IB.ok&&!IB_TRY){IB_TRY=true;ibReconnect()}},true);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261123-162059';let VER_NEW=false;
+const APP_VER='20261123-110606';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
 /* ---------- 같은 화면을 다시 그릴 때(자동 번역·자료함·저장 등) 스크롤 위치를 그대로 유지. 다른 화면으로 이동할 때만 맨 위로 ---------- */
 const scrEls=()=>{const m=$('#main');return [document.scrollingElement,m,m&&m.parentElement].filter(Boolean)};
@@ -5440,7 +5459,7 @@ document.addEventListener('submit',e=>{
     const id=f.dataset.reg, m=MODS[id], row=fixRow(m,Object.assign({id:uid()},m.blank(curPeriod()),readForm(f,m)));
     if(f.dataset.dupok)delete f.dataset.dupok;else{const dp=folioDup(id,row);if(dp){modal={type:'dup',src:'reg',form:id,list:[{mod:id,row,dup:dp}]};renderModal();return}}
     if(id==='sever'){const e=DB.employees.find(x=>x.name===row.emp);if(e&&!validD(e.leave)&&validD(row.date))e.leave=row.date}
-    DB[m.data].unshift(row);if(id==='ar')cnApply(f,row);const xm=id==='cash'?xfApply(f,row):'';flashId=row.id;UI.q='';save();if(modal&&modal.type==='add')closeModal();renderMain();
+    DB[m.data].unshift(row);if(id==='ar')cnApply(f,row);const xm=id==='cash'?xfApply(f,row):id==='loans'?loanCashMsg(loanCashSync(row)):'';flashId=row.id;UI.q='';save();if(modal&&modal.type==='add')closeModal();renderMain();
     const tr=document.querySelector(`[data-row="${row.id}"]`);
     toast((tr?'등록했습니다':'등록했습니다. 선택한 기간 밖의 날짜라 지금 목록에는 보이지 않습니다')+xm);
     return;
@@ -5505,7 +5524,7 @@ document.addEventListener('submit',e=>{
       // 부가세 칸을 직접 고치지 않았으면 새 금액·세율로 다시 계산 (화면에 남은 예전 부가세로 덮어쓰지 않음)
       if(v.ivaAmt!=null&&v.ivaAmt!==''&&r2(+v.ivaAmt)===r2(+f.dataset.ivaOrig||0))v.ivaAmt=''}
     const oldAmt=+r.amount||0,oldItem=String(r.item||''),oldParty=String(r.vendor||r.customer||''),rk=m.data==='ar'?'received':m.data==='ap'?'paid':'',oldRec=rk?+r[rk]||0:0;
-    Object.assign(r,v);fixRow(m,r);
+    Object.assign(r,v);fixRow(m,r);const lcm=m.data==='loans'?loanCashMsg(loanCashSync(r)):'';
     // 수정 화면에서 수금액·지급액을 고치면 연결된 경리자료 전표도 맞춤: 0 이면 전표 삭제, 늘거나 줄면 마지막 전표 금액을 그만큼 조정
     if(rk&&Math.abs((+r[rk]||0)-oldRec)>0.004){const nv=+r[rk]||0,L=DB.cash.filter(c=>c.link===r.id&&c.linkMod===m.data).sort((a,b)=>a.date<b.date?-1:1);
       if(nv<=0.004)L.forEach(c=>{const j=DB.cash.indexOf(c);if(j>=0)DB.cash.splice(j,1)});
@@ -5515,7 +5534,7 @@ document.addEventListener('submit',e=>{
       if(it!==oldItem){const mm=String(c.memo||'');c.memo=oldItem&&mm.startsWith(oldItem)?it+mm.slice(oldItem.length):`${it} ${isAR?'대금 수금':'대금 지급'} (외상${isAR?'매출':'매입'} 연계${r.folio?' · Factura '+r.folio:''})`}
       if(pty!==oldParty&&(!c.party||c.party===oldParty))c.party=pty;if(!isAR&&r.cat)c.cat=r.cat==='차입금'?'판관비용':r.cat})}if(m.data==='ar')cnApply(f,r);if(m.data==='cash'){if(r.xfer&&!xfOn(f)){const P=DB.cash.find(x=>x.id===r.xfer);if(P&&P.xfer===r.id)Object.assign(P,{date:r.date})}else xfApply(f,r)}
     // 입금·지급 완료로 만든 경리자료 전표를 고치면 연결된 외상매출 수금액·외상매입 지급액도 같은 차이만큼 바뀜 (대쉬보드·잔액 자동 반영)
-    if(m.data==='cash'&&r.link&&(r.linkMod==='ar'||r.linkMod==='ap')){const L=DB[r.linkMod].find(x=>x.id===r.link),k=r.linkMod==='ar'?'received':'paid';if(L)L[k]=Math.max(0,r2((+L[k]||0)+(+r.amount||0)-oldAmt))}flashId=r.id;save();closeModal();renderMain();toast('수정했습니다');
+    if(m.data==='cash'&&r.link&&(r.linkMod==='ar'||r.linkMod==='ap')){const L=DB[r.linkMod].find(x=>x.id===r.link),k=r.linkMod==='ar'?'received':'paid';if(L)L[k]=Math.max(0,r2((+L[k]||0)+(+r.amount||0)-oldAmt))}flashId=r.id;save();closeModal();renderMain();toast('수정했습니다'+lcm,lcm?{label:'경리자료 보기',fn:()=>go('cash')}:undefined);
   }
 });
 
