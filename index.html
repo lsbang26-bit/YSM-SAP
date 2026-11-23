@@ -5023,6 +5023,8 @@ setInterval(()=>{if(BG_PEND&&!userBusy())bgRender()},3000);
 ['input','change'].forEach(ev=>document.addEventListener(ev,e=>{const f=e.target&&e.target.form;if(f&&(f.dataset.reg||f.dataset.edit))f.dataset.dirty='1'},true));
 function ibAdd(mod,x){const m=MODS[mod];if(!m||!Array.isArray(DB[m.data]))return 0;const u=String(x.uuid||'').trim().toLowerCase();
   // Claude가 분류를 고쳐 보내는 경우 (upd:1): 같은 CFDI UUID 건의 분류·계정·품목만 바꿈
+  // Claude가 같은 ibKey 건을 새 자료로 바꿔 보내는 경우 (예: 수입면장 Proforma → Pagado 확정본)
+  if(x.upd&&!u&&x.ibKey){const r=DB[m.data].find(r=>r.ibKey===x.ibKey);if(!r)return 0;Object.keys(x).forEach(k=>{if(!['upd','ibKey','id','pay'].includes(k))r[k]=x[k]});delete r.needCls;r.isNew=1;fixRow(m,r);return 1}
   if(x.upd&&u){const r=DB[m.data].find(r=>String(r.uuid||'').trim().toLowerCase()===u);if(!r)return 0;['cat','dept','account','item','itemEs','terms','due','adv'].forEach(k=>{if(x[k]!=null&&x[k]!=='')r[k]=x[k]});if(x.item)r.koShort=1;if(Array.isArray(x.lines)&&r.lines)r.lines.forEach((l,i)=>{if(x.lines[i]){if(!l.itemEs)l.itemEs=l.item;l.item=x.lines[i];l.koOk=1}});delete r.needCls;r.isNew=1;fixRow(m,r);return 1}
   if(u&&DB[m.data].concat(mod==='ap'?DB.cash:[]).some(r=>String(r.uuid||'').trim().toLowerCase()===u))return 0;
   if(x.ibKey&&DB[m.data].some(r=>r.ibKey===x.ibKey))return 0;
@@ -5060,7 +5062,7 @@ setInterval(()=>{if(IB.ok&&document.visibilityState==='visible')ibScan(true)},60
 // 새로고침 뒤에는 Chrome이 폴더 권한을 다시 물을 수 있음: 화면을 처음 누를 때 자동으로 다시 연결 (권한 창에서 "방문할 때마다 허용"을 고르면 다음부터는 묻지 않음)
 let IB_TRY=false;document.addEventListener('pointerdown',()=>{if(IB.h&&!IB.ok&&!IB_TRY){IB_TRY=true;ibReconnect()}},true);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261123-133357';let VER_NEW=false;
+const APP_VER='20261123-162059';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
 /* ---------- 같은 화면을 다시 그릴 때(자동 번역·자료함·저장 등) 스크롤 위치를 그대로 유지. 다른 화면으로 이동할 때만 맨 위로 ---------- */
 const scrEls=()=>{const m=$('#main');return [document.scrollingElement,m,m&&m.parentElement].filter(Boolean)};
