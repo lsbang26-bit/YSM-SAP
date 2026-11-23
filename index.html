@@ -4970,6 +4970,7 @@ async function ibReconnect(){if(!IB.h)return ibConnect();try{if((await IB.h.requ
    받는 쪽 RFC가 우리 회사면 외상매입, 보내는 쪽이 우리 회사면 외상매출. 전에 같은 거래처로 입력한 건이 있으면 그 분류·부서·계정·품목·크레딧 텀을 그대로 따름.
    처음 보는 거래처는 needCls 표시 ("분류 확인") */
 function ibXml(txt,path){txt=String(txt).replace(/^\uFEFF/,'');if(!/Comprobante/.test(txt))return null;const x=cfdiFromXml(txt);if(!x)return null;
+  if((DB.ibSkip||[]).includes(x.uuid))return {rows:{},skip:'dup'};
   const doc=new DOMParser().parseFromString(txt,'application/xml'),q=n=>doc.getElementsByTagNameNS('*',n)[0],a=(el,k)=>el?el.getAttribute(k)||'':'',c=q('Comprobante'),rc=q('Receptor');
   const rRfc=a(rc,'Rfc').toUpperCase(),own=OWN_RFC.slice(0,1),isAR=own.includes(x.rfc)||/^외상매출/.test(path)&&!own.includes(rRfc);
   if(!own.includes(x.rfc)&&!own.includes(rRfc))return null;
@@ -4987,6 +4988,9 @@ function ibXml(txt,path){txt=String(txt).replace(/^\uFEFF/,'');if(!/Comprobante/
     else{const cat='제조비용',k=kgaapAcc(x.hint||((x.item||'')+' '+party),cat);Object.assign(r,{cat,dept:'생산',account:k||'소모품비',item:ko,needCls:1})}}
   if(x.lines.length&&Math.abs(x.lines.reduce((s,l)=>s+l.qty*l.price,0)-sub)<0.05&&x.lines.length>1)r.lines=x.lines.map(l=>({item:l.item,itemEs:l.item,qty:l.qty,price:sg*l.price}));
   else if(x.lines.length===1){r.qty=x.lines[0].qty;r.price=r2(sg*x.lines[0].price)}
+  // Claude가 미리 정리해 둔 분류·번역(DB.ibFix[uuid])이 있으면 그대로 씀 (자동 번역 안 함)
+  const fx=(DB.ibFix||{})[x.uuid];if(fx){['cat','dept','account','item','terms','adv'].forEach(k=>{if(fx[k]!=null&&fx[k]!=='')r[k]=fx[k]});if(!isAR)r.due=addDs(x.date,+r.terms||0);delete r.needCls;r.koShort=1;
+    if(Array.isArray(fx.lines)){if(r.lines)r.lines.forEach((l,i)=>{if(fx.lines[i]){l.item=fx.lines[i];l.koOk=1}});else if(fx.lines.length===1)r.itemKo=fx.lines[0]}delete DB.ibFix[x.uuid]}
   return {rows:{[isAR?'ar':'ap']:[r]},xml:1}}
 /* ---------- 스페인어 품목 자동 번역: Chrome 내장 번역(Translator API, PC 안에서 처리 · 무료). 사전(esKo)으로 못 바꾼 품목만 ---------- */
 let KOTR=null;
@@ -4994,7 +4998,7 @@ let KOTR=null;
 const KOWEB={translate:async t=>{const r=await fetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl=es&tl=ko&dt=t&q='+encodeURIComponent(t));if(!r.ok)throw new Error(r.status);const j=await r.json();return (j[0]||[]).map(x=>x[0]).join('')}};
 async function koTr(gesture){if(KOTR)return KOTR;try{if('Translator' in self){const o={sourceLanguage:'es',targetLanguage:'ko'},av=await Translator.availability(o);if(av==='available'||(av!=='unavailable'&&gesture)){KOTR=await Translator.create(o);return KOTR}}}catch(e){}return KOWEB}
 const latinN=t=>(String(t||'').match(/[A-Za-zÁÉÍÓÚÑáéíóúñ]{4,}/g)||[]).length;
-const needKo=x=>!!x&&!!x.item&&(!/[가-힣]/.test(x.item)?latinN(x.item)>=1:latinN(x.item)>=3);
+const needKo=x=>!!x&&!x.koOk&&!!x.item&&(!/[가-힣]/.test(x.item)?latinN(x.item)>=1:latinN(x.item)>=3);
 // 대표 품목: 첫 품목 설명의 첫 명사 하나 (예: "Tinta indeleble de secado rapido…" → Tinta → 잉크). 서비스·임차 같은 말은 "~ de 무엇"까지
 const KO_GEN=/^(SERV|SERVICIO|SERVICIOS|RENTA|ARRENDAMIENTO|MANTENIMIENTO|REPARACION|FLETE|CUOTA|PAGO|MENSUALIDAD|CONSUMO|HONORARIOS|SUMINISTRO|COMPRA|ENVIO|TRANSPORTE|INSTALACION)$/;
 function headEs(src){const t=String(src||'').split(/[,;(]/)[0].replace(/\[[^\]]*\]/g,' '),w=t.split(/\s+/).filter(x=>/[A-Za-zÁÉÍÓÚÑáéíóúñ]{2,}/.test(x)&&!/\d/.test(x));if(!w.length)return t.trim()||String(src||'');
@@ -5019,7 +5023,7 @@ setInterval(()=>{if(BG_PEND&&!userBusy())bgRender()},3000);
 ['input','change'].forEach(ev=>document.addEventListener(ev,e=>{const f=e.target&&e.target.form;if(f&&(f.dataset.reg||f.dataset.edit))f.dataset.dirty='1'},true));
 function ibAdd(mod,x){const m=MODS[mod];if(!m||!Array.isArray(DB[m.data]))return 0;const u=String(x.uuid||'').trim().toLowerCase();
   // Claude가 분류를 고쳐 보내는 경우 (upd:1): 같은 CFDI UUID 건의 분류·계정·품목만 바꿈
-  if(x.upd&&u){const r=DB[m.data].find(r=>String(r.uuid||'').trim().toLowerCase()===u);if(!r)return 0;['cat','dept','account','item','itemEs','terms','due'].forEach(k=>{if(x[k]!=null&&x[k]!=='')r[k]=x[k]});delete r.needCls;r.isNew=1;fixRow(m,r);return 1}
+  if(x.upd&&u){const r=DB[m.data].find(r=>String(r.uuid||'').trim().toLowerCase()===u);if(!r)return 0;['cat','dept','account','item','itemEs','terms','due','adv'].forEach(k=>{if(x[k]!=null&&x[k]!=='')r[k]=x[k]});if(x.item)r.koShort=1;if(Array.isArray(x.lines)&&r.lines)r.lines.forEach((l,i)=>{if(x.lines[i]){if(!l.itemEs)l.itemEs=l.item;l.item=x.lines[i];l.koOk=1}});delete r.needCls;r.isNew=1;fixRow(m,r);return 1}
   if(u&&DB[m.data].concat(mod==='ap'?DB.cash:[]).some(r=>String(r.uuid||'').trim().toLowerCase()===u))return 0;
   if(x.ibKey&&DB[m.data].some(r=>r.ibKey===x.ibKey))return 0;
   const r=Object.assign({},m.blank?m.blank(curPeriod()):{},x,{id:uid(),byClaude:1,isNew:1,newChk:1});delete r.inboxNote;const f=fixRow(m,r)||r;
@@ -5036,9 +5040,10 @@ function dupModal(){const L=modal.list||[],one=L[0];
     <footer><button type="button" class="btn" data-close="1">${modal.src==='ib'?'넣지 않기':'취소'}</button><button type="button" class="btn danger" data-dupforce="1">그래도 ${modal.src==='ib'?'넣기':'등록'}</button></footer></div></div>`}
 async function ibScan(quiet){if(!IB.h||!IB.ok||IB.busy)return 0;IB.busy=true;let n=0,files=0;const by={};
   // 자료함 바로 아래와 하위 폴더(외상매입·외상매출·급여 …)까지 읽음. 각 폴더의 "반영완료"는 건너뜀
-  const walk=async(dir,path,depth)=>{let done=null;for await(const [nm,e] of dir.entries()){
+  const walk=async(dir,path,depth)=>{let done=null;const ents=[];for await(const ne of dir.entries())ents.push(ne);ents.sort((a,b)=>(/\.json$/i.test(b[0])?1:0)-(/\.json$/i.test(a[0])?1:0));for(const [nm,e] of ents){
       if(e.kind==='directory'){if(nm!=='반영완료'&&depth<2)await walk(e,path+nm+'/',depth+1);continue}
       const isX=/\.xml$/i.test(nm);if(!isX&&!/\.ysm\.json$/i.test(nm))continue;let j=null,txt='';try{txt=await (await e.getFile()).text();j=isX?ibXml(txt,path):JSON.parse(txt)}catch(_){}
+      if(j&&!isX&&(j.skip||j.fix)){if(Array.isArray(j.skip))DB.ibSkip=[...new Set([...(DB.ibSkip||[]),...j.skip.map(u=>String(u).toLowerCase())])];if(j.fix)DB.ibFix=Object.assign(DB.ibFix||{},j.fix);j.rows=j.rows||{}}
       if(!j||!j.rows)continue;files++;let k=0;IB_MODS.forEach(mod=>(j.rows[mod]||[]).forEach(x=>{const a=ibAdd(mod,x);k+=a;if(a)by[mod]=(by[mod]||0)+a}));n+=k;
       (DB.inboxLog=DB.inboxLog||[]).unshift({file:path+nm,at:new Date().toISOString(),n:k});DB.inboxLog=DB.inboxLog.slice(0,50);
       try{done=done||await dir.getDirectoryHandle('반영완료',{create:true});const t=await (await done.getFileHandle(nm,{create:true})).createWritable();await t.write(txt);await t.close();await dir.removeEntry(nm)}catch(_){}}};
@@ -5055,7 +5060,7 @@ setInterval(()=>{if(IB.ok&&document.visibilityState==='visible')ibScan(true)},60
 // 새로고침 뒤에는 Chrome이 폴더 권한을 다시 물을 수 있음: 화면을 처음 누를 때 자동으로 다시 연결 (권한 창에서 "방문할 때마다 허용"을 고르면 다음부터는 묻지 않음)
 let IB_TRY=false;document.addEventListener('pointerdown',()=>{if(IB.h&&!IB.ok&&!IB_TRY){IB_TRY=true;ibReconnect()}},true);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261119-223428';let VER_NEW=false;
+const APP_VER='20261123-133357';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
 /* ---------- 같은 화면을 다시 그릴 때(자동 번역·자료함·저장 등) 스크롤 위치를 그대로 유지. 다른 화면으로 이동할 때만 맨 위로 ---------- */
 const scrEls=()=>{const m=$('#main');return [document.scrollingElement,m,m&&m.parentElement].filter(Boolean)};
