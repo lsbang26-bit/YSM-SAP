@@ -1976,13 +1976,15 @@ function footRow(m,cols,label,cls,fn,bare){
   const lead=m.tight?Math.max(1,cols.findIndex(c=>isNum(c))):1, tr=`<tr class="${cls}"><td colspan="${lead+1}">${label}</td>${cols.slice(lead).map(c=>`<td class="${isNum(c)?'n':''}">${fn(c)}</td>`).join('')}<td></td></tr>`;
   return bare?tr:`<tfoot>${tr}</tfoot>`;
 }
-// 경리자료: totals of the filtered rows — 입금, 출금 and 순액 (입금 − 출금), money columns converted to MXN
+// 경리자료: totals of the filtered rows — 입금, 출금 and 순액 (입금 − 출금); US$ only → US$, mixed → MXN 환산
 function splitFoot(m,p,rows,cols){
   const F=m.footSplit, inn=rows.filter(r=>r[F.k]===F.plus), out=rows.filter(r=>r[F.k]===F.minus);
-  const val=(c,rs)=>{const f=c.calc?r=>c.calc(r,p):(hasCur(m)&&!c.mxn?M(c.k):r=>+r[c.k]||0);return sumBy(rs,f)};
+  // 보이는 건이 모두 US$ 이면 합계도 US$ 로, 통화가 섞이면 MXN 환산 (라벨에 표시)
+  const usd=hasCur(m)&&rows.length>0&&rows.every(r=>r.cur==='USD'),mix=hasCur(m)&&!usd&&rows.some(r=>r.cur==='USD'),dv=usd?rate('USD')||1:1;
+  const val=(c,rs)=>{const f=c.calc?r=>c.calc(r,p):(hasCur(m)&&!c.mxn?M(c.k):r=>+r[c.k]||0);return sumBy(rs,f)/dv},fm=v=>fmtCur(v,usd?'USD':'MXN'),tag=mix?' (MXN 환산)':'';
   const line=(label,cls,fn)=>footRow(m,cols,label,cls,c=>isMoney(c)?fn(c):'',1);
-  return `<tfoot class="split">${line(`입금 합계 · ${inn.length}건`,'',c=>money(val(c,inn)))}${line(`출금 합계 · ${out.length}건`,'',c=>money(val(c,out)))}
-    ${line(`순액 (입금 − 출금) · ${rows.length}건`,'net',c=>{const v=val(c,inn)-val(c,out);return `<span class="${v<0?'neg':'pos'}">${money(v)}</span>`})}</tfoot>`;
+  return `<tfoot class="split">${line(`입금 합계 · ${inn.length}건${tag}`,'',c=>fm(val(c,inn)))}${line(`출금 합계 · ${out.length}건${tag}`,'',c=>fm(val(c,out)))}
+    ${line(`순액 (입금 − 출금) · ${rows.length}건${tag}`,'net',c=>{const v=val(c,inn)-val(c,out);return `<span class="${v<0?'neg':'pos'}">${fm(v)}</span>`})}</tfoot>`;
 }
 // row selection in 상세 내역: SEL[modId] = Set of row ids; only rows on screen count
 const SEL={}, selOf=id=>SEL[id]||(SEL[id]=new Set());
@@ -5087,7 +5089,7 @@ setInterval(()=>{if(IB.ok&&document.visibilityState==='visible')ibScan(true)},60
 // 새로고침 뒤에는 Chrome이 폴더 권한을 다시 물을 수 있음: 화면을 처음 누를 때 자동으로 다시 연결 (권한 창에서 "방문할 때마다 허용"을 고르면 다음부터는 묻지 않음)
 let IB_TRY=false;document.addEventListener('pointerdown',()=>{if(IB.h&&!IB.ok&&!IB_TRY){IB_TRY=true;ibReconnect()}},true);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261123-125040';let VER_NEW=false;
+const APP_VER='20261123-130304';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
 /* ---------- 같은 화면을 다시 그릴 때(자동 번역·자료함·저장 등) 스크롤 위치를 그대로 유지. 다른 화면으로 이동할 때만 맨 위로 ---------- */
 const scrEls=()=>{const m=$('#main');return [document.scrollingElement,m,m&&m.parentElement].filter(Boolean)};
