@@ -1664,7 +1664,7 @@ const MODS={
     extra:(rows,p)=>groupSummary('분류별 장부가액',rows,'cat',[['취득가액',M('cost'),money],['장부가액',r=>mx(r,'cost')-assetAccum(r,p.end),money]]),
     blank:p=>({acq:TODAY,name:'',cat:'기계장치',cur:'MXN',cost:0,life:5})},
   loans:{big:1,name:'차입금현황',desc:'금융기관 차입금 잔액과 기간 이자',data:'loans',dated:false,
-    cols:[C('date','차입일','date'),C('bank','금융기관','text',{sug:'banks'}),C('type','구분','sel',{opts:['운전자금','시설자금','기타']}),CUR,C('fx','환율 (US$ 건)','num',{noTable:1,opt:1}),C('principal','차입금액','money',{sum:1}),C('rate','이자율(%)','num'),
+    cols:[C('date','차입일','date'),C('bank','금융기관','text',{sug:'banks'}),C('type','구분','sel',{opts:['운전자금','시설자금','기타']}),CUR,C('fx','환율 (US$ 건)','num',{noTable:1,opt:1}),Object.defineProperty(C('payBank','출금 계좌','sel',{noTable:1,opt:1}),'opts',{get:()=>['자동',...bankNames()],enumerable:true}),C('principal','차입금액','money',{sum:1}),C('rate','이자율(%)','num'),
       C('due','만기일','date'),C('repaid','상환액','money',{sum:1}),C('bal','잔액','money',{sum:1,calc:loanBal}),C('intPaid','지급 이자 누계','money',{sum:1,calc:r=>(r.pays||[]).filter(x=>x.kind==='이자').reduce((a,x)=>a+(+x.amount||0),0)*rate(r.cur)}),C('planVs','계획 대비','calc',{calc:r=>{if(!(r.plan||[]).length)return '–';const S=planEval(r.plan,r.pays).sum,b=Object.keys(S).map(k=>[k,r2(S[k].paid-S[k].plan)]).filter(x=>x[1]<=-0.01);return b.length?b.map(([k,d])=>k+' 미달 '+nf2.format(-d)).join(' · '):'정상'}}),C('impRate','역산 이자율(%)','calc',{calc:r=>{const v=loanImplied(r);return v?v.rate.toFixed(4)+(v.last!=null&&Math.abs(v.last-v.rate)>=0.01?` (최근 ${v.last.toFixed(2)})`:''):'–'}}),C('accInt','미지급 이자','money',{sum:1,calc:r=>loanAccInt(r)*rate(r.cur)}),C('lastPay','최근 지급일','calc',{calc:r=>(r.pays||[]).reduce((a,x)=>x.date>a?x.date:a,'')||'–'}),C('int','기간 이자','money',{sum:1,calc:(r,p)=>loanInt(r,p)}),C('st','상태','calc',{calc:loanStatus,pill:1})],
     kpis:(rows,p)=>{const bal=sumBy(rows,loanBal),w=bal?sumBy(rows,r=>loanBal(r)*r.rate)/bal:0,soon=rows.filter(r=>loanStatus(r)==='만기임박');
       return[kv('차입금 잔액',money(bal),rows.length+'건'),kv('기간 이자',money(sumBy(rows,r=>loanInt(r,p))),p.days+'일분','warn'),kv('가중평균 이자율',w.toFixed(2)+'%'),kv('만기 90일 이내',soon.length+'건',plain(sumBy(soon,loanBal)),soon.length?'warn':'')]},
@@ -3282,21 +3282,27 @@ function pyBox(r){const L=r.pays||[],S=k=>L.filter(x=>x.kind===k).reduce((a,x)=>
   <div class="pycols"${L.length?'':' hidden'}><span>구분</span><span>지급일</span><span>금액</span><span></span></div><div class="lnrows pyrows">${L.map(pyRow).join('')}</div></div></div>`}
 function pyRead(F){const B=F.querySelector('[data-pylines]');if(!B)return null;return [...B.querySelectorAll('.pyrow')].map(x=>{const g=k=>x.querySelector(`[data-py="${k}"]`).value.trim(),a=pnum(g('amount'));return {kind:g('kind'),date:g('date'),amount:isFinite(a)?r2(a):0}}).filter(x=>x.date||x.amount)}
 // 차입금 상환 내역 → 경리자료 출금 전표 (운영 시작일 이후 지급만). 같은 구분·지급일·금액의 전표가 이미 있으면 새로 만들지 않고 연결함
+// 출금 계좌: 차입금에서 고른 계좌, 없으면 금융기관 이름이 들어간 같은 통화 계좌(신한은행 → Shinhan US$), 그래도 없으면 기본 계좌
+const LOAN_BK={'신한':'shinhan','하나':'hana','우리':'woori','국민':'kb','기업':'ibk','산업':'kdb','수출입':'exim','농협':'nh','씨티':'citi','산탄데르':'santander','바노르테':'banorte','방코베이스':'base','베이스':'base'};
+function loanPayBank(r){const cur=r.cur||'MXN',L=bankNames(cur);if(r.payBank&&r.payBank!=='자동'&&bankNames().includes(r.payBank))return r.payBank;
+  const b=String(r.bank||'').toLowerCase().replace(/\s|은행|bank|banco/g,''),keys=[b,...Object.keys(LOAN_BK).filter(k=>b.includes(k)).map(k=>LOAN_BK[k])].filter(Boolean);
+  const hit=L.find(n=>keys.some(k=>n.toLowerCase().replace(/\s/g,'').includes(k)));return hit||bankFor(cur)}
 const LOAN_ACC={'원금':'원금 상환','이자':'이자비용'},loanPayKey=x=>`${x.kind}|${x.date}|${r2(+x.amount||0).toFixed(2)}`;
 function loanCashSync(r){const out={add:0,link:0,upd:0,del:0};if(!r||!Array.isArray(r.pays))return out;const off=new Set(r.cashOff||[]),cur=r.cur||'MXN',os=OP_START();
   const want=r.pays.filter(x=>LOAN_ACC[x.kind]&&validD(x.date)&&x.date>=os&&+x.amount>0&&!off.has(loanPayKey(x)));
-  const L=DB.cash.filter(c=>c.link===r.id&&c.linkMod==='loans'),used=new Set(),same=(c,x)=>c.account===LOAN_ACC[x.kind]&&Math.abs((+c.amount||0)-(+x.amount))<0.01;
+  const bank=loanPayBank(r),L=DB.cash.filter(c=>c.link===r.id&&c.linkMod==='loans'),used=new Set(),same=(c,x)=>c.account===LOAN_ACC[x.kind]&&Math.abs((+c.amount||0)-(+x.amount))<0.01;
   const memo=x=>`${r.bank||'차입금'} ${r.type||''} ${x.kind==='원금'?'원금 상환':'이자 지급'} (차입금현황 연계)`.replace(/\s+/g,' ');
   const todo=[];want.forEach(x=>{const c=L.find(c=>!used.has(c)&&same(c,x)&&c.date===x.date);if(c)used.add(c);else todo.push(x)});
-  const todo2=[];todo.forEach(x=>{const c=DB.cash.find(c=>!c.link&&c.type==='출금'&&c.date===x.date&&same(c,x)&&(c.cur||'MXN')===cur);
-    if(c){Object.assign(c,{link:r.id,linkMod:'loans'});used.add(c);out.link++}else todo2.push(x)});
+  const todo2=[],adopt=new Set();todo.forEach(x=>{const c=DB.cash.find(c=>!c.link&&c.type==='출금'&&c.date===x.date&&same(c,x)&&(c.cur||'MXN')===cur);
+    if(c){Object.assign(c,{link:r.id,linkMod:'loans'});used.add(c);adopt.add(c);out.link++}else todo2.push(x)});
   todo2.forEach(x=>{const c=L.find(c=>!used.has(c)&&c.account===LOAN_ACC[x.kind]&&(c.date===x.date||Math.abs((+c.amount||0)-(+x.amount))<0.01));
     if(c){used.add(c);Object.assign(c,{date:x.date,amount:r2(+x.amount),sub:r2(+x.amount),memo:memo(x)});if(cur==='USD')delete c.fx;fixRow(MODS.cash,c);out.upd++;return}
-    const n={id:uid(),date:x.date,bank:bankFor(cur),type:'출금',cat:'차입금',account:LOAN_ACC[x.kind],party:r.bank||'',memo:memo(x),cur,amount:r2(+x.amount),sub:r2(+x.amount),iva:'면세',factura:'발행',uuid:'',link:r.id,linkMod:'loans'};
+    const n={id:uid(),date:x.date,bank,type:'출금',cat:'차입금',account:LOAN_ACC[x.kind],party:r.bank||'',memo:memo(x),cur,amount:r2(+x.amount),sub:r2(+x.amount),iva:'면세',factura:'발행',uuid:'',link:r.id,linkMod:'loans'};
     fixRow(MODS.cash,n);DB.cash.unshift(n);used.add(n);out.add++});
   L.forEach(c=>{if(used.has(c))return;const j=DB.cash.indexOf(c);if(j>=0){DB.cash.splice(j,1);out.del++}});
+  used.forEach(c=>{if(!adopt.has(c)&&c.bank!==bank&&c.link===r.id){c.bank=bank;out.bank=(out.bank||0)+1}});
   return out}
-const loanCashMsg=o=>{const t=[o.add&&`새 전표 ${o.add}건`,o.link&&`기존 전표 ${o.link}건 연결`,o.upd&&`전표 ${o.upd}건 수정`,o.del&&`전표 ${o.del}건 삭제`].filter(Boolean);return t.length?` · 경리자료 ${t.join(', ')}`:''};
+const loanCashMsg=o=>{const t=[o.add&&`새 전표 ${o.add}건`,o.link&&`기존 전표 ${o.link}건 연결`,o.upd&&`전표 ${o.upd}건 수정`,o.del&&`전표 ${o.del}건 삭제`,o.bank&&`계좌 ${o.bank}건 변경`].filter(Boolean);return t.length?` · 경리자료 ${t.join(', ')}`:''};
 function pySync(F){const B=F.querySelector('[data-pylines]');if(!B)return;const L=pyRead(F)||[],S=k=>L.filter(x=>x.kind===k).reduce((a,x)=>a+(+x.amount||0),0);B.querySelector('.pycols').hidden=!B.querySelector('.pyrow');
   B.querySelector('[data-pysum]').textContent=L.length?`원금 ${nf2.format(S('원금'))} · 이자 ${nf2.format(S('이자'))} · ${L.length}건`:'원금·이자 지급을 넣으면 상환액이 자동 합산됩니다';const R=F.querySelector('[name="repaid"]');if(R&&L.length)R.value=r2(S('원금')).toFixed(2)}
 document.addEventListener('click',e=>{const t=e.target;if(!t.closest)return;const add=t.closest('[data-pyadd]'),del=t.closest('[data-pydel]');if(!add&&!del)return;e.preventDefault();e.stopPropagation();
@@ -5081,7 +5087,7 @@ setInterval(()=>{if(IB.ok&&document.visibilityState==='visible')ibScan(true)},60
 // 새로고침 뒤에는 Chrome이 폴더 권한을 다시 물을 수 있음: 화면을 처음 누를 때 자동으로 다시 연결 (권한 창에서 "방문할 때마다 허용"을 고르면 다음부터는 묻지 않음)
 let IB_TRY=false;document.addEventListener('pointerdown',()=>{if(IB.h&&!IB.ok&&!IB_TRY){IB_TRY=true;ibReconnect()}},true);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261123-110606';let VER_NEW=false;
+const APP_VER='20261123-125040';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
 /* ---------- 같은 화면을 다시 그릴 때(자동 번역·자료함·저장 등) 스크롤 위치를 그대로 유지. 다른 화면으로 이동할 때만 맨 위로 ---------- */
 const scrEls=()=>{const m=$('#main');return [document.scrollingElement,m,m&&m.parentElement].filter(Boolean)};
