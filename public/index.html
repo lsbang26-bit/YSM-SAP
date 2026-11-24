@@ -3716,13 +3716,14 @@ function repPage(md){
     <div class="duo even">${bars('매출액 추이',x=>income(x).sales)}${bars('기말 현금 잔액 추이',x=>cashBefore(addDs(x.end,1)))}</div>
     <div class="duo even">${groupSummary('고객사별 매출 (출고)',A.ob,'customer',[['출고 금액',lineAmt,money]])}${groupSummary('분류별 출금',A.O,'cat',[['금액',M('amount'),money]],r=>r.account)}</div>
     <div class="duo even">${groupSummary('계정별 입금',A.I,'account',[['금액',M('amount'),money]],r=>r.party)}${groupSummary('공급사별 매입 (외상매입)',DB.ap.filter(r=>inP(r,p)),'vendor',[['매입액',M('amount'),money],['잔액',apBal,money]])}</div>
-    ${due}</div>`;
+    ${md==='week'?'':due}</div>`;
 }
 function repXls(md){if(!window.XLSX){toast('엑셀 기능을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.');return}
   const p=period(repAnchor(md),md),q=period(shift(p.start,md,-1),md),A=repData(p),B=repData(q),r=v=>Math.round(v*100)/100,D=repDue(p,md),nm=md==='week'?'주간':'월간';
   const aoa=[[nm+' 보고 · '+p.label],['비교: '+q.label],['금액 단위 MXN (환산)'],[],['항목','이번 기간','직전 기간','증감','증감률'],
-    ...repRows(A,B).map(([l,a,b])=>[l,r(a),r(b),r(a-b),b?r((a-b)/Math.abs(b)*100)+'%':'']),[],[(md==='week'?'다음 주':'다음 달')+'까지 수금·지급 예정 및 연체 (~ '+D.n.end+')'],
-    ['구분','상태','거래처','Factura','만기일','통화','잔액 (거래 통화)','잔액 (MXN)'],...D.L.map(x=>[x.kind,x.od?'연체':'진행',x.party||'',x.folio,x.due,x.cur,r(x.nat),r(x.bal)])];
+    ...repRows(A,B).map(([l,a,b])=>[l,r(a),r(b),r(a-b),b?r((a-b)/Math.abs(b)*100)+'%':''])];
+  if(md!=='week')aoa.push([],[(md==='week'?'다음 주':'다음 달')+'까지 수금·지급 예정 및 연체 (~ '+D.n.end+')'],
+    ['구분','상태','거래처','Factura','만기일','통화','잔액 (거래 통화)','잔액 (MXN)'],...D.L.map(x=>[x.kind,x.od?'연체':'진행',x.party||'',x.folio,x.due,x.cur,r(x.nat),r(x.bal)]));
   const FW=md==='week'?fdWeek(p):null;if(FW&&FW.L.length){const B=fdBig(FW),k=c=>Math.round(sumBy(FW.L,a=>fdKRW(a[c],a.cur)));aoa.push([],['주간 자금 보고'],['','전주 잔고','입금','출금','잔고'],['원화 합계',k('open'),k('inn'),k('out'),k('close')],[],['계좌','전주 잔고','입금','출금','잔고','통화'],...FW.L.map(a=>[a.name,r(a.open),r(a.inn),r(a.out),r(a.close),a.cur]),[],['주요내용'],['구분','일자','계좌','거래처','내용','금액','통화'],...B.I.map(x=>['입금',x.date,x.acc,x.party,fdKo(x),r(x.v),x.cur]),...B.O.map(x=>['비용',x.date,x.acc,x.party,fdKo(x),r(x.v),x.cur]));const nt=((DB.fund||{}).note||{})[p.start];if(nt)aoa.push(['메모',nt])}
   if(md==='week'){const AW=repArW(p),rc=(o,c)=>r((o||{})[c]||0);if(AW.length)aoa.push([],['주간 입금 예상 · 고객사별 (거래 통화)'],['고객사','건수','통화','이번 주 만기','연체','입금 예상 합계','이번 주 입금 완료'],...AW.flatMap(x=>['MXN','USD'].filter(c=>x.due[c]||x.od[c]||x.done[c]).map(c=>[x.n,x.cnt,c,rc(x.due,c),rc(x.od,c),r(rc(x.due,c)+rc(x.od,c)),rc(x.done,c)])))}
   if(md==='week')hcSels(p).forEach(hw=>{const HR=(DB.hc||[]).filter(x=>x.wk===hw);if(HR.length)aoa.push([],['인원현황 '+hw+(HR[0].from?' ('+HR[0].from+' ~ '+HR[0].to+')':'')],['부서','인원','MXN','원화'],...HR.map(x=>[x.dept,+x.cnt||0,r(+x.mxn||0),Math.round(hcKrw(x))]),['합계',sumBy(HR,'cnt'),r(sumBy(HR,'mxn')),Math.round(sumBy(HR,hcKrw))])});
@@ -4557,6 +4558,12 @@ function cmdPeriod(t){
   if(/오늘|today|hoy/i.test(t))return {start:TODAY,end:TODAY,label:S('오늘','Today','Hoy')};
   return mp(y,T.getMonth());
 }
+// 잔액을 거래 통화별로 (US$ · 페소). natB = 원 통화 잔액 (MXN 환산 잔액 × 원금/환산원금)
+const natB=(r,f)=>{const a=+r.amount||0,m=mx(r,'amount');return (r.cur||'MXN')==='MXN'||!m?f(r):f(r)*a/m};
+const curSum=(rows,f)=>{const o={USD:0,MXN:0};rows.forEach(r=>{const c=(r.cur||'MXN')==='USD'?'USD':'MXN';o[c]+=natB(r,f)});return o};
+const curTxt=o=>['USD','MXN'].filter(c=>Math.abs(o[c])>0.005).map(c=>(c==='MXN'?'MXN ':'')+fmtCur(o[c],c)).join(' + ')||'MXN '+fmtCur(0,'MXN');
+const curSay=(o,ko)=>{const p=[];if(Math.abs(o.USD)>0.005)p.push(ko?`${plain(o.USD)} 달러`:`${plain(o.USD)} dollars`);if(Math.abs(o.MXN)>0.005||!p.length)p.push(ko?`${plain(o.MXN)} 페소`:`${plain(o.MXN)} pesos`);return p.join(ko?'와 ':' and ')};
+const topCur=(rows,k,f,n)=>topBy(rows,k,f,n).map(([key,v])=>{const o=curSum(rows.filter(r=>(r[k]||'–')===key),f);return [key,v,curTxt(o),o]});
 const topBy=(rows,k,f,n=6)=>{const m={};rows.forEach(r=>{const key=r[k]||'–';m[key]=(m[key]||0)+f(r)});return Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0,n)};
 const PESO=()=>S('페소','pesos','pesos');
 const runCmdLocal=(t,l)=>runCmd(t,l,true);
@@ -4668,13 +4675,14 @@ function runCmd(text,lang,noAI){
       say:S(`${P.label} 영업이익은 ${plain(I.op)} 페소입니다`,`Operating profit for ${P.label} is ${plain(I.op)} pesos`,`La utilidad de operación de ${P.label} es de ${plain(I.op)} pesos`)};
   }else if(has(/미수|외상\s*매출|받을|받아야|못\s*받은|receivable|por cobrar|cobranza/i)){
     const W=entS(DB.ar.map(r=>r.customer)), who=W&&(W.length>2?W.slice(0,2).join(', ')+` 외 ${W.length-2}곳`:W.join(', ')), rows=DB.ar.filter(r=>arBal(r)>0.5&&(!W||W.includes(r.customer))), tot=sumBy(rows,arBal);
-    A={title:who?`${who} · ${L('미수 잔액')}`:L('미수 잔액'),period:asOfL(TODAY),big:[[L('미수 잔액'),money(tot)],[L('건수'),String(rows.length)]],bars:topBy(rows,'customer',arBal,8),by:BYC[0],go:'ar',
-      say:S(`${who?who+' ':''}미수 잔액은 ${plain(tot)} 페소입니다`,`Accounts receivable total ${plain(tot)} pesos`,`Las cuentas por cobrar suman ${plain(tot)} pesos`)};
+    const cs=curSum(rows,arBal);
+    A={title:who?`${who} · ${L('미수 잔액')}`:L('미수 잔액'),period:asOfL(TODAY),big:[[L('미수 잔액'),curTxt(cs)],[L('건수'),String(rows.length)]],bars:topCur(rows,'customer',arBal,8),by:BYC[0],go:'ar',
+      say:S(`${who?who+' ':''}미수 잔액은 ${curSay(cs,1)}입니다`,`Accounts receivable total ${curSay(cs)}`,`Las cuentas por cobrar suman ${curSay(cs).replace(' and ',' y ').replace('dollars','dólares')}`)};
   }else if(has(/미지급|외상\s*매입|줄\s*돈|줘야|주어야|줄\s*금액|드려야|갚아야|지급할|지불할|지불해야|결제\s*(해야|할)|payable|por pagar|proveedores|owe/i)){
     const W=entS(DB.ap.map(r=>r.vendor)), who=W&&(W.length>2?W.slice(0,2).join(', ')+` 외 ${W.length-2}곳`:W.join(', ')), rows=DB.ap.filter(r=>apBal(r)>0.5&&(!W||W.includes(r.vendor))), tot=sumBy(rows,apBal);
-    const ovd=sumBy(rows.filter(r=>r.due&&r.due<TODAY),apBal);
-    A={title:who?`${who} · ${L('미지급 잔액')}`:L('미지급 잔액'),period:asOfL(TODAY),big:[[L('미지급 잔액'),money(tot)],[L('건수'),String(rows.length)],[S('연체','Overdue','Vencido'),money(ovd)]],bars:W&&W.length===1?rows.slice().sort((a,b)=>(a.due||'').localeCompare(b.due||'')).slice(0,8).map(r=>[`${r.due||'–'} · ${r.folio?'F '+r.folio:r.item||''}`,apBal(r),money(apBal(r))]):topBy(rows,'vendor',apBal,8),by:BYC[2],go:'ap',
-      say:S(`${who?who+' ':''}미지급 잔액은 ${plain(tot)} 페소입니다`,`Accounts payable total ${plain(tot)} pesos`,`Las cuentas por pagar suman ${plain(tot)} pesos`)};
+    const ovd=curSum(rows.filter(r=>r.due&&r.due<TODAY),apBal),cs=curSum(rows,apBal);
+    A={title:who?`${who} · ${L('미지급 잔액')}`:L('미지급 잔액'),period:asOfL(TODAY),big:[[L('미지급 잔액'),curTxt(cs)],[L('건수'),String(rows.length)],[S('연체','Overdue','Vencido'),curTxt(ovd)]],bars:W&&W.length===1?rows.slice().sort((a,b)=>(a.due||'').localeCompare(b.due||'')).slice(0,8).map(r=>[`${r.due||'–'} · ${r.folio?'F '+r.folio:r.item||''}`,apBal(r),((r.cur||'MXN')==='USD'?'':'MXN ')+fmtCur(natB(r,apBal),r.cur||'MXN')]):topCur(rows,'vendor',apBal,8),by:BYC[2],go:'ap',
+      say:S(`${who?who+' ':''}미지급 잔액은 ${curSay(cs,1)}입니다`,`Accounts payable total ${curSay(cs)}`,`Las cuentas por pagar suman ${curSay(cs).replace(' and ',' y ').replace('dollars','dólares')}`)};
   }else if(has(/매출|판매|출고|sales|revenue|shipment|ventas?|embarques?/i)){
     const who=ent(DB.outbound.map(r=>r.customer)), what=ent(DB.outbound.map(r=>r.product)), rows=DB.outbound.filter(r=>inP(r,P)&&(!who||r.customer===who)&&(!what||r.product===what)), tot=sumBy(rows,lineAmt), q=sumBy(rows,'qty'), tag=[who,what].filter(Boolean).join(' · ');
     A={title:(tag?tag+' · ':'')+L(has(/출고|shipment|embarque/i)&&!has(/매출|sales|venta/i)?'출고 현황':'매출'),period:P.label,big:[[L('매출액'),money(tot)],[L('출고 수량'),nf0.format(q)+' EA'],[L('건수'),String(rows.length)]],bars:topBy(rows,(who&&!what)||BYP?'product':'customer',lineAmt,8),by:BYC[(who&&!what)||BYP?1:0],go:'outbound',
@@ -4719,9 +4727,9 @@ function runCmd(text,lang,noAI){
     A.bars=Array.from({length:12},(_,i)=>{const d=new Date(T.getFullYear(),T.getMonth()-11+i,1),p={start:ds(d),end:ds(new Date(d.getFullYear(),d.getMonth()+1,0))};return [`${String(d.getFullYear()).slice(2)}.${pad(d.getMonth()+1)}`,sumBy(src.filter(r=>inP(r,p)),f)]});
     A.by=null;A.period=S('최근 12개월','Last 12 months','Últimos 12 meses');A.title=CL==='ko'?'월별 '+A.title:`${A.title} · ${S('','Monthly','Mensual')}`;
     const lastB=A.bars[A.bars.length-2];A.say=S(`월별 추이를 띄웠습니다. 지난 달은 ${plain(lastB[1])} 페소입니다`,`Here is the monthly trend. Last month was ${plain(lastB[1])} pesos`,`Aquí está la tendencia mensual. El mes pasado fue de ${plain(lastB[1])} pesos`)}
-  if(BYQ&&A&&A.by&&A.bars&&A.bars.length){const top=A.bars.slice(0,5), n=A.bars.length, list=top.map(b=>`${b[0]} ${plain(b[1])}`).join(', '), by=A.by[CL==='en'?1:CL==='es'?2:0], base=A.title;
+  if(BYQ&&A&&A.by&&A.bars&&A.bars.length){const top=A.bars.slice(0,5), n=A.bars.length, cu=top.some(b=>b[3]), list=top.map(b=>`${b[0]} ${b[3]?curSay(b[3],CL==='ko'):plain(b[1])}`).join(', '), by=A.by[CL==='en'?1:CL==='es'?2:0], base=A.title;
     A.title=CL==='ko'?`${by} ${A.title}`:`${A.title} ${by}`;
-    A.say=S(`${A.period?(/기준$/.test(A.period)?'현재':A.period)+' ':''}${by} ${base}${n>5?' 상위 5곳은':'은'} ${list} 페소입니다`,`${base} ${by}${n>5?', top 5':''}: ${list} pesos`,`${base} ${by}${n>5?', los 5 principales':''}: ${list} pesos`).replace('  ',' ')}
+    A.say=S(`${A.period?(/기준$/.test(A.period)?'현재':A.period)+' ':''}${by} ${base}${n>5?' 상위 5곳은':'은'} ${list}${cu?'':' 페소'}입니다`,`${base} ${by}${n>5?', top 5':''}: ${list}${cu?'':' pesos'}`,`${base} ${by}${n>5?', los 5 principales':''}: ${list}${cu?'':' pesos'}`).replace('  ',' ')}
   answer(A);
 }
 let CMD_PIN=false;
@@ -5128,7 +5136,7 @@ setInterval(()=>{if(IB.ok&&document.visibilityState==='visible')ibScan(true)},60
 // 새로고침 뒤에는 Chrome이 폴더 권한을 다시 물을 수 있음: 화면을 처음 누를 때 자동으로 다시 연결 (권한 창에서 "방문할 때마다 허용"을 고르면 다음부터는 묻지 않음)
 let IB_TRY=false;document.addEventListener('pointerdown',()=>{if(IB.h&&!IB.ok&&!IB_TRY){IB_TRY=true;ibReconnect()}},true);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261124-092413';let VER_NEW=false;
+const APP_VER='20261124-100404';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
 /* ---------- 같은 화면을 다시 그릴 때(자동 번역·자료함·저장 등) 스크롤 위치를 그대로 유지. 다른 화면으로 이동할 때만 맨 위로 ---------- */
 const scrEls=()=>{const m=$('#main');return [document.scrollingElement,m,m&&m.parentElement].filter(Boolean)};
