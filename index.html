@@ -5124,6 +5124,8 @@ async function ibScan(quiet){if(!IB.h||!IB.ok||IB.busy)return 0;IB.busy=true;let
         try{done=done||await dir.getDirectoryHandle('반영완료',{create:true});const t=await (await done.getFileHandle(nm,{create:true})).createWritable();await t.write(buf);await t.close();await dir.removeEntry(nm)}catch(_){}continue}
       const isX=/\.xml$/i.test(nm);if(!isX&&!/\.ysm\.json$/i.test(nm))continue;let j=null,txt='';try{txt=await (await e.getFile()).text();j=isX?ibXml(txt,path):JSON.parse(txt)}catch(_){}
       if(j&&!isX&&(j.skip||j.fix)){if(Array.isArray(j.skip))DB.ibSkip=[...new Set([...(DB.ibSkip||[]),...j.skip.map(u=>String(u).toLowerCase())])];if(j.fix)DB.ibFix=Object.assign(DB.ibFix||{},j.fix);j.rows=j.rows||{}}
+      // Claude가 은행 계좌를 새로 만드는 경우: banks [{name,cur,open,since}] → 같은 이름이 없을 때만 추가
+      if(j&&!isX&&Array.isArray(j.banks)){let nb=0;j.banks.forEach(b=>{if(!b||!b.name||BANKS().some(x=>x.name===b.name))return;SET().banks=BANKS().concat({name:String(b.name),cur:b.cur==='USD'?'USD':'MXN',open:+b.open||0,since:b.since||''});nb++});if(nb){syncOpenCash();by.bank=(by.bank||0)+nb;n+=nb}j.rows=j.rows||{}}
       if(!j||!j.rows)continue;files++;let k=0;IB_MODS.forEach(mod=>(j.rows[mod]||[]).forEach(x=>{const a=ibAdd(mod,x);k+=a;if(a)by[mod]=(by[mod]||0)+a}));n+=k;
       (DB.inboxLog=DB.inboxLog||[]).unshift({file:path+nm,at:new Date().toISOString(),n:k});DB.inboxLog=DB.inboxLog.slice(0,50);
       try{done=done||await dir.getDirectoryHandle('반영완료',{create:true});const t=await (await done.getFileHandle(nm,{create:true})).createWritable();await t.write(txt);await t.close();await dir.removeEntry(nm)}catch(_){}}};
@@ -5141,7 +5143,7 @@ setInterval(()=>{if(IB.ok&&document.visibilityState==='visible')ibScan(true)},60
 // 새로고침 뒤에는 Chrome이 폴더 권한을 다시 물을 수 있음: 화면을 처음 누를 때 자동으로 다시 연결 (권한 창에서 "방문할 때마다 허용"을 고르면 다음부터는 묻지 않음)
 let IB_TRY=false;document.addEventListener('pointerdown',()=>{if(IB.h&&!IB.ok&&!IB_TRY){IB_TRY=true;ibReconnect()}},true);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261124-120123';let VER_NEW=false;
+const APP_VER='20261124-142001';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
 /* ---------- 같은 화면을 다시 그릴 때(자동 번역·자료함·저장 등) 스크롤 위치를 그대로 유지. 다른 화면으로 이동할 때만 맨 위로 ---------- */
 const scrEls=()=>{const m=$('#main');return [document.scrollingElement,m,m&&m.parentElement].filter(Boolean)};
