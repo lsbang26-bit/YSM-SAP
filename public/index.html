@@ -1204,7 +1204,7 @@ let DB=null;
 DB=LS.get(KEY);if(DB&&DB.payIdb)PAY_OK=false;
 if(!DB||!DB.cash){DB=migrate(seed());LS.set(KEY,DB)}else{DB=migrate(DB);LS.set(KEY,DB)}
 syncFromAR(DB);LS.set(KEY,DB);
-if(!PAY_OK)bkIDB('readonly',st=>st.get('payroll')).then(v=>{if(v===null)return;const have=new Set((v||[]).map(r=>r.id)),add=(DB.payroll||[]).filter(r=>!have.has(r.id));DB.payroll=(Array.isArray(v)?v:[]).concat(add);PAY_OK=true;if(add.length)LS.set(KEY,DB);try{VCACHE.clear();calcReset();renderMain()}catch(e){}});
+if(!PAY_OK)bkIDB('readonly',st=>st.get('payroll')).then(v=>{if(v===null)return;const have=new Set((v||[]).map(r=>r.id)),add=(DB.payroll||[]).filter(r=>!have.has(r.id));DB.payroll=(Array.isArray(v)?v:[]).concat(add);PAY_OK=true;if(hcSyncPay()||add.length)LS.set(KEY,DB);try{VCACHE.clear();calcReset();renderMain()}catch(e){}});
 let UI=Object.assign({cons:null,mod:'dash-all',mode:'week',cur:'MXN',open:{fin:true,rep:true,tax:true,in:true,prod:true,out:true,sales:true,gen:true},fs:{unit:'month',year:THIS_YEAR,sel:[TODAY_D.getMonth()+1]}},LS.get(UKEY)||{});
 if(!UI.fs||!Array.isArray(UI.fs.sel)||!UI.fs.sel.length)UI.fs={unit:'month',year:THIS_YEAR,sel:[TODAY_D.getMonth()+1]};
 UI.q='';UI.cur='MXN';UI.fm=Object.assign({year:THIS_YEAR,sel:[TODAY_D.getMonth()+1]},UI.fm||{});if(!Array.isArray(UI.fm.sel)||!UI.fm.sel.length)UI.fm.sel=[TODAY_D.getMonth()+1];
@@ -3582,6 +3582,11 @@ const hcDeptKo=t=>{t=String(t||'').trim();const m=HC_DEPT.find(([re])=>re.test(t
 function hcFromRaya(aoa){const R=rayaContpaq(aoa);if(!R||!R.rows.length)return [];const P=R.period||{},wk=P.per&&/^W/.test(P.per)?P.per.replace(/~.*/,''):(P.per||('W'+isoWeek(pd(P.to||TODAY))));const G={},src={};
   R.rows.forEach(r=>{const d=hcDeptKo(r.cdept);(G[d]=G[d]||{cnt:0,mxn:0,neto:0,er:0});G[d].cnt++;G[d].mxn+=r.sueldo+r.ot+r.bonus;G[d].neto+=+r.neto||0;G[d].er+=(+r.imssPat||0)+(+r.rcv||0)+(+r.infPat||0)+(+r.isn||0);(src[d]=src[d]||new Set()).add(r.cdept||'Ninguno')});
   return Object.keys(G).sort((a,b)=>G[b].cnt-G[a].cnt).map(d=>({wk,n:hcWkN(wk),dept:d,cnt:G[d].cnt,mxn:Math.round(G[d].mxn*100)/100,neto:Math.round(G[d].neto*100)/100,er:Math.round(G[d].er*100)/100,krw:0,src:[...src[d]].join(', '),from:P.from||'',to:P.to||''}))}
+// 급여지급내역(Contpaq)에 있는데 인원현황에 없는 기간(W·C·M)을 급여 자료로 채움. 직접 올린 인원현황은 건드리지 않음
+function hcSyncPay(){const have=new Set((DB.hc||[]).map(r=>r.wk)),G={};(DB.payroll||[]).forEach(r=>{if(r.src!=='Contpaq'||!/^[WCM]\d+$/.test(r.per||'')||have.has(r.per))return;(G[r.per]=G[r.per]||[]).push(r)});
+  const add=[];Object.entries(G).forEach(([wk,L])=>{const D={},src={};L.forEach(r=>{const d=hcDeptKo(r.cdept);const x=D[d]=D[d]||{cnt:0,mxn:0,neto:0,er:0};x.cnt++;x.mxn+=payGross(r);x.neto+=payNet(r);x.er+=payER(r);(src[d]=src[d]||new Set()).add(r.cdept||'Ninguno')});
+    Object.keys(D).sort((a,b)=>D[b].cnt-D[a].cnt).forEach(d=>add.push({wk,n:hcWkN(wk),dept:d,cnt:D[d].cnt,mxn:r2(D[d].mxn),neto:r2(D[d].neto),er:r2(D[d].er),krw:0,src:[...src[d]].join(', '),from:L[0].from||'',to:L[0].to||''}))});
+  if(add.length)DB.hc=(DB.hc||[]).concat(add);return add.length}
 function hcSel(p){const W=hcWeeks();if(!W.length)return '';if(W.includes(UI.hcw))return UI.hcw;const iw=p?W.find(w=>hcWkN(w)===isoWeek(pd(p.start))):'';return iw||W[W.length-1]}
 const hcKrw=r=>+r.krw||(+r.mxn||0)*KRWM(r.from||TODAY);
 // 캡처 양식: 'W1' 제목 아래 부서 | 인원 | MXN | 원화. 여러 주가 옆으로(또는 아래로) 이어져도 '부서' 머리글마다 한 주로 읽음
@@ -5110,7 +5115,7 @@ async function ibScan(quiet){if(!IB.h||!IB.ok||IB.busy)return 0;IB.busy=true;let
       (DB.inboxLog=DB.inboxLog||[]).unshift({file:path+nm,at:new Date().toISOString(),n:k});DB.inboxLog=DB.inboxLog.slice(0,50);
       try{done=done||await dir.getDirectoryHandle('반영완료',{create:true});const t=await (await done.getFileHandle(nm,{create:true})).createWritable();await t.write(txt);await t.close();await dir.removeEntry(nm)}catch(_){}}};
   try{await walk(IB.h,'',0);
-    IB.last=new Date();if(files){save();quiet?bgRender():renderMain();if(n)koFix(false)}
+    IB.last=new Date();if(files){if(by.payroll)hcSyncPay();save();quiet?bgRender():renderMain();if(n)koFix(false)}
     if(IB.dups&&IB.dups.length&&!modal){modal={type:'dup',src:'ib',list:IB.dups};IB.dups=[];renderModal()}
     if(IB.cum&&IB.cum.length){const c=uniq(IB.cum);IB.cum=[];toast(`누계 lista de raya ${c.length}개는 넣지 않았습니다 (${c.join(', ')}). 한 기간짜리 파일을 넣어 주세요`)}
     if(n)toast(`자료함 자료 ${n}건을 반영했습니다 (${Object.entries(by).map(([k,v])=>`${(MODS[k]||{}).name||k} ${v}건`).join(', ')})`,{label:'보기',fn:()=>go(Object.keys(by)[0])});
@@ -5123,7 +5128,7 @@ setInterval(()=>{if(IB.ok&&document.visibilityState==='visible')ibScan(true)},60
 // 새로고침 뒤에는 Chrome이 폴더 권한을 다시 물을 수 있음: 화면을 처음 누를 때 자동으로 다시 연결 (권한 창에서 "방문할 때마다 허용"을 고르면 다음부터는 묻지 않음)
 let IB_TRY=false;document.addEventListener('pointerdown',()=>{if(IB.h&&!IB.ok&&!IB_TRY){IB_TRY=true;ibReconnect()}},true);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261124-090821';let VER_NEW=false;
+const APP_VER='20261124-092413';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
 /* ---------- 같은 화면을 다시 그릴 때(자동 번역·자료함·저장 등) 스크롤 위치를 그대로 유지. 다른 화면으로 이동할 때만 맨 위로 ---------- */
 const scrEls=()=>{const m=$('#main');return [document.scrollingElement,m,m&&m.parentElement].filter(Boolean)};
