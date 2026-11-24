@@ -773,7 +773,11 @@ const num=v=>nfq.format(+v||0);
 const pct=v=>isFinite(v)?(v*100).toFixed(1)+'%':'–';
 const uid=()=>'r'+Math.random().toString(36).slice(2,10);
 const pad3=n=>String(n).padStart(3,'0');
-const LS={get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){return false}}};
+// 급여지급내역(payroll)은 양이 많아 브라우저 저장 한도(약 5MB)를 넘으므로 IndexedDB에 따로 저장. localStorage에는 payroll:[] + payIdb:1만 둠
+let PAY_OK=true,payT=null;const payPut=v=>bkIDB('readwrite',st=>st.put(v,'payroll'));
+const LS={get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},set(k,v){try{let t;
+  if(k===KEY&&v&&Array.isArray(v.payroll)){if(v!==DB||PAY_OK){const pr=v.payroll;clearTimeout(payT);payT=setTimeout(()=>payPut(pr),400)}t=JSON.stringify(Object.assign({},v,{payroll:[],payIdb:1}))}else t=JSON.stringify(v);
+  localStorage.setItem(k,t);return true}catch(e){return false}}};
 const TODAY_D=new Date();TODAY_D.setHours(0,0,0,0);
 const TODAY=ds(TODAY_D), THIS_YEAR=TODAY_D.getFullYear();
 function isoWeek(d){const t=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));const day=t.getUTCDay()||7;t.setUTCDate(t.getUTCDate()+4-day);const y0=new Date(Date.UTC(t.getUTCFullYear(),0,1));return Math.ceil(((t-y0)/864e5+1)/7)}
@@ -1197,9 +1201,10 @@ function migrate3(D){
 /* ---------- state ---------- */
 const KEY='ysm-sap-data-v1', UKEY='ysm-sap-ui-v1';
 let DB=null;
-DB=LS.get(KEY);
+DB=LS.get(KEY);if(DB&&DB.payIdb)PAY_OK=false;
 if(!DB||!DB.cash){DB=migrate(seed());LS.set(KEY,DB)}else{DB=migrate(DB);LS.set(KEY,DB)}
 syncFromAR(DB);LS.set(KEY,DB);
+if(!PAY_OK)bkIDB('readonly',st=>st.get('payroll')).then(v=>{if(v===null)return;const have=new Set((v||[]).map(r=>r.id)),add=(DB.payroll||[]).filter(r=>!have.has(r.id));DB.payroll=(Array.isArray(v)?v:[]).concat(add);PAY_OK=true;if(add.length)LS.set(KEY,DB);try{VCACHE.clear();calcReset();renderMain()}catch(e){}});
 let UI=Object.assign({cons:null,mod:'dash-all',mode:'week',cur:'MXN',open:{fin:true,rep:true,tax:true,in:true,prod:true,out:true,sales:true,gen:true},fs:{unit:'month',year:THIS_YEAR,sel:[TODAY_D.getMonth()+1]}},LS.get(UKEY)||{});
 if(!UI.fs||!Array.isArray(UI.fs.sel)||!UI.fs.sel.length)UI.fs={unit:'month',year:THIS_YEAR,sel:[TODAY_D.getMonth()+1]};
 UI.q='';UI.cur='MXN';UI.fm=Object.assign({year:THIS_YEAR,sel:[TODAY_D.getMonth()+1]},UI.fm||{});if(!Array.isArray(UI.fm.sel)||!UI.fm.sel.length)UI.fm.sel=[TODAY_D.getMonth()+1];
@@ -1409,7 +1414,10 @@ const hasCfdi=r=>r.factura==='발행'||r.factura==='수입(Pedimento)';
 const expAmt=r=>mx(r,'amount')+((+r.ivaRet||0)+(+r.isrRet||0))*rate(r.cur)-(hasCfdi(r)?ivaPart(r):0);
 // 비용 환급: 제조비용·판관비용으로 분류한 입금(예: DHL 대금 반환)은 그 비용 계정을 줄임
 const isRefund=r=>r.type==='입금'&&(r.cat==='제조비용'||r.cat==='판관비용');
-const expBy=(cat,acc,p)=>sumBy(DB.ap.filter(r=>!isAdv(r)&&r.cat===cat&&r.account===acc&&inP(r,p)),expAmt)+sumBy(DB.cash.filter(r=>r.type==='출금'&&r.cat===cat&&r.account===acc&&inP(r,p)),expAmt)-sumBy(DB.cash.filter(r=>r.type==='입금'&&r.cat===cat&&r.account===acc&&inP(r,p)),expAmt);
+// Contpaq 급여(주급·14일)를 경리자료에서 지급한 전표 (거래처 LISTA DE RAYA, 한국인 급여 제외): 급여지급내역에 그 기간 급여가 있으면 비용은 급여지급내역으로 잡고 이 전표는 지급만으로 봄
+let PAYMAX=null;const payMax=()=>{if(PAYMAX===null)PAYMAX=(DB.payroll||[]).reduce((a,r)=>r.src==='Contpaq'&&r.date>a?r.date:a,'');return PAYMAX};
+const isPayCash=r=>r.cat==='제조비용'&&r.account==='노무비'&&/LISTA DE RAYA/i.test(r.party||'')&&!/한국인/.test(r.memo||'')&&!!payMax()&&r.date<=addDs(payMax(),21);
+const expBy=(cat,acc,p)=>sumBy(DB.ap.filter(r=>!isAdv(r)&&r.cat===cat&&r.account===acc&&inP(r,p)),expAmt)+sumBy(DB.cash.filter(r=>r.type==='출금'&&r.cat===cat&&r.account===acc&&inP(r,p)&&!isPayCash(r)),expAmt)-sumBy(DB.cash.filter(r=>r.type==='입금'&&r.cat===cat&&r.account===acc&&inP(r,p)),expAmt);
 // labor cost by department: payroll records (gross + employer contributions) when the period has any; otherwise daily wage × days
 function laborCost(depts,p){
   const all=(DB.payroll||[]).filter(r=>inP(r,p));
@@ -1440,7 +1448,7 @@ function fxRealized(p){
 }
 // open US$ amount of a document on date d: linked payments up to d count; any unlinked settled part counts from the due date
 var LINKIX=null,LINKDB=null,INCC=new Map();
-function calcReset(){LINKIX=null;CNIX=null;if(INCC)INCC.clear()}
+function calcReset(){PAYMAX=null;LINKIX=null;CNIX=null;if(INCC)INCC.clear()}
 function cashByLink(id){if(!LINKIX||LINKDB!==DB){LINKDB=DB;LINKIX=new Map();(DB.cash||[]).forEach(c=>{if(!c.link)return;const a=LINKIX.get(c.link);if(a)a.push(c);else LINKIX.set(c.link,[c])})}return LINKIX.get(id)||[]}
 function usdOpen(r,d,done){
   const L=cashByLink(r.id), linked=sumBy(L,'amount'), upTo=sumBy(L.filter(c=>c.date<=d),'amount'), rest=Math.max(0,(+r[done]||0)-linked);
@@ -2278,6 +2286,7 @@ function ledgerData(p){
     if(k==='이자수익'&&!out)return {a:acc('영업외수익','이자수익','cr'),l:'이자수익',v:net};
     if(cat==='영업외수익'&&!out)return {a:acc('영업외수익',k||'기타','cr'),l:k,v:net};
     if(cat==='영업외비용'&&out)return {a:acc('영업외비용',k||'기타','dr'),l:k,v:net};
+    if(out&&isPayCash(c))return {l:'급여 지급 (급여지급내역 기준 비용)'};
     if(out){const e=expAcc(c);if(e)return {a:e,l:k,v:expAmt(c)}}
     if(isRefund(c)){const e=expAcc(c);if(e)return {a:e,l:k+' (환급)',v:expAmt(c)}}
     if(cat==='자산매입')return {l:k+' (유형자산은 자산현황 기준)'};
@@ -2692,7 +2701,7 @@ async function pdfLines(buf){
   }
   return out;
 }
-const DEPT_MAP=[[/molde|mantenim|maintenance|mtto/i,'금형 보전'],[/desarroll|ingenier|engineer/i,'생기'],[/prod|manufac|planta|operac|pintura|prensa|soldad|ensambl/i,'생산'],[/calid|quality|inspec/i,'품질'],[/almac|log[ií]st|embarq|tr[aá]fico|compras/i,'물류'],[/venta|comerc|sales/i,'영업'],[/admin|contab|finan|direc|recursos|rh|gerenc|limpieza|asuntos/i,'관리']];
+const DEPT_MAP=[[/molde|mantenim|maintenance|mtto|tool\s*room/i,'금형 보전'],[/purchas/i,'구매/영업'],[/account|human|legal|\behs\b|seguridad/i,'관리'],[/desarroll|ingenier|engineer/i,'생기'],[/prod|manufac|planta|operac|pintura|prensa|soldad|ensambl/i,'생산'],[/calid|quality|inspec/i,'품질'],[/almac|log[ií]st|embarq|tr[aá]fico|compras/i,'물류'],[/venta|comerc|sales/i,'영업'],[/admin|contab|finan|direc|recursos|rh|gerenc|limpieza|asuntos/i,'관리']];
 const mapDept=t=>{t=String(t||'');if(DEPTS.includes(t))return t;const m=DEPT_MAP.find(([re])=>re.test(t));return m?m[1]:''};
 function rayaRow(g,code,name,dept){
   const sueldo=g('sueldo')+g('septimo'), ot=g('ot'), tperc=g('tperc')||(sueldo+ot+g('extraP')), bonus=Math.max(0,Math.round((tperc-sueldo-ot)*100)/100);
@@ -4975,7 +4984,7 @@ const bkTime=d=>{if(!d)return '';const x=new Date(d);return `${x.getMonth()+1}/$
 async function bkWrite(){if(!BK.h||!BK.ok||BK.busy)return;BK.busy=true;try{const w=await BK.h.createWritable();await w.write(bkPayload());await w.close();BK.at=new Date()}catch(e){BK.ok=false}BK.busy=false;try{renderNav()}catch(e){}}
 function bkQueue(){if(!BK.h||!BK.ok)return;clearTimeout(BK.t);BK.t=setTimeout(bkWrite,700)}
 async function bkRead(h){try{const j=JSON.parse(await (await h.getFile()).text());return j&&j.data&&j.data.cash?j:null}catch(e){return null}}
-function bkApply(j){DB=migrate(j.data);LS.set(KEY,DB);LS.set('ysm-sap-saved-at',Date.parse(j.savedAt)||Date.now());if(j.ui)LS.set(UKEY,j.ui);if(j.layout)LS.set('ysm-sap-layout-v1',j.layout);location.reload()}
+async function bkApply(j){DB=migrate(j.data);PAY_OK=true;LS.set(KEY,DB);clearTimeout(payT);await payPut(DB.payroll||[]);LS.set('ysm-sap-saved-at',Date.parse(j.savedAt)||Date.now());if(j.ui)LS.set(UKEY,j.ui);if(j.layout)LS.set('ysm-sap-layout-v1',j.layout);location.reload()}
 // 파일 쪽이 더 최신이면 불러오고, 아니면 지금 자료로 파일을 갱신
 async function bkSync(){const j=await bkRead(BK.h);const local=+LS.get('ysm-sap-saved-at')||0;
   if(j&&Date.parse(j.savedAt)>local+1000){bkApply(j);return}await bkWrite()}
@@ -5061,6 +5070,14 @@ function userBusy(){if(modal)return true;const a=document.activeElement;if(a&&/^
 let BG_PEND=false;function bgRender(){if(userBusy()){BG_PEND=true;return}BG_PEND=false;renderMain()}
 setInterval(()=>{if(BG_PEND&&!userBusy())bgRender()},3000);
 ['input','change'].forEach(ev=>document.addEventListener(ev,e=>{const f=e.target&&e.target.form;if(f&&(f.dataset.reg||f.dataset.edit))f.dataset.dirty='1'},true));
+// 자료함 급여 폴더의 Contpaq lista de raya 엑셀을 바로 반영. 지급일 = 기간 종료일, 같은 직원·지급일·구분은 건너뜀. 누계표(Periodo 1 al 24 등)는 넣지 않음
+function ibRaya(aoa){const res=rayaContpaq(aoa);if(!res||!res.period||!res.rows.length)return null;const P=res.period;
+  if(/~/.test(P.per||'')||!validD(P.from)||!validD(P.to)||diffD(P.from,P.to)>40)return {cum:1,P};
+  const date=P.to,ptype=P.ptype,per=P.per||'',pyear=per?perYear(per,date):'',days=diffD(P.from,P.to)+1;let n=0,sk=0;
+  res.rows.forEach(x=>{const e=x.emp,name=e?e.name:x.name;if(DB.payroll.some(r=>(x.code&&r.code?String(r.code)===String(x.code):r.emp===name)&&r.date===date&&(r.ptype||'주급')===ptype)){sk++;return}
+    const r={id:uid(),date,emp:name,dept:x.dept||(e?e.dept:'관리'),cdept:x.cdept||'',code:x.code||'',ptype,per,pyear,from:P.from,to:P.to,days,cur:'MXN',daily:e?+e.daily||0:(days?r2(x.sueldo/days):0),sueldo:x.sueldo,ot:x.ot,bonus:x.bonus,isr:x.isr,imss:x.imss,infon:x.infon,oded:x.oded,src:'Contpaq',byClaude:1,isNew:1,newChk:1};
+    ['imssPat','rcv','infPat','isn'].forEach(k=>{if(res.keys.includes(k))r[k]=x[k]});DB.payroll.unshift(payFill(r));n++});
+  return {n,sk,P}}
 function ibAdd(mod,x){const m=MODS[mod];if(!m||!Array.isArray(DB[m.data]))return 0;const u=String(x.uuid||'').trim().toLowerCase();
   // Claude가 분류를 고쳐 보내는 경우 (upd:1): 같은 CFDI UUID 건의 분류·계정·품목만 바꿈
   // Claude가 같은 ibKey 건을 새 자료로 바꿔 보내는 경우 (예: 수입면장 Proforma → Pagado 확정본)
@@ -5084,6 +5101,9 @@ async function ibScan(quiet){if(!IB.h||!IB.ok||IB.busy)return 0;IB.busy=true;let
   // 자료함 바로 아래와 하위 폴더(외상매입·외상매출·급여 …)까지 읽음. 각 폴더의 "반영완료"는 건너뜀
   const walk=async(dir,path,depth)=>{let done=null;const ents=[];for await(const ne of dir.entries())ents.push(ne);ents.sort((a,b)=>(/\.json$/i.test(b[0])?1:0)-(/\.json$/i.test(a[0])?1:0));for(const [nm,e] of ents){
       if(e.kind==='directory'){if(nm!=='반영완료'&&depth<2)await walk(e,path+nm+'/',depth+1);continue}
+      if(/\.xlsx?$/i.test(nm)&&/^급여\//.test(path)&&window.XLSX&&!/^~\$/.test(nm)){let o=null,buf=null;const fl=await e.getFile(),fk=path+nm+'|'+fl.size+'|'+fl.lastModified;IB.nx=IB.nx||new Set();if(IB.nx.has(fk))continue;try{buf=await fl.arrayBuffer();const wb=XLSX.read(new Uint8Array(buf),{type:'array'});o=ibRaya(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:'',raw:true}))}catch(_){}
+        if(!o){IB.nx.add(fk);continue}if(o.cum){IB.nx.add(fk);(IB.cum=IB.cum||[]).push(nm);continue}files++;n+=o.n;if(o.n)by.payroll=(by.payroll||0)+o.n;(DB.inboxLog=DB.inboxLog||[]).unshift({file:path+nm,at:new Date().toISOString(),n:o.n});DB.inboxLog=DB.inboxLog.slice(0,50);
+        try{done=done||await dir.getDirectoryHandle('반영완료',{create:true});const t=await (await done.getFileHandle(nm,{create:true})).createWritable();await t.write(buf);await t.close();await dir.removeEntry(nm)}catch(_){}continue}
       const isX=/\.xml$/i.test(nm);if(!isX&&!/\.ysm\.json$/i.test(nm))continue;let j=null,txt='';try{txt=await (await e.getFile()).text();j=isX?ibXml(txt,path):JSON.parse(txt)}catch(_){}
       if(j&&!isX&&(j.skip||j.fix)){if(Array.isArray(j.skip))DB.ibSkip=[...new Set([...(DB.ibSkip||[]),...j.skip.map(u=>String(u).toLowerCase())])];if(j.fix)DB.ibFix=Object.assign(DB.ibFix||{},j.fix);j.rows=j.rows||{}}
       if(!j||!j.rows)continue;files++;let k=0;IB_MODS.forEach(mod=>(j.rows[mod]||[]).forEach(x=>{const a=ibAdd(mod,x);k+=a;if(a)by[mod]=(by[mod]||0)+a}));n+=k;
@@ -5092,6 +5112,7 @@ async function ibScan(quiet){if(!IB.h||!IB.ok||IB.busy)return 0;IB.busy=true;let
   try{await walk(IB.h,'',0);
     IB.last=new Date();if(files){save();quiet?bgRender():renderMain();if(n)koFix(false)}
     if(IB.dups&&IB.dups.length&&!modal){modal={type:'dup',src:'ib',list:IB.dups};IB.dups=[];renderModal()}
+    if(IB.cum&&IB.cum.length){const c=uniq(IB.cum);IB.cum=[];toast(`누계 lista de raya ${c.length}개는 넣지 않았습니다 (${c.join(', ')}). 한 기간짜리 파일을 넣어 주세요`)}
     if(n)toast(`자료함 자료 ${n}건을 반영했습니다 (${Object.entries(by).map(([k,v])=>`${(MODS[k]||{}).name||k} ${v}건`).join(', ')})`,{label:'보기',fn:()=>go(Object.keys(by)[0])});
     else if(files&&!quiet)toast('자료함 파일을 읽었지만 새 자료가 없습니다 (이미 등록된 CFDI UUID)');else if(!quiet)toast('자료함에 새 파일이 없습니다')}
   catch(e){IB.ok=false;try{renderNav()}catch(_){}}IB.busy=false;return n}
@@ -5102,7 +5123,7 @@ setInterval(()=>{if(IB.ok&&document.visibilityState==='visible')ibScan(true)},60
 // 새로고침 뒤에는 Chrome이 폴더 권한을 다시 물을 수 있음: 화면을 처음 누를 때 자동으로 다시 연결 (권한 창에서 "방문할 때마다 허용"을 고르면 다음부터는 묻지 않음)
 let IB_TRY=false;document.addEventListener('pointerdown',()=>{if(IB.h&&!IB.ok&&!IB_TRY){IB_TRY=true;ibReconnect()}},true);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261124-085334';let VER_NEW=false;
+const APP_VER='20261124-090821';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
 /* ---------- 같은 화면을 다시 그릴 때(자동 번역·자료함·저장 등) 스크롤 위치를 그대로 유지. 다른 화면으로 이동할 때만 맨 위로 ---------- */
 const scrEls=()=>{const m=$('#main');return [document.scrollingElement,m,m&&m.parentElement].filter(Boolean)};
