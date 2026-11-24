@@ -846,8 +846,8 @@ const ACCOUNTS={
   '보통예금':['계좌 이체','예금 입금','예금 인출'],
   '영업외수익':['이자수익','외환차익','임대료수익','유형자산처분이익','잡이익'],
   '영업외비용':['외환차손','유형자산처분손실','기부금','잡손실','이자비용'],
-  '유동부채':['단기차입금']};
-const NOVAT_ACC=['차입금 입금','원금 상환','단기차입금','수입 부가세','부가세대급금'];
+  '유동부채':['단기차입금','예수금']};
+const NOVAT_ACC=['차입금 입금','원금 상환','단기차입금','예수금','수입 부가세','부가세대급금'];
 const CATS4=['자산매입','제조비용','판관비용','차입금'];
 const PTYPES=['주급','14 급여','월급','특별'];
 const PER_PFX={'주급':'W','14 급여':'C','월급':'M','특별':'S'};
@@ -1510,12 +1510,13 @@ function balance(end){
   const ap0=sumBy(DB.ap.filter(r=>r.date<=end&&!isAdv(r)),apBal);
   const loans=sumBy(DB.loans.filter(r=>r.date<=end),loanBal);
   const stLoan=sumBy(DB.cash.filter(r=>r.cat==='유동부채'&&r.account==='단기차입금'&&validD(r.date)&&r.date<=end),r=>(r.type==='입금'?1:-1)*mx(r,'amount'));
+  const dep=sumBy(DB.cash.filter(r=>r.cat==='유동부채'&&r.account==='예수금'&&validD(r.date)&&r.date<=end),r=>(r.type==='입금'?1:-1)*mx(r,'amount'));
   const accr=sumBy(DB.employees,e=>{const y=payableYTD(e,end);return y.ag+y.vp+y.sf});
   const v=vatCalc({start:'0000-01-01',end}), vatRec=vatAP(end), vatLiab=v.net-v.paid+vatAR(end);
   const y0=end.slice(0,4)+'-01-01', citLiab=citCalc({start:y0,end}).isr-sumBy(DB.cash.filter(r=>r.account==='법인세 납부'&&r.date>=y0&&r.date<=end),M('amount'));
   let prepaid=0,apAdv=0;DB.ap.filter(a=>isAdv(a)&&a.date<=end).forEach(a=>{const used=DB.ap.filter(r=>r.date<=end).reduce((s,r)=>s+(r.advUse||[]).filter(x=>x.id===a.id).reduce((t,x)=>t+(+x.amt||0),0),0),v=(used-(+a.paid||0))*rowFx(a);if(v<0)prepaid-=v;else apAdv+=v});
-  const ap=ap0+apAdv,assets=cashBal+ar+inv+fixed+vatRec+prepaid, liab=ap+loans+stLoan+accr+vatLiab+citLiab;
-  return {cashBal,ar,inv,fixed,vatRec,prepaid,assets,ap,loans,stLoan,accr,vatLiab,citLiab,liab,equity:assets-liab};
+  const ap=ap0+apAdv,assets=cashBal+ar+inv+fixed+vatRec+prepaid, liab=ap+loans+stLoan+dep+accr+vatLiab+citLiab;
+  return {cashBal,ar,inv,fixed,vatRec,prepaid,assets,ap,loans,stLoan,dep,accr,vatLiab,citLiab,liab,equity:assets-liab};
 }
 
 /* ---------- suggestions ---------- */
@@ -2354,7 +2355,7 @@ const FSD_PL={sales:['매출액',fsdA('매출|제품매출')],
   finExp:['금융비용',fsdG('영업외비용')],interest:['이자비용 (차입금현황)',fsdA('영업외비용|이자비용')],fxLoss:['외환차손 (US$ 외상 결제)',fsdA('영업외비용|외환차손'),e=>e.src==='fs'],fxtLoss:['외화환산손실',fsdA('영업외비용|외화환산손실')],
   othExp:['기타 영업외비용',a=>a.g==='영업외비용'&&a.n!=='이자비용'&&a.n!=='외화환산손실',e=>e.src!=='fs'],cogs:['매출원가',fsdG('제조원가'),null,'아래 거래는 당기 제조비용(재료 매입·노무비·제조경비)입니다. 재고 증감을 반영한 매출원가 계산은 다음과 같습니다',p=>{const m=mfgCalc(p);return [['기초원재료',m.begRM],['당기재료매입',m.purch],['기말원재료',-m.endRM],['노무비',m.labor],['제조경비',m.overhead],['기초제품',m.begFG],['기말제품',-m.endFG],['매출원가',m.cogs,1]]}]};
 const FSD_BS={cashBal:['현금및현금성자산',a=>a.n.startsWith('보통예금 · ')],ar:['매출채권 (외상매출)',fsdA('자산|외상매출금')],fixed:['유형자산 장부가액',a=>a.n.startsWith('유형자산 · ')||a.n==='감가상각누계액'],
-  ap:['매입채무 (외상매입)',fsdA('부채|외상매입금')],stLoan:['단기차입금 (경리자료)',fsdA('부채|단기차입금')],loans:['차입금 (차입금현황)',fsdA('부채|차입금')]};
+  ap:['매입채무 (외상매입)',fsdA('부채|외상매입금')],stLoan:['단기차입금 (경리자료)',fsdA('부채|단기차입금')],dep:['예수금 (경리자료)',fsdA('부채|예수금')],loans:['차입금 (차입금현황)',fsdA('부채|차입금')]};
 const FSD_M={rm:['원재료비',fsdA('제조원가|원·부재료 매입 (입고)'),null,'재고액은 재고조사 평가액이고, 아래 거래는 당기 매입분입니다',p=>{const m=mfgCalc(p);return [['기초원재료',m.begRM],['당기재료매입',m.purch],['기말원재료',-m.endRM],['원재료비',m.rm,1]]}],purch:['당기재료매입액',fsdA('제조원가|원·부재료 매입 (입고)')],
   labor:['노무비',fsdA('제조원가|노무비 (급여)','제조원가|노무비','제조원가|법정복리비','제조원가|제수당')],wage:['급상여(제)',fsdA('제조원가|노무비 (급여)','제조원가|노무비')],social:['법정복리비(제)',fsdA('제조원가|법정복리비')],allow:['제수당(제)',fsdA('제조원가|제수당')],
   overhead:['제조경비',a=>a.g==='제조원가'&&!['원·부재료 매입 (입고)','노무비 (급여)','노무비','법정복리비','제수당'].includes(a.n)],dep:['감가상각비(제)',fsdA('제조원가|감가상각비')],hq:['본사관리비 배부(제)',fsdA('제조원가|본사관리비 배부')]};
@@ -2415,7 +2416,7 @@ function fsPage(){
     <div class="card"><header><h2>재무상태표</h2><span class="meta">각 기간 말일 기준 (진행 중인 기간은 오늘 기준)</span></header><div class="tw"><table class="stmt">
       ${head(P.map(p=>p.label+' 말'),false)}<tbody>
       ${bsRow('자산 총계','assets','sub')}${bsRow('현금및현금성자산','cashBal','ind')}${bsRow('매출채권 (외상매출)','ar','ind')}${bsRow('재고자산 (원·부자재·제품, 재고조사 평가)','inv','ind')}${bsRow('유형자산 장부가액','fixed','ind')}${bsRow('부가세 대급금 (미지급 매입분 IVA)','vatRec','ind')}${bsRow('선급금 (Factura 전 선지급 잔액)','prepaid','ind')}
-      ${bsRow('부채 총계','liab','sub')}${bsRow('매입채무 (외상매입)','ap','ind')}${bsRow('단기차입금 (경리자료)','stLoan','ind')}${bsRow('차입금 (차입금현황)','loans','ind')}${bsRow('미지급 인건비 (미지급금)','accr','ind')}${bsRow('부가세 예수금·미납부 (IVA)','vatLiab','ind')}${bsRow('미지급 법인세 (ISR, − 는 선급)','citLiab','ind')}
+      ${bsRow('부채 총계','liab','sub')}${bsRow('매입채무 (외상매입)','ap','ind')}${bsRow('단기차입금 (경리자료)','stLoan','ind')}${bsRow('예수금 (경리자료)','dep','ind')}${bsRow('차입금 (차입금현황)','loans','ind')}${bsRow('미지급 인건비 (미지급금)','accr','ind')}${bsRow('부가세 예수금·미납부 (IVA)','vatLiab','ind')}${bsRow('미지급 법인세 (ISR, − 는 선급)','citLiab','ind')}
       ${bsRow('자본 총계','equity','total')}</tbody></table></div></div>
     <div class="card"><div class="body" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
       ${BANKS().map((b,i)=>`<span style="font-size:12px;color:var(--muted)">기초 현금 · ${esc(b.name)}${b.cur==='USD'?' (US$)':''}</span><input class="cell n" type="number" step="any" data-bankopen="${i}" value="${+b.open||0}" style="width:150px">`).join('')}
@@ -3746,7 +3747,7 @@ function entIS(e,P){
   return {sales:f('sales'),cogs:f('cogs'),sga:f('sga'),nonop:f('nonop'),tax:f('tax')};
 }
 function entBS(e,end,subs){
-  if(e.role==='지배기업'){const b=balance(end);return {cash:b.cashBal,ar:b.ar+b.vatRec,inv:b.inv,fixed:b.fixed,invest:sumBy(subs,s=>+s.invest||0),gw:0,ap:b.ap,loans:b.loans+b.stLoan,othl:b.accr+b.vatLiab+b.citLiab,capital:0}}
+  if(e.role==='지배기업'){const b=balance(end);return {cash:b.cashBal,ar:b.ar+b.vatRec,inv:b.inv,fixed:b.fixed,invest:sumBy(subs,s=>+s.invest||0),gw:0,ap:b.ap,loans:b.loans+b.stLoan,othl:b.dep+b.accr+b.vatLiab+b.citLiab,capital:0}}
   const r=(DB.entfs||[]).filter(x=>x.entity===e.name&&x.date<=end).sort((a,b)=>a.date<b.date?1:-1)[0]||{}, f=k=>mx(r,k);
   return {cash:f('cash'),ar:f('ar'),inv:f('inv'),fixed:f('fixed'),invest:0,gw:0,ap:f('ap'),loans:f('loans'),othl:f('othl'),capital:f('capital')};
 }
@@ -5094,7 +5095,7 @@ setInterval(()=>{if(IB.ok&&document.visibilityState==='visible')ibScan(true)},60
 // 새로고침 뒤에는 Chrome이 폴더 권한을 다시 물을 수 있음: 화면을 처음 누를 때 자동으로 다시 연결 (권한 창에서 "방문할 때마다 허용"을 고르면 다음부터는 묻지 않음)
 let IB_TRY=false;document.addEventListener('pointerdown',()=>{if(IB.h&&!IB.ok&&!IB_TRY){IB_TRY=true;ibReconnect()}},true);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261123-162543';let VER_NEW=false;
+const APP_VER='20261123-195822';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
 /* ---------- 같은 화면을 다시 그릴 때(자동 번역·자료함·저장 등) 스크롤 위치를 그대로 유지. 다른 화면으로 이동할 때만 맨 위로 ---------- */
 const scrEls=()=>{const m=$('#main');return [document.scrollingElement,m,m&&m.parentElement].filter(Boolean)};
