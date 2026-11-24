@@ -1391,7 +1391,12 @@ function payableYTD(e,end){
 // manufacturing cost statement (same layout as the IS sheet's 제조원가명세서)
 const MFG_DEPTS=['생산','품질','생기','생관','금형 보전','물류'], SGA_DEPTS=['법인장','구매/영업','영업','관리'], MFG_EXP=['전력비','가스수도료','수선비','외주가공비','소모품비','복리후생비','차량유지비','운반비','임차료','보험료','세금과공과','여비교통비','통신비','지급수수료','교육훈련비','도서인쇄비','광고선전비','클레임비용'];
 const isMfgAsset=r=>['기계장치','공구기구','건물'].includes(r.cat);
-const rmPurch=(s,e)=>sumBy(DB.inbound.filter(r=>r.date>=s&&r.date<=e&&r.check!=='반품'),r=>lineAmt(r)+(+r.igi||0)+(+r.dta||0));
+// 원·부재료 매입: 입고현황이 있는 달은 입고현황, 입고현황이 없는 달은 외상매입·경리자료의 원재료비/부재료비 (부가세 제외)
+const RM_ACC=['원재료비','부재료비'];let INBM=null,INBS=null;
+const rmApMode=d=>{if(INBS!==DB.inbound||!INBM){INBS=DB.inbound;INBM=new Set(DB.inbound.filter(r=>validD(r.date)).map(r=>r.date.slice(0,7)))}return validD(d)&&!INBM.has(d.slice(0,7))};
+const isRmRow=r=>r.cat==='제조비용'&&RM_ACC.includes(r.account)&&rmApMode(r.date);
+const rmApPurch=(s,e)=>{const q=x=>x.date>=s&&x.date<=e&&isRmRow(x);return sumBy(DB.ap.filter(r=>!isAdv(r)&&q(r)),expAmt)+sumBy(DB.cash.filter(r=>r.type==='출금'&&q(r)),expAmt)-sumBy(DB.cash.filter(r=>r.type==='입금'&&q(r)),expAmt)};
+const rmPurch=(s,e)=>sumBy(DB.inbound.filter(r=>r.date>=s&&r.date<=e&&r.check!=='반품'),r=>lineAmt(r)+(+r.igi||0)+(+r.dta||0))+rmApPurch(s,e);
 const rmUse=(s,e)=>sumBy(DB.production.filter(r=>r.date>=s&&r.date<=e),r=>(+r.actual||0)*bomUnitCost(r.product));
 // inventory value on a date from the 재고조사 valuation (실단가): month ends use the count (or expected stock),
 // other days roll the previous month-end quantity forward with the month's movements
@@ -1399,7 +1404,7 @@ const VCACHE=new Map();
 function invVal(d){
   if(VCACHE.has(d))return VCACHE.get(d);
   const M=monthOf(d), rk='R'+M.start, R=VCACHE.get(rk)||stockRoll(M), before=addDs(M.start,-1), atEnd=d===M.end;
-  const v=rows=>sumBy(rows,r=>{if(atEnd)return valOf(r);const io=stockIO(DB,r.item,r.kind,before,d);return Math.max(0,r.open+io.i-io.o)*r.u});
+  const v=rows=>sumBy(rows,r=>{if(atEnd)return Math.max(0,valOf(r));const io=stockIO(DB,r.item,r.kind,before,d);return Math.max(0,r.open+io.i-io.o)*r.u});
   VCACHE.set(rk,R);const out={rm:v(R.raw)+v(R.sub),fg:v(R.prods)};VCACHE.set(d,out);return out;
 }
 const rmInv=d=>invVal(d).rm;
@@ -2268,7 +2273,7 @@ function ledgerData(p){
   const fc=(r,v)=>r.cur==='USD'?'US$ '+nf2.format(v):'';
   const MS=[];for(let d=new Date(+p.start.slice(0,4),+p.start.slice(5,7)-1,1);ds(d)<=p.end;d=new Date(d.getFullYear(),d.getMonth()+1,1))MS.push({start:maxS(ds(d),p.start),end:minS(ds(new Date(d.getFullYear(),d.getMonth()+1,0)),p.end)});
   const MFGX=new Set([...MFG_EXP,'노무비']),SGAX=new Set(ACCOUNTS['판관비용'].filter(a=>!['급여','외상매입금 지급','미지급금 지급','본사관리비 지급'].includes(a)));
-  const expAcc=r=>{const k=r.account||'';return r.cat==='제조비용'&&MFGX.has(k)?acc('제조원가',k,'dr'):r.cat==='판관비용'&&SGAX.has(k)?acc('판매비와관리비',k,'dr'):null};
+  const expAcc=r=>{const k=r.account||'';return isRmRow(r)?acc('제조원가','원·부재료 매입 (입고)','dr'):r.cat==='제조비용'&&MFGX.has(k)?acc('제조원가',k,'dr'):r.cat==='판관비용'&&SGAX.has(k)?acc('판매비와관리비',k,'dr'):null};
   const apIds=new Set(DB.ap.map(r=>r.id)),arIds=new Set(DB.ar.map(r=>r.id)),cix=new Map(DB.cash.map(c=>[c.id,c]));
   // 보통예금: 설정의 계좌는 기초 잔액(설정 기초 + 그 전 거래)을 그대로 씀
   BANKS().forEach(b=>{const a=acc('자산','보통예금 · '+b.name,'dr');a.fixOpen=1;a.open=bankBefore(b,p.start);a.cur=b.cur||'MXN'});
@@ -5136,7 +5141,7 @@ setInterval(()=>{if(IB.ok&&document.visibilityState==='visible')ibScan(true)},60
 // 새로고침 뒤에는 Chrome이 폴더 권한을 다시 물을 수 있음: 화면을 처음 누를 때 자동으로 다시 연결 (권한 창에서 "방문할 때마다 허용"을 고르면 다음부터는 묻지 않음)
 let IB_TRY=false;document.addEventListener('pointerdown',()=>{if(IB.h&&!IB.ok&&!IB_TRY){IB_TRY=true;ibReconnect()}},true);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261124-100404';let VER_NEW=false;
+const APP_VER='20261124-120123';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
 /* ---------- 같은 화면을 다시 그릴 때(자동 번역·자료함·저장 등) 스크롤 위치를 그대로 유지. 다른 화면으로 이동할 때만 맨 위로 ---------- */
 const scrEls=()=>{const m=$('#main');return [document.scrollingElement,m,m&&m.parentElement].filter(Boolean)};
