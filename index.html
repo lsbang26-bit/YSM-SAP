@@ -3733,9 +3733,73 @@ function repXls(md){if(!window.XLSX){toast('엑셀 기능을 불러오지 못했
   if(md==='week'){const AW=repArW(p),rc=(o,c)=>r((o||{})[c]||0);if(AW.length)aoa.push([],['주간 입금 예상 · 고객사별 (거래 통화)'],['고객사','건수','통화','이번 주 만기','연체','입금 예상 합계','이번 주 입금 완료'],...AW.flatMap(x=>['MXN','USD'].filter(c=>x.due[c]||x.od[c]||x.done[c]).map(c=>[x.n,x.cnt,c,rc(x.due,c),rc(x.od,c),r(rc(x.due,c)+rc(x.od,c)),rc(x.done,c)])))}
   if(md==='week')hcSels(p).forEach(hw=>{const HR=(DB.hc||[]).filter(x=>x.wk===hw);if(HR.length)aoa.push([],['인원현황 '+hw+(HR[0].from?' ('+HR[0].from+' ~ '+HR[0].to+')':'')],['부서','인원','MXN','원화'],...HR.map(x=>[x.dept,+x.cnt||0,r(+x.mxn||0),Math.round(hcKrw(x))]),['합계',sumBy(HR,'cnt'),r(sumBy(HR,'mxn')),Math.round(sumBy(HR,hcKrw))])});
   try{const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=[26,16,16,16,12,8,16,16].map(w=>({wch:w}));const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,nm+' 보고');XLSX.writeFile(wb,`${nm}보고_${p.start}_${p.end}.xlsx`)}catch(e){toast('엑셀 파일을 만들지 못했습니다')}}
+/* ---------- 월간 보고: 경영회의자료 (YSM) ----------
+   본사 경영회의자료 PDF의 YSM 부분(손익현황·추정손익·주요사항·월별 추이·재고·인원·스크랩률)을 Claude가 읽어
+   자료함의 *.ysm.json {mgmt:{ym,...}} 으로 넣으면 DB.mgmt[ym]에 저장되고 이 화면에 표시됨. 금액 단위는 자료에 적힌 단위(백만원) */
+const MG=()=>DB.mgmt||{};
+function mgYm(){const ks=Object.keys(MG()).sort();return ks.includes(UI.mgym)?UI.mgym:ks[ks.length-1]||''}
+function mgToolbar(){const ks=Object.keys(MG()).sort(),y=mgYm();if(!ks.length)return '';
+  return `<div class="chips" role="group" aria-label="보고 월">${ks.map(k=>`<button class="chip${k===y?' on':''}" data-mgym="${k}">${esc(MG()[k].label||k)}</button>`).join('')}</div>`}
+const mgN=v=>v==null||v===''?'<span class="muted">–</span>':`<span class="${v<0?'neg':''}">${nf0.format(v)}</span>`;
+const mgP=v=>isFinite(v)?(v*100).toFixed(1)+'%':'–';
+// 달성률: 수익 항목은 실적÷목표, 비용 항목은 목표÷실적 (경영회의자료와 같은 방식). 목표나 실적이 0 이하이면 표시하지 않음
+const mgAch=(k,t,a)=>!(t>0&&a>0)?'–':mgP(k==='cost'?t/a:a/t);
+function mgPL(G){const P=G.pl,C=P.cols,si=P.rows[0][3],a=C.indexOf(P.act),t=C.indexOf(P.tgt),nx=C.indexOf(P.next);
+  return `<div class="card"><header><h2>손익현황</h2><span class="meta">단위 ${esc(G.unit||'백만원')}${G.fx?' · 환율 '+esc(G.fx):''} · 비율은 매출액 대비</span></header><div class="tw"><table class="stmt">
+    <thead><tr><th rowspan="2">구분</th>${C.map(c=>`<th class="n" colspan="2">${esc(c)}</th>`).join('')}<th class="n" colspan="2">${esc(P.act)} 목표 대비</th>${nx>=0?`<th class="n">${esc(P.next)} − ${esc(P.act)}</th>`:''}</tr>
+    <tr>${C.map(()=>'<th class="n">금액</th><th class="n">비율</th>').join('')}<th class="n">차이</th><th class="n">달성률</th>${nx>=0?'<th class="n">증감</th>':''}</tr></thead><tbody>
+    ${P.rows.map(([l,lv,k,v])=>`<tr class="${lv?'ind':k==='profit'?'total':'sub'}"><td>${esc(l)}</td>${v.map((x,i)=>`<td class="n">${mgN(x)}</td><td class="n muted">${mgP(x/si[i])}</td>`).join('')}
+      <td class="n">${mgN(v[a]-v[t])}</td><td class="n">${mgAch(k,v[t],v[a])}</td>${nx>=0?`<td class="n">${mgN(v[nx]-v[a])}</td>`:''}</tr>`).join('')}
+    </tbody></table></div></div>`}
+function mgNotes(G){const L=G.notes||[];if(!L.length)return '';
+  return `<div class="card"><header><h2>주요사항</h2><span class="meta">${esc(G.label||G.ym)}</span></header><div class="body" style="display:grid;gap:4px;font-size:13px">
+    ${L.map(([lv,t])=>`<div style="${lv?'padding-left:'+(lv*18)+'px;color:var(--fg-2)':'font-weight:700;margin-top:6px'}">${lv?'- ':''}${esc(t)}</div>`).join('')}</div></div>`}
+function mgTrend(G){const T=G.trend;if(!T)return '';const S=T.rows.find(r=>r[0]==='매출액')[1],tt=T.tot||{},sm=a=>{const r=T.rows.find(r=>r[1]===a);return r&&tt[r[0]]!=null?tt[r[0]]:a.slice(1).reduce((s,x)=>s+(+x||0),0)};
+  const rows=T.rows.flatMap(([l,v,pc])=>{const r=[`<tr class="sub"><td>${esc(l)}</td>${v.map(x=>`<td class="n">${mgN(x)}</td>`).join('')}<td class="n"><b>${mgN(sm(v))}</b></td></tr>`];
+    if(pc)r.push(`<tr class="ind"><td>${esc(l)} %</td>${v.map((x,i)=>`<td class="n">${mgP(x/S[i])}</td>`).join('')}<td class="n">${mgP(sm(v)/sm(S))}</td></tr>`);return r});
+  return `<div class="card"><header><h2>주요항목 월별 변동추이</h2><span class="meta">단위 ${esc(G.unit||'백만원')} · 합계는 ${esc(T.m[1])}~${esc(T.m[T.m.length-1])}</span></header><div class="tw"><table class="stmt">
+    <thead><tr><th>구분</th>${T.m.map(m=>`<th class="n">${esc(m)}</th>`).join('')}<th class="n">합계</th></tr></thead><tbody>${rows.join('')}</tbody></table></div></div>`}
+function mgInv(G){const I=G.inv;if(!I)return '';const R=[['당월 재고','tot'],['제품·상품','fg'],['재공품','wip'],['원부자재','rm']],d=I.days||{};
+  return `<div class="card"><header><h2>재고현황</h2><span class="meta">단위 ${esc(G.unit||'백만원')} · 제품매출 ${nf0.format(I.sales||0)}</span></header><div class="tw"><table class="stmt">
+    <thead><tr><th>구분</th><th class="n">당월</th><th class="n">보유일수</th><th class="n">전월</th><th class="n">증감</th></tr></thead><tbody>
+    ${R.map(([l,k],i)=>`<tr class="${i?'ind':'sub'}"><td>${esc(l)}</td><td class="n">${mgN(I.cur[k])}</td><td class="n">${d[k]!=null?d[k]+'일':'–'}</td><td class="n">${mgN(I.prev[k])}</td><td class="n">${mgN(I.cur[k]-I.prev[k])}</td></tr>`).join('')}
+    </tbody></table></div><div class="body" style="font-size:12px;color:var(--faint)">재고일수 = 재고금액 ÷ (매출 ÷ 25). 전월 재고일수 ${I.prevDays!=null?I.prevDays+'일':'–'}</div></div>`}
+function mgHc(G){const H=G.hc;if(!H)return '';const m=Object.keys(H.m);
+  return `<div class="card"><header><h2>인원현황</h2><span class="meta">당월 ${H.cur}명 (정규직 ${H.reg} · 계약직 ${H.con}) · 전월 ${H.prev}명 · ${H.cur-H.prev>=0?'+':''}${H.cur-H.prev}명</span></header>
+    <div class="body">${barsSVG(m,m.map(k=>H.m[k]),0,m.length-1)}</div>
+    <div class="tw"><table class="stmt"><thead><tr><th>구분</th>${m.map(k=>`<th class="n">${esc(k)}</th>`).join('')}<th class="n">평균</th></tr></thead>
+    <tbody><tr><td>근무인원</td>${m.map(k=>`<td class="n">${nf0.format(H.m[k])}</td>`).join('')}<td class="n"><b>${H.avg!=null?nf0.format(H.avg):'–'}</b></td></tr></tbody></table></div></div>`}
+function mgScrap(G){const S=G.scrap;if(!S)return '';const m=S.m;
+  return `<div class="card"><header><h2>스크랩률</h2><span class="meta">단위 ${esc(S.unit||'톤')}</span></header>
+    <div class="body">${barsSVG(m,m.map((_,i)=>S.in[i]?Math.round(S.sc[i]/S.in[i]*100):0),0,m.length-1).replace(/(<span class="bv">)(\d+)(<\/span>)/g,'$1$2%$3')}</div>
+    <div class="tw"><table class="stmt"><thead><tr><th>구분</th>${m.map(k=>`<th class="n">${esc(k)}</th>`).join('')}</tr></thead><tbody>
+    <tr><td>투입중량</td>${S.in.map(v=>`<td class="n">${nf0.format(v)}</td>`).join('')}</tr><tr><td>스크랩중량</td>${S.sc.map(v=>`<td class="n">${nf0.format(v)}</td>`).join('')}</tr>
+    <tr class="sub"><td>스크랩율</td>${S.in.map((v,i)=>`<td class="n">${v?Math.round(S.sc[i]/v*100)+'%':'–'}</td>`).join('')}</tr></tbody></table></div></div>`}
+function mgPage(){const y=mgYm(),G=MG()[y];
+  if(!G)return `<div class="content"><div class="card"><div class="empty">경영회의자료가 아직 없습니다. PDF를 YSM 자료함\\경영회의자료 폴더에 넣고 Claude에게 반영해 달라고 말해 주세요.</div></div></div>`;
+  const P=G.pl,C=P.cols,v=l=>(P.rows.find(r=>r[0]===l)||[0,0,0,[]])[3],a=C.indexOf(P.act),t=C.indexOf(P.tgt),s=v('매출액'),gp=v('매출총이익'),op=v('영업이익'),ni=v('순이익');
+  const S=G.scrap,si=S?S.in.length-1:-1;
+  return `<div class="content">${kpiHTML([kv('매출액',nf0.format(s[a]),'목표 '+nf0.format(s[t])+' · 달성 '+mgAch('rev',s[t],s[a]),s[a]>=s[t]?'good':'bad'),
+      kv('매출총이익',nf0.format(gp[a]),'매출 대비 '+mgP(gp[a]/s[a]),gp[a]<0?'bad':'good'),kv('영업이익',nf0.format(op[a]),'매출 대비 '+mgP(op[a]/s[a]),op[a]<0?'bad':'good'),
+      kv('순이익',nf0.format(ni[a]),'매출 대비 '+mgP(ni[a]/s[a]),ni[a]<0?'bad':'good'),
+      ...(G.hc?[kv('인원',G.hc.cur+'명','전월 '+(G.hc.cur-G.hc.prev>=0?'+':'')+(G.hc.cur-G.hc.prev)+'명','')]:[]),
+      ...(G.inv?[kv('재고',nf0.format(G.inv.cur.tot),'보유 '+(G.inv.days||{}).tot+'일','warn')]:[]),
+      ...(S?[kv('스크랩률',Math.round(S.sc[si]/S.in[si]*100)+'%','스크랩 '+nf0.format(S.sc[si])+' '+(S.unit||'톤'),'')]:[])])}
+    <div class="body" style="font-size:12px;color:var(--faint);padding:0 4px">${esc(G.title||'')}${G.src?' · 출처 '+esc(G.src):''} · 단위 ${esc(G.unit||'백만원')}</div>
+    ${mgPL(G)}${mgNotes(G)}${mgTrend(G)}${mgInv(G)}${mgScrap(G)}${mgHc(G)}</div>`}
+function mgXls(){if(!window.XLSX){toast('엑셀 기능을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.');return}const y=mgYm(),G=MG()[y];if(!G){toast('경영회의자료가 없습니다');return}
+  const P=G.pl,C=P.cols,a=C.indexOf(P.act),t=C.indexOf(P.tgt),si=P.rows[0][3],r1=v=>Math.round(v*1000)/10;
+  const aoa=[[G.title||y],['단위 '+(G.unit||'백만원')+(G.fx?' · 환율 '+G.fx:'')],[],['손익현황'],['구분',...C.flatMap(c=>[c,'비율%']),'목표 대비 차이','달성률'],
+    ...P.rows.map(([l,lv,k,v])=>[(lv?'  ':'')+l,...v.flatMap((x,i)=>[x,r1(x/si[i])]),v[a]-v[t],mgAch(k,v[t],v[a])])];
+  if((G.notes||[]).length)aoa.push([],['주요사항'],...G.notes.map(([lv,x])=>[(lv?'  - ':'')+x]));
+  if(G.trend)aoa.push([],['주요항목 월별 변동추이'],['구분',...G.trend.m],...G.trend.rows.map(([l,v])=>[l,...v]));
+  if(G.inv){const I=G.inv;aoa.push([],['재고현황'],['구분','당월','보유일수','전월','증감'],...[['당월 재고','tot'],['제품·상품','fg'],['재공품','wip'],['원부자재','rm']].map(([l,k])=>[l,I.cur[k],(I.days||{})[k],I.prev[k],I.cur[k]-I.prev[k]]))}
+  if(G.scrap){const S=G.scrap;aoa.push([],['스크랩률 ('+(S.unit||'톤')+')'],['구분',...S.m],['투입중량',...S.in],['스크랩중량',...S.sc],['스크랩율%',...S.in.map((v,i)=>v?Math.round(S.sc[i]/v*100):'')])}
+  if(G.hc){const H=G.hc;aoa.push([],['인원현황'],['당월',H.cur,'정규직',H.reg,'계약직',H.con,'전월',H.prev],['월',...Object.keys(H.m),'평균'],['근무인원',...Object.values(H.m),H.avg])}
+  try{const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=[{wch:18}];const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'경영회의 '+y);XLSX.writeFile(wb,`경영회의자료_YSM_${y}.xlsx`)}catch(e){toast('엑셀 파일을 만들지 못했습니다')}}
 Object.assign(MODS,{
   repw:{name:'주간',desc:'선택한 주(월~일)의 매출·손익·현금·채권채무·생산을 전주와 비교한 주간 보고서',page:()=>repPage('week'),toolbar:()=>repToolbar('week')},
-  repm:{name:'월간',desc:'선택한 달의 매출·손익·현금·채권채무·생산을 전월과 비교한 월간 보고서',page:()=>repPage('month'),toolbar:()=>repToolbar('month')},});
+  repm:{name:'월간',desc:'본사 경영회의자료 (YSM): 손익현황·주요사항·월별 추이·재고·인원·스크랩률',page:()=>mgPage(),toolbar:()=>mgToolbar()},});
 if(MODS[UI.mod]&&MODS[UI.mod].tab)UI.dtab=MODS[UI.mod].tab;
 if(!MODS[UI.mod]||MODS[UI.mod].hidden)UI.mod='dash-all';
 
@@ -5126,6 +5190,8 @@ async function ibScan(quiet){if(!IB.h||!IB.ok||IB.busy)return 0;IB.busy=true;let
       if(j&&!isX&&(j.skip||j.fix)){if(Array.isArray(j.skip))DB.ibSkip=[...new Set([...(DB.ibSkip||[]),...j.skip.map(u=>String(u).toLowerCase())])];if(j.fix)DB.ibFix=Object.assign(DB.ibFix||{},j.fix);j.rows=j.rows||{}}
       // Claude가 은행 계좌를 새로 만드는 경우: banks [{name,cur,open,since}] → 같은 이름이 없을 때만 추가 (upd:1 이면 기존 계좌의 기초잔고·기준일을 고침)
       if(j&&!isX&&Array.isArray(j.banks)){let nb=0;j.banks.forEach(b=>{if(!b||!b.name)return;const ex=BANKS().find(x=>x.name===b.name);if(ex){if(b.upd){['open','since'].forEach(k=>{if(b[k]!=null)ex[k]=k==='open'?+b[k]||0:String(b[k])});nb++}return}SET().banks=BANKS().concat({name:String(b.name),cur:b.cur==='USD'?'USD':'MXN',open:+b.open||0,since:b.since||''});nb++});if(nb){syncOpenCash();by.bank=(by.bank||0)+nb;n+=nb}j.rows=j.rows||{}}
+      // Claude가 본사 경영회의자료(YSM)를 넣는 경우: mgmt {ym,...} → DB.mgmt[ym] (같은 달은 새 자료로 바꿈)
+      if(j&&!isX&&j.mgmt&&j.mgmt.ym){DB.mgmt=Object.assign({},DB.mgmt||{},{[j.mgmt.ym]:j.mgmt});UI.mgym=j.mgmt.ym;by.repm=(by.repm||0)+1;n++;j.rows=j.rows||{}}
       if(!j||!j.rows)continue;files++;let k=0;IB_MODS.forEach(mod=>(j.rows[mod]||[]).forEach(x=>{const a=ibAdd(mod,x);k+=a;if(a)by[mod]=(by[mod]||0)+a}));n+=k;
       (DB.inboxLog=DB.inboxLog||[]).unshift({file:path+nm,at:new Date().toISOString(),n:k});DB.inboxLog=DB.inboxLog.slice(0,50);
       try{done=done||await dir.getDirectoryHandle('반영완료',{create:true});const t=await (await done.getFileHandle(nm,{create:true})).createWritable();await t.write(txt);await t.close();await dir.removeEntry(nm)}catch(_){}}};
@@ -5143,7 +5209,7 @@ setInterval(()=>{if(IB.ok&&document.visibilityState==='visible')ibScan(true)},60
 // 새로고침 뒤에는 Chrome이 폴더 권한을 다시 물을 수 있음: 화면을 처음 누를 때 자동으로 다시 연결 (권한 창에서 "방문할 때마다 허용"을 고르면 다음부터는 묻지 않음)
 let IB_TRY=false;document.addEventListener('pointerdown',()=>{if(IB.h&&!IB.ok&&!IB_TRY){IB_TRY=true;ibReconnect()}},true);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261124-142750';let VER_NEW=false;
+const APP_VER='20261125-073015';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
 /* ---------- 같은 화면을 다시 그릴 때(자동 번역·자료함·저장 등) 스크롤 위치를 그대로 유지. 다른 화면으로 이동할 때만 맨 위로 ---------- */
 const scrEls=()=>{const m=$('#main');return [document.scrollingElement,m,m&&m.parentElement].filter(Boolean)};
@@ -5325,7 +5391,8 @@ document.addEventListener('click',e=>{
   if(d.fset){const [id,k,v]=d.fset.split('|');UI.flt=UI.flt||{};const f=UI.flt[id]=UI.flt[id]||{};f[k]=f[k]===v?'':v;saveUI();renderMain();return}
   if(d.go){go(d.go);return}
   if(d.repnav){const [md,n]=d.repnav.split('|'),k=md==='week'?'rpw':'rpm';UI[k]=+n?shift(repAnchor(md),md,+n):TODAY;saveUI();renderMain();return}
-  if(d.repxls){repXls(d.repxls);return}
+  if(d.mgym){UI.mgym=d.mgym;renderMain();return}
+  if(d.repxls){d.repxls==='month'?mgXls():repXls(d.repxls);return}
   if(d.hctpl){hcTemplate();return}
   if(d.cndone||d.cnundo){const id=d.cndone||d.cnundo,r=DB.ar.find(x=>x.id===id);if(!r)return;const on=!!d.cndone,setv=v=>{if(v)r.cnDone=1;else delete r.cnDone;calcReset();save();renderMain()};setv(on);
     toast(on?'Credit Note를 완료로 표시했습니다 (경리자료 반영 없음)':'Credit Note 완료 표시를 취소했습니다',{label:'되돌리기',fn:()=>setv(!on)});return}
