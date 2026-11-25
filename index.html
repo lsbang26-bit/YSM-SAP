@@ -3801,9 +3801,11 @@ function mgAuto(ym){const pv=mgPrev(ym),fx=pv&&+pv.fx||78,K=v=>Math.round((v||0)
   const rows=keys.map((k,i)=>{const pr=PR&&PR.rows[i],lab=k.replace(/2$/,''),lv=pr?pr[1]:0,kind=pr?pr[2]:'cost',g=j=>pr&&j>=0?pr[3][j]:null;return [lab,lv,kind,[g(ia),g(ib),g(it),K(act[k]),g(ip)]]});
   const cols=['25년 평균','26년 평균',mn+' 목표',mn+' 실적',pmn+' 실적'];
   // 인원: 이달 마지막 주급·14 급여 지급 회차의 인원
-  const pay=(DB.payroll||[]).filter(r=>inP(r,q)),lastBy={};pay.forEach(r=>{const t=r.ptype||'';if(!lastBy[t]||r.date>lastBy[t])lastBy[t]=r.date});
-  const hcN=new Set(pay.filter(r=>r.ptype!=='월급'&&r.date===lastBy[r.ptype]).map(r=>r.code||r.name)).size+new Set(pay.filter(r=>r.ptype==='월급').map(r=>r.code||r.name)).size;
-  const hc=pv&&pv.hc&&hcN?{cur:hcN,reg:hcN,con:0,prev:pv.hc.cur,avg:null,m:Object.assign({},pv.hc.m,{[mn]:hcN})}:null;if(hc){const v=Object.values(hc.m);hc.avg=Math.round(v.reduce((s,x)=>s+x,0)/v.length)}
+  // 인원: 그 달에 15일 이상 근무한 사람 (주급자·월급자·한국인 합계). 직전 경영회의자료 인원 뒤에 이어 붙이고 최근 12개월만 보임
+  const hcN=hcDetail(ym).tot.cur;let hc=null;
+  if(pv&&pv.hc&&hcN){const L=hcYms(pv.ym||ym,pv.hc.m).filter(([y])=>y<ym);for(let y=ymAdd(pv.ym||ym,1);y<ym;y=ymAdd(y,1))L.push([y,+y.slice(5)+'월',hcDetail(y).tot.cur]);L.push([ym,mn,hcN]);
+    const W=L.slice(-12),m={};W.forEach(([,k,v])=>m[k]=v);const prev=W.length>1?W[W.length-2][2]:pv.hc.cur;
+    hc={cur:hcN,reg:hcN,con:0,prev,avg:null,m};const v=Object.values(m);hc.avg=Math.round(v.reduce((s,x)=>s+x,0)/v.length)}
   const inv=null;
   let trend=null;if(pv&&pv.trend){const T=pv.trend,v={매출액:act.매출액,재료비:act.재료비,급여:act.노무비+sw,순이익:act.순이익};trend={m:T.m.concat(T.m.includes(mn)?[]:[mn]),rows:T.rows.map(([l,a,pc])=>[l,(T.m.includes(mn)?a.slice(0,T.m.indexOf(mn)):a).concat([K(v[l])]),pc])}}
   // 주요사항: 목표 대비·전월 대비 차이를 계산해 자동으로 적음 (억 단위)
@@ -3860,11 +3862,37 @@ function mgInv(G){const I=G.inv;if(!I)return '';const R=[['당월 재고','tot']
     <thead><tr><th>구분</th><th class="n">당월</th><th class="n">보유일수</th><th class="n">전월</th><th class="n">증감</th></tr></thead><tbody>
     ${R.map(([l,k],i)=>`<tr class="${i?'ind':'sub'}"><td>${esc(l)}</td><td class="n">${mgN(I.cur[k])}</td><td class="n">${d[k]!=null?d[k]+'일':'–'}</td><td class="n">${mgN(I.prev[k])}</td><td class="n">${mgN(I.cur[k]-I.prev[k])}</td></tr>`).join('')}
     </tbody></table></div><div class="body" style="font-size:12px;color:var(--faint)">재고일수 = 재고금액 ÷ (매출 ÷ 25). 전월 재고일수 ${I.prevDays!=null?I.prevDays+'일':'–'}</div></div>`}
-function mgHc(G){const H=G.hc;if(!H)return '';const m=Object.keys(H.m);
-  return `<div class="card"><header><h2>인원현황</h2><span class="meta">당월 ${H.cur}명 (정규직 ${H.reg} · 계약직 ${H.con}) · 전월 ${H.prev}명 · ${H.cur-H.prev>=0?'+':''}${H.cur-H.prev}명</span></header>
-    <div class="body">${barsSVG(m,m.map(k=>H.m[k]),0,m.length-1)}</div>
-    <div class="tw frz mgfz"><table class="stmt mgt"><thead><tr><th>구분</th>${m.map(k=>`<th class="n">${esc(k)}</th>`).join('')}<th class="n">평균</th></tr></thead>
-    <tbody><tr><td>근무인원</td>${m.map(k=>`<td class="n">${nf0.format(H.m[k])}</td>`).join('')}<td class="n"><b>${H.avg!=null?nf0.format(H.avg):'–'}</b></td></tr></tbody></table></div></div>`}
+// 인원현황: 10월까지는 경영회의자료 인원(합계 현원)만, 11월부터는 급여 자료로 주급자(주급)·월급자(14 급여)·한국인(월급)별 전월·입사·퇴사·현원
+const HC_FROM='2026-11',HC_T=[['주급자','주급'],['월급자','14 급여'],['한국인','월급']];
+const ymAdd=(ym,n)=>{const d=new Date(+ym.slice(0,4),+ym.slice(5,7)-1+n,1);return d.getFullYear()+'-'+pad(d.getMonth()+1)};
+// H.m 의 '12월'·'1월'… 이름을 보고 월부터 거꾸로 세어 실제 연월에 맞춤
+const hcYms=(ym,m)=>{const K=Object.keys(m);return K.map((k,i)=>[ymAdd(ym,i-K.length+1),k,m[k]])};
+// 그 달에 15일 이상 근무한 사람 (급여 회차 일수를 달 안에 든 날 비율로 나눠 합산). 아직 진행 중인 달은 자료가 있는 날의 절반 이상
+const HC_C={};
+function hcSet(ym){const ck=ym+'|'+(DB.payroll||[]).length;if(HC_C[ck])return HC_C[ck];
+  const ms=ym+'-01',me=period(ms,'month').end,dd=(a,b)=>Math.round((Date.parse(b)-Date.parse(a))/864e5)+1,out={};
+  HC_T.forEach(([,pt])=>{const R=(DB.payroll||[]).filter(r=>r.ptype===pt&&r.from&&r.to&&r.to>=ms&&r.from<=me);if(!R.length){out[pt]=null;return}
+    const cov=R.reduce((a,r)=>r.to>a?r.to:a,'')>me?me:R.reduce((a,r)=>r.to>a?r.to:a,''),th=Math.min(15,Math.ceil(dd(ms,cov)/2)),acc={};
+    R.forEach(r=>{const a=r.from>ms?r.from:ms,b=r.to<me?r.to:me,k=r.code||r.emp;acc[k]=(acc[k]||0)+(+r.days||0)*dd(a,b)/dd(r.from,r.to)});
+    out[pt]={s:new Set(Object.keys(acc).filter(k=>acc[k]>=th-1e-9)),cov,part:cov<me}});
+  return HC_C[ck]=out}
+function hcDetail(ym){const C=hcSet(ym),P=hcSet(ymAdd(ym,-1)),o={},tot={prev:0,in:0,out:0,cur:0};let part=false,cov='';
+  HC_T.forEach(([l,pt])=>{const c=C[pt],p=P[pt];let r;
+    if(!c)r=p?{prev:p.s.size,in:0,out:0,cur:p.s.size,carry:1}:{prev:0,in:0,out:0,cur:0,none:1};
+    else{const ps=p?p.s:new Set();r={prev:ps.size,in:[...c.s].filter(k=>!ps.has(k)).length,out:[...ps].filter(k=>!c.s.has(k)).length,cur:c.s.size};if(c.part){part=true;cov=c.cov>cov?c.cov:cov}}
+    o[l]=r;['prev','in','out','cur'].forEach(k=>tot[k]+=r[k])});
+  o.합계=tot;return {rows:o,tot,part,cov}}
+function mgHc(G){const H=G.hc;if(!H)return '';const ym=G.ym||mgYm(),L=hcYms(ym,H.m),D=L.map(([y])=>y>=HC_FROM?hcDetail(y):null);
+  const v=L.map(([y,,x],i)=>D[i]?D[i].tot.cur:x),avg=D.some(x=>x)||H.avg==null?Math.round(v.reduce((s,x)=>s+x,0)/v.length):H.avg,cur=v[v.length-1],prev=D[D.length-1]?D[D.length-1].tot.prev:H.prev;
+  const RL=[['prev','전월'],['in','입사'],['out','퇴사'],['cur','현원']],G4=[...HC_T.map(t=>t[0]),'합계'];
+  const cell=(i,g,k)=>{const d=D[i];if(!d)return g==='합계'&&k==='cur'?`<td class="n">${nf0.format(L[i][2])}</td>`:'<td class="n muted">–</td>';
+    const r=d.rows[g],x=r[k];return `<td class="n"${r.carry?' title="이 달 급여 자료가 아직 없어 전월 인원을 그대로 씀"':''}>${r.carry?'<span class="muted">':''}${k==='in'&&x?'+':k==='out'&&x?'−':''}${nf0.format(x)}${r.carry?'</span>':''}</td>`};
+  const th=L.map(([y,k],i)=>`<th class="n">${esc(k)}${D[i]&&D[i].part?`<br><span class="muted" style="font-weight:400">${+D[i].cov.slice(5,7)}.${+D[i].cov.slice(8)}까지</span>`:''}</th>`).join('');
+  const body=G4.map(g=>RL.map(([k,lab],j)=>`<tr class="${g==='합계'?(k==='cur'?'total':'sub'):k==='cur'?'sub':'ind'}">${j===0?`<td rowspan="4" style="vertical-align:middle;text-align:center"><b>${g}</b></td>`:''}<td>${lab}</td>${L.map((_,i)=>cell(i,g,k)).join('')}<td class="n">${g==='합계'&&k==='cur'?`<b>${nf0.format(avg)}</b>`:''}</td></tr>`).join('')).join('');
+  return `<div class="card"><header><h2>인원현황</h2><span class="meta">당월 ${cur}명 · 전월 ${prev}명 · ${cur-prev>=0?'+':''}${cur-prev}명 · ${HC_FROM.slice(5)*1}월부터 15일 이상 근무자 기준</span></header>
+    <div class="body">${barsSVG(L.map(x=>x[1]),v,0,L.length-1)}</div>
+    <div class="tw frz mgfz"><table class="stmt mgt"><thead><tr><th colspan="2">구분</th>${th}<th class="n">평균</th></tr></thead>
+    <tbody>${body}</tbody></table></div></div>`}
 function mgScrap(G){const S=G.scrap;if(!S)return '';const m=S.m;
   return `<div class="card"><header><h2>스크랩률</h2><span class="meta">단위 ${esc(S.unit||'톤')}</span></header>
     <div class="body">${barsSVG(m,m.map((_,i)=>S.in[i]?Math.round(S.sc[i]/S.in[i]*100):0),0,m.length-1).replace(/(<span class="bv">)(\d+)(<\/span>)/g,'$1$2%$3')}</div>
@@ -3891,7 +3919,8 @@ function mgXls(){if(!window.XLSX){toast('엑셀 기능을 불러오지 못했습
   if(G.trend)aoa.push([],['주요항목 월별 변동추이'],['구분',...G.trend.m],...G.trend.rows.map(([l,v])=>[l,...v]));
   if(G.inv){const I=G.inv;aoa.push([],['재고현황'],['구분','당월','보유일수','전월','증감'],...[['당월 재고','tot'],['제품·상품','fg'],['재공품','wip'],['원부자재','rm']].map(([l,k])=>[l,I.cur[k],(I.days||{})[k],I.prev[k],I.cur[k]-I.prev[k]]))}
   if(G.scrap){const S=G.scrap;aoa.push([],['스크랩률 ('+(S.unit||'톤')+')'],['구분',...S.m],['투입중량',...S.in],['스크랩중량',...S.sc],['스크랩율%',...S.in.map((v,i)=>v?Math.round(S.sc[i]/v*100):'')])}
-  if(G.hc){const H=G.hc;aoa.push([],['인원현황'],['당월',H.cur,'정규직',H.reg,'계약직',H.con,'전월',H.prev],['월',...Object.keys(H.m),'평균'],['근무인원',...Object.values(H.m),H.avg])}
+  if(G.hc){const H=G.hc,L=hcYms(G.ym||mgYm(),H.m),D=L.map(([y])=>y>=HC_FROM?hcDetail(y):null),v=L.map(([,,x],i)=>D[i]?D[i].tot.cur:x);aoa.push([],['인원현황'],['구분','',...L.map(x=>x[1]),'평균']);
+    [...HC_T.map(t=>t[0]),'합계'].forEach(g=>[['prev','전월'],['in','입사'],['out','퇴사'],['cur','현원']].forEach(([k,lab],j)=>aoa.push([j?'':g,lab,...L.map((x,i)=>D[i]?D[i].rows[g][k]:g==='합계'&&k==='cur'?x[2]:''),g==='합계'&&k==='cur'?(D.some(x=>x)||H.avg==null?Math.round(v.reduce((s,x)=>s+x,0)/v.length):H.avg):''])))}
   try{const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=[{wch:18}];const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'경영회의 '+y);XLSX.writeFile(wb,`경영실적보고_YSM_${y}.xlsx`)}catch(e){toast('엑셀 파일을 만들지 못했습니다')}}
 Object.assign(MODS,{
   repw:{name:'주간보고자료',desc:'선택한 주(월~일)의 매출·손익·현금·채권채무·생산을 전주와 비교한 주간 보고서',page:()=>repPage('week'),toolbar:()=>repToolbar('week')},
@@ -5314,7 +5343,7 @@ document.addEventListener('change',e=>{const t=e.target;if(t&&t.dataset&&t.datas
 // 새로고침 뒤에는 Chrome이 폴더 권한을 다시 물을 수 있음: 화면을 처음 누를 때 자동으로 다시 연결 (권한 창에서 "방문할 때마다 허용"을 고르면 다음부터는 묻지 않음)
 let IB_TRY=false;document.addEventListener('pointerdown',()=>{if(IB.h&&!IB.ok&&!IB_TRY){IB_TRY=true;ibReconnect()}},true);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261125-145521';let VER_NEW=false;
+const APP_VER='20261125-233439';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
 /* ---------- 같은 화면을 다시 그릴 때(자동 번역·자료함·저장 등) 스크롤 위치를 그대로 유지. 다른 화면으로 이동할 때만 맨 위로 ---------- */
 const scrEls=()=>{const m=$('#main');return [document.scrollingElement,m,m&&m.parentElement].filter(Boolean)};
