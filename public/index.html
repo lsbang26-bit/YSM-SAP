@@ -4480,7 +4480,7 @@ function renderModal(){
     if(hasCur(m)){const amt=m.cols.find(c=>isMoney(c)&&c.sum)||m.cols.find(c=>isMoney(c));if(amt&&!show.includes(amt))show.push(amt)}
     host.innerHTML=`<div class="modal-bg"><div class="modal sm" role="alertdialog" aria-modal="true" aria-labelledby="mt">
       <header><h3 id="mt">삭제하시겠습니까?</h3><button type="button" class="x" data-close="1" aria-label="닫기">×</button></header>
-      <div class="mbody"><p class="note">아래 항목을 ${esc(m.name)}에서 삭제합니다.${r.link?` 외상${r.linkMod==='ar'?'매출 수금액':'매입 지급액'}도 이 금액만큼 되돌립니다.`:''}</p><dl class="sum">${show.map(c=>`<dt>${esc(c.l)}</dt><dd>${cellView(c,r,p,m)||'–'}</dd>`).join('')}</dl></div>
+      <div class="mbody"><p class="note">아래 항목을 ${esc(m.name)}에서 삭제합니다.${r.link?` 외상${r.linkMod==='ar'?'매출 수금액':'매입 지급액'}도 이 금액만큼 되돌립니다.`:''}${(m.data==='ap'||m.data==='ar')&&cashByLink(r.id).filter(c=>c.linkMod===m.data).length?` 연결된 경리자료 ${m.data==='ap'?'지급':'수금'} 전표 ${cashByLink(r.id).filter(c=>c.linkMod===m.data).length}건도 함께 삭제됩니다.`:''}</p><dl class="sum">${show.map(c=>`<dt>${esc(c.l)}</dt><dd>${cellView(c,r,p,m)||'–'}</dd>`).join('')}</dl></div>
       <footer><button type="button" class="btn" data-close="1">취소</button><button type="button" class="btn danger" data-confirmdel="1">삭제</button></footer></div></div>`;
     host.querySelector('[data-confirmdel]').focus();
   }
@@ -4492,6 +4492,8 @@ function delRow(mod,id){
   if(mod==='cash'&&row.xfer){const j=arr.findIndex(x=>x.id===row.xfer&&x.xfer===row.id);if(j>=0){arr.splice(j,1);return delRow(mod,id)}}
   if(mod==='ped')DB.cash=DB.cash.filter(c=>!(c.link===id&&c.linkMod==='ped'));
   if(mod==='loans')DB.cash=DB.cash.filter(c=>!(c.link===id&&c.linkMod==='loans'));
+  // 외상매입·외상매출 건을 지우면 그 건에서 만든 지급·수금 전표(경리자료)도 함께 지움
+  if(mod==='ap'||mod==='ar')DB.cash=DB.cash.filter(c=>!(c.link===id&&c.linkMod===mod));
   // 차입금에서 만든 전표를 지우면 그 지급은 다시 만들지 않음
   if(row.link&&row.linkMod==='loans'){const L=DB.loans.find(x=>x.id===row.link),x=L&&(L.pays||[]).find(x=>LOAN_ACC[x.kind]===row.account&&x.date===row.date&&Math.abs((+x.amount||0)-(+row.amount||0))<0.01);if(x){L.cashOff=L.cashOff||[];const k=loanPayKey(x);if(!L.cashOff.includes(k))L.cashOff.push(k)}}
   if(row.link&&row.linkMod==='ped'){const P=DB.ped.find(x=>x.id===row.link);if(P&&!arr.some(x=>x!==row&&x.link===P.id&&x.linkMod==='ped'))delete P.pay}
@@ -5301,6 +5303,8 @@ async function ibScan(quiet){if(!IB.h||!IB.ok||IB.busy)return 0;IB.busy=true;let
     else if(files&&!quiet)toast('자료함 파일을 읽었지만 새 자료가 없습니다 (이미 등록된 CFDI UUID)');else if(!quiet)toast('자료함에 새 파일이 없습니다')}
   catch(e){IB.ok=false;try{renderNav()}catch(_){}}IB.busy=false;return n}
 // N으로 시작하는 Factura인데 금액이 양수로 들어간 외상매출은 Credit Note로 고침 (음수로)
+// 이미 지워진 외상매입·외상매출 건에 연결돼 남아 있던 지급·수금 전표 정리
+(()=>{const ids={ap:new Set((DB.ap||[]).map(r=>r.id)),ar:new Set((DB.ar||[]).map(r=>r.id))},n0=(DB.cash||[]).length;DB.cash=(DB.cash||[]).filter(c=>!((c.linkMod==='ap'||c.linkMod==='ar')&&c.link&&!ids[c.linkMod].has(c.link)));if(DB.cash.length!==n0){calcReset();save()}})();
 (()=>{let k=0;(DB.ar||[]).forEach(r=>{if(isCnFolio(r.folio)&&(+r.amount>0||+r.sub>0||+r.price>0)){fixRow(MODS.ar,r);k++}});if(k)save()})();
 (()=>{let k=0;IB_MODS.forEach(mod=>{const m=MODS[mod];(m&&DB[m.data]||[]).forEach(r=>{if(r.byClaude&&!r.newChk){r.newChk=1;r.isNew=1;k++}})});if(k)save()})();
 (async()=>{const h=await bkIDB('readonly',st=>st.get('ib'));if(!h)return;IB.h=h;IB.name=h.name;try{IB.ok=(await h.queryPermission({mode:'readwrite'}))==='granted'}catch(e){IB.ok=false}
@@ -5310,7 +5314,7 @@ document.addEventListener('change',e=>{const t=e.target;if(t&&t.dataset&&t.datas
 // 새로고침 뒤에는 Chrome이 폴더 권한을 다시 물을 수 있음: 화면을 처음 누를 때 자동으로 다시 연결 (권한 창에서 "방문할 때마다 허용"을 고르면 다음부터는 묻지 않음)
 let IB_TRY=false;document.addEventListener('pointerdown',()=>{if(IB.h&&!IB.ok&&!IB_TRY){IB_TRY=true;ibReconnect()}},true);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261125-115727';let VER_NEW=false;
+const APP_VER='20261125-145521';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
 /* ---------- 같은 화면을 다시 그릴 때(자동 번역·자료함·저장 등) 스크롤 위치를 그대로 유지. 다른 화면으로 이동할 때만 맨 위로 ---------- */
 const scrEls=()=>{const m=$('#main');return [document.scrollingElement,m,m&&m.parentElement].filter(Boolean)};
