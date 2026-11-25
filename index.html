@@ -514,6 +514,8 @@ select.cell.cur{min-width:84px}
 
 .stmt td:first-child{white-space:normal;min-width:210px}
 .stmt tr.sub td{font-weight:600}
+.stmt.mgt th,.stmt.mgt td{border-right:1px solid var(--line)}.stmt.mgt th:last-child,.stmt.mgt td:last-child{border-right:0}.stmt.mgt thead th{background:var(--surface-2);border-bottom:1px solid var(--line)}
+.tw.mgfz{max-height:calc(100vh - 170px)}.tw.mgfz .stmt.mgt td:first-child,.tw.mgfz .stmt.mgt thead tr:first-child th:first-child{position:sticky;left:0;z-index:2;background:var(--surface);box-shadow:1px 0 0 var(--line-strong)}.tw.mgfz .stmt.mgt thead tr:first-child th:first-child{z-index:4;background:var(--surface-2)}.tw.mgfz .stmt.mgt tr.total td:first-child{background:var(--surface-2)}.tw.mgfz .stmt.mgt tr.mgr:hover td:first-child{background:color-mix(in srgb,var(--accent,#0070f2) 7%,var(--surface))}
 .stmt tr.mgr{cursor:pointer}.stmt tr.mgr:hover td{background:color-mix(in srgb,var(--accent,#0070f2) 7%,transparent)}.stmt td.mgm{position:relative}.stmt td.mgm::after{content:'';position:absolute;top:0;right:0;border-style:solid;border-width:0 9px 9px 0;border-color:transparent #E9730C transparent transparent}.stmt td.mgmt-memo{font-size:11.5px;font-weight:400;color:var(--fg-2);min-width:220px;max-width:380px;white-space:normal;line-height:1.35}
 .items .sub2{padding-left:12px;margin:2px 0 4px}.items button.shead{display:flex;align-items:center;gap:6px;font-weight:600}.items button.shead .tog{width:14px;text-align:center}
 .stmt tr.ind td:first-child{padding-left:34px;color:var(--muted)}
@@ -3831,7 +3833,7 @@ const mgP=v=>isFinite(v)?(v*100).toFixed(1)+'%':'–';
 // 달성률: 수익 항목은 실적÷목표, 비용 항목은 목표÷실적 (경영회의자료와 같은 방식). 목표나 실적이 0 이하이면 표시하지 않음
 const mgAch=(k,t,a)=>!(t>0&&a>0)?'–':mgP(k==='cost'?t/a:a/t);
 function mgPL(G){const P=G.pl,C=P.cols,si=P.rows[0][3],a=C.indexOf(P.act),t=C.indexOf(P.tgt),nx=C.indexOf(P.next),pr=!!G.auto,df=(x,y)=>x==null||y==null?null:x-y;
-  return `<div class="card"><header><h2>손익현황</h2><span class="meta">단위 ${esc(G.unit||'백만원')}${G.fx?' · 환율 '+esc(G.fx):''} · 비율은 매출액 대비 · 항목을 누르면 상세 자료</span></header><div class="tw"><table class="stmt">
+  return `<div class="card"><header><h2>손익현황</h2><span class="meta">단위 ${esc(G.unit||'백만원')}${G.fx?' · 환율 '+esc(G.fx):''} · 비율은 매출액 대비 · 항목을 누르면 상세 자료</span></header><div class="tw frz mgfz"><table class="stmt mgt">
     <thead><tr><th rowspan="2">구분</th>${C.map(c=>`<th class="n" colspan="2">${esc(c)}</th>`).join('')}<th class="n" colspan="2">${esc(P.act)} 목표 대비</th>${nx>=0?`<th class="n">${pr?esc(P.act)+' − '+esc(P.next):esc(P.next)+' − '+esc(P.act)}</th>`:''}<th rowspan="2">메모</th></tr>
     <tr>${C.map(()=>'<th class="n">금액</th><th class="n">비율</th>').join('')}<th class="n">차이</th><th class="n">달성률</th>${nx>=0?'<th class="n">증감</th>':''}</tr></thead><tbody>
     ${P.rows.map(([l,lv,k,v,memo],ri)=>`<tr class="${lv?'ind':k==='profit'?'total':'sub'} mgr" data-mgrow="${ri}" title="눌러서 상세 자료 보기"><td class="${memo?'mgm':''}">${esc(l)}</td>${v.map((x,i)=>`<td class="n">${mgN(x)}</td><td class="n muted">${mgP(x/si[i])}</td>`).join('')}
@@ -3843,22 +3845,22 @@ function mgNotes(G){const L=G.notes||[];if(!L.length)return '';
 function mgTrend(G){const T=G.trend;if(!T)return '';const S=T.rows.find(r=>r[0]==='매출액')[1],tt=T.tot||{},sm=a=>{const r=T.rows.find(r=>r[1]===a);return r&&tt[r[0]]!=null?tt[r[0]]:a.slice(1).reduce((s,x)=>s+(+x||0),0)};
   const rows=T.rows.flatMap(([l,v,pc])=>{const r=[`<tr class="sub"><td>${esc(l)}</td>${v.map(x=>`<td class="n">${mgN(x)}</td>`).join('')}<td class="n"><b>${mgN(sm(v))}</b></td></tr>`];
     if(pc)r.push(`<tr class="ind"><td>${esc(l)} %</td>${v.map((x,i)=>`<td class="n">${mgP(x/S[i])}</td>`).join('')}<td class="n">${mgP(sm(v)/sm(S))}</td></tr>`);return r});
-  return `<div class="card"><header><h2>주요항목 월별 변동추이</h2><span class="meta">단위 ${esc(G.unit||'백만원')} · 합계는 ${esc(T.m[1])}~${esc(T.m[T.m.length-1])}</span></header><div class="tw"><table class="stmt">
+  return `<div class="card"><header><h2>주요항목 월별 변동추이</h2><span class="meta">단위 ${esc(G.unit||'백만원')} · 합계는 ${esc(T.m[1])}~${esc(T.m[T.m.length-1])}</span></header><div class="tw frz mgfz"><table class="stmt mgt">
     <thead><tr><th>구분</th>${T.m.map(m=>`<th class="n">${esc(m)}</th>`).join('')}<th class="n">합계</th></tr></thead><tbody>${rows.join('')}</tbody></table></div></div>`}
 function mgInv(G){const I=G.inv;if(!I)return '';const R=[['당월 재고','tot'],['제품·상품','fg'],['재공품','wip'],['원부자재','rm']],d=I.days||{};
-  return `<div class="card"><header><h2>재고현황</h2><span class="meta">단위 ${esc(G.unit||'백만원')} · 제품매출 ${nf0.format(I.sales||0)}</span></header><div class="tw"><table class="stmt">
+  return `<div class="card"><header><h2>재고현황</h2><span class="meta">단위 ${esc(G.unit||'백만원')} · 제품매출 ${nf0.format(I.sales||0)}</span></header><div class="tw"><table class="stmt mgt">
     <thead><tr><th>구분</th><th class="n">당월</th><th class="n">보유일수</th><th class="n">전월</th><th class="n">증감</th></tr></thead><tbody>
     ${R.map(([l,k],i)=>`<tr class="${i?'ind':'sub'}"><td>${esc(l)}</td><td class="n">${mgN(I.cur[k])}</td><td class="n">${d[k]!=null?d[k]+'일':'–'}</td><td class="n">${mgN(I.prev[k])}</td><td class="n">${mgN(I.cur[k]-I.prev[k])}</td></tr>`).join('')}
     </tbody></table></div><div class="body" style="font-size:12px;color:var(--faint)">재고일수 = 재고금액 ÷ (매출 ÷ 25). 전월 재고일수 ${I.prevDays!=null?I.prevDays+'일':'–'}</div></div>`}
 function mgHc(G){const H=G.hc;if(!H)return '';const m=Object.keys(H.m);
   return `<div class="card"><header><h2>인원현황</h2><span class="meta">당월 ${H.cur}명 (정규직 ${H.reg} · 계약직 ${H.con}) · 전월 ${H.prev}명 · ${H.cur-H.prev>=0?'+':''}${H.cur-H.prev}명</span></header>
     <div class="body">${barsSVG(m,m.map(k=>H.m[k]),0,m.length-1)}</div>
-    <div class="tw"><table class="stmt"><thead><tr><th>구분</th>${m.map(k=>`<th class="n">${esc(k)}</th>`).join('')}<th class="n">평균</th></tr></thead>
+    <div class="tw frz mgfz"><table class="stmt mgt"><thead><tr><th>구분</th>${m.map(k=>`<th class="n">${esc(k)}</th>`).join('')}<th class="n">평균</th></tr></thead>
     <tbody><tr><td>근무인원</td>${m.map(k=>`<td class="n">${nf0.format(H.m[k])}</td>`).join('')}<td class="n"><b>${H.avg!=null?nf0.format(H.avg):'–'}</b></td></tr></tbody></table></div></div>`}
 function mgScrap(G){const S=G.scrap;if(!S)return '';const m=S.m;
   return `<div class="card"><header><h2>스크랩률</h2><span class="meta">단위 ${esc(S.unit||'톤')}</span></header>
     <div class="body">${barsSVG(m,m.map((_,i)=>S.in[i]?Math.round(S.sc[i]/S.in[i]*100):0),0,m.length-1).replace(/(<span class="bv">)(\d+)(<\/span>)/g,'$1$2%$3')}</div>
-    <div class="tw"><table class="stmt"><thead><tr><th>구분</th>${m.map(k=>`<th class="n">${esc(k)}</th>`).join('')}</tr></thead><tbody>
+    <div class="tw frz mgfz"><table class="stmt mgt"><thead><tr><th>구분</th>${m.map(k=>`<th class="n">${esc(k)}</th>`).join('')}</tr></thead><tbody>
     <tr><td>투입중량</td>${S.in.map(v=>`<td class="n">${nf0.format(v)}</td>`).join('')}</tr><tr><td>스크랩중량</td>${S.sc.map(v=>`<td class="n">${nf0.format(v)}</td>`).join('')}</tr>
     <tr class="sub"><td>스크랩율</td>${S.in.map((v,i)=>`<td class="n">${v?Math.round(S.sc[i]/v*100)+'%':'–'}</td>`).join('')}</tr></tbody></table></div></div>`}
 function mgPage(){const y=mgYm(),G=mgG(y);
@@ -5298,7 +5300,7 @@ document.addEventListener('change',e=>{const t=e.target;if(t&&t.dataset&&t.datas
 // 새로고침 뒤에는 Chrome이 폴더 권한을 다시 물을 수 있음: 화면을 처음 누를 때 자동으로 다시 연결 (권한 창에서 "방문할 때마다 허용"을 고르면 다음부터는 묻지 않음)
 let IB_TRY=false;document.addEventListener('pointerdown',()=>{if(IB.h&&!IB.ok&&!IB_TRY){IB_TRY=true;ibReconnect()}},true);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261125-075524';let VER_NEW=false;
+const APP_VER='20261125-080428';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
 /* ---------- 같은 화면을 다시 그릴 때(자동 번역·자료함·저장 등) 스크롤 위치를 그대로 유지. 다른 화면으로 이동할 때만 맨 위로 ---------- */
 const scrEls=()=>{const m=$('#main');return [document.scrollingElement,m,m&&m.parentElement].filter(Boolean)};
