@@ -3362,7 +3362,8 @@ document.addEventListener('click',e=>{const t=e.target;if(!t.closest||modal)retu
 document.addEventListener('click',e=>{const t=e.target;if(!t.closest)return;const add=t.closest('[data-lnadd]'),del=t.closest('[data-lndel]');if(!add&&!del)return;e.preventDefault();e.stopPropagation();
   const B=t.closest('[data-lines]'),F=B.closest('form')||B.parentElement;if(add){B.querySelector('.lnrows').insertAdjacentHTML('beforeend',lnRow());const n=B.querySelectorAll('.lnrow');n[n.length-1].querySelector('input').focus()}else t.closest('.lnrow').remove();lnSync(F)},true);
 document.addEventListener('input',e=>{const t=e.target,F=t.form;if(!F||!['ap','ar'].includes(F.dataset.reg||F.dataset.edit)||!['qty','price'].includes(t.name)||F.querySelector('.lnrow'))return;
-  const q=pnum(F.querySelector('[name="qty"]').value),p=pnum(F.querySelector('[name="price"]').value),S=F.querySelector('[name="sub"]');if(S&&q>0&&p>0){S.value=r2(q*p).toFixed(2);S.dispatchEvent(new Event('input',{bubbles:true}))}});
+  // 단가가 음수(Credit Note)여도 금액을 계산. 외상매출 N 번호 Factura는 금액을 음수로
+  const q=pnum(F.querySelector('[name="qty"]').value),p=pnum(F.querySelector('[name="price"]').value),S=F.querySelector('[name="sub"]'),fo=F.querySelector('[name="folio"]');if(S&&q>0&&isFinite(p)&&p){let v=r2(q*p);if((F.dataset.reg||F.dataset.edit)==='ar'&&fo&&isCnFolio(fo.value)&&v>0)v=-v;S.value=v.toFixed(2);S.dispatchEvent(new Event('input',{bubbles:true}))}});
 document.addEventListener('input',e=>{const t=e.target;if(t.dataset&&t.dataset.ln&&t.dataset.ln!=='item')lnSync(t.closest('form')||t.closest('[data-lines]').parentElement)});
 // 품목·항목 내역에 엑셀 범위를 붙여넣으면 (탭=칸, 줄바꿈=줄) 커서가 있는 칸부터 맞춰 채우고 모자란 줄은 자동 추가
 document.addEventListener('paste',e=>{const t=e.target;if(!t.dataset||!t.dataset.pl)return;const txt=(e.clipboardData||window.clipboardData).getData('text');if(!/[\t\n]/.test(txt.replace(/\r?\n$/,'')))return;e.preventDefault();
@@ -5304,7 +5305,7 @@ document.addEventListener('change',e=>{const t=e.target;if(t&&t.dataset&&t.datas
 // 새로고침 뒤에는 Chrome이 폴더 권한을 다시 물을 수 있음: 화면을 처음 누를 때 자동으로 다시 연결 (권한 창에서 "방문할 때마다 허용"을 고르면 다음부터는 묻지 않음)
 let IB_TRY=false;document.addEventListener('pointerdown',()=>{if(IB.h&&!IB.ok&&!IB_TRY){IB_TRY=true;ibReconnect()}},true);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261125-090423';let VER_NEW=false;
+const APP_VER='20261125-091522';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
 /* ---------- 같은 화면을 다시 그릴 때(자동 번역·자료함·저장 등) 스크롤 위치를 그대로 유지. 다른 화면으로 이동할 때만 맨 위로 ---------- */
 const scrEls=()=>{const m=$('#main');return [document.scrollingElement,m,m&&m.parentElement].filter(Boolean)};
