@@ -5221,7 +5221,7 @@ function bkUpload(){const i=document.createElement('input');i.type='file';i.acce
   if(BK.ok)await bkSync();try{renderNav()}catch(e){}})();
 /* ---------- Claude 자료함: PC 폴더(예: 바탕화면\work\YSM 자료함)와 그 하위 폴더에 Claude가 넣어 둔 *.ysm.json을 읽어 자료에 바로 반영 ----------
    파일 형식: {"app":"YSM SAP inbox","rows":{"ap":[{...}],"ar":[...],"cash":[...],"ped":[...]}} · 반영한 파일은 "반영완료" 하위 폴더로 옮김 · CFDI UUID가 이미 있으면 건너뜀 */
-const IB={h:null,ok:false,name:'',busy:false,last:null},IB_MODS=['ap','ar','cash','ped','inbound','outbound','hq','paid'];
+const IB={h:null,ok:false,name:'',busy:false,last:null},IB_MODS=['ap','ar','cash','ped','inbound','outbound','hq','paid','loans'];
 async function ibConnect(){if(!window.showDirectoryPicker){toast('이 브라우저는 폴더 연결을 지원하지 않습니다. Chrome이나 Edge에서 열어 주세요');return}
   try{const h=await showDirectoryPicker({id:'ysm-inbox',mode:'readwrite'});if((await h.requestPermission({mode:'readwrite'}))!=='granted')return;IB.h=h;IB.ok=true;IB.name=h.name;await bkIDB('readwrite',st=>st.put(h,'ib'));toast(`Claude 자료함(${h.name})을 연결했습니다`);await ibScan(false);renderNav()}
   catch(e){if(e&&e.name!=='AbortError')toast('폴더 연결 실패: '+(e.message||e))}}
@@ -5343,7 +5343,7 @@ document.addEventListener('change',e=>{const t=e.target;if(t&&t.dataset&&t.datas
 // 새로고침 뒤에는 Chrome이 폴더 권한을 다시 물을 수 있음: 화면을 처음 누를 때 자동으로 다시 연결 (권한 창에서 "방문할 때마다 허용"을 고르면 다음부터는 묻지 않음)
 let IB_TRY=false;document.addEventListener('pointerdown',()=>{if(IB.h&&!IB.ok&&!IB_TRY){IB_TRY=true;ibReconnect()}},true);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261125-234123';let VER_NEW=false;
+const APP_VER='20261125-234604';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
 /* ---------- 같은 화면을 다시 그릴 때(자동 번역·자료함·저장 등) 스크롤 위치를 그대로 유지. 다른 화면으로 이동할 때만 맨 위로 ---------- */
 const scrEls=()=>{const m=$('#main');return [document.scrollingElement,m,m&&m.parentElement].filter(Boolean)};
