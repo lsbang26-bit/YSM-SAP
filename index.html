@@ -3801,7 +3801,7 @@ function mgAuto(ym){const pv=mgPrev(ym),fx=pv&&+pv.fx||78,K=v=>Math.round((v||0)
   const rows=keys.map((k,i)=>{const pr=PR&&PR.rows[i],lab=k.replace(/2$/,''),lv=pr?pr[1]:0,kind=pr?pr[2]:'cost',g=j=>pr&&j>=0?pr[3][j]:null;return [lab,lv,kind,[g(ia),g(ib),g(it),K(act[k]),g(ip)]]});
   const cols=['25년 평균','26년 평균',mn+' 목표',mn+' 실적',pmn+' 실적'];
   // 인원: 이달 마지막 주급·14 급여 지급 회차의 인원
-  // 인원: 그 달에 15일 이상 근무한 사람 (주급자·월급자·한국인 합계). 직전 경영회의자료 인원 뒤에 이어 붙이고 최근 12개월만 보임
+  // 인원: 그 달에 3주 이상 근무한 사람 (주급·보름급·한국인 합계). 직전 경영회의자료 인원 뒤에 이어 붙이고 최근 12개월만 보임
   const hcN=hcDetail(ym).tot.cur;let hc=null;
   if(pv&&pv.hc&&hcN){const L=hcYms(pv.ym||ym,pv.hc.m).filter(([y])=>y<ym);for(let y=ymAdd(pv.ym||ym,1);y<ym;y=ymAdd(y,1))L.push([y,+y.slice(5)+'월',hcDetail(y).tot.cur]);L.push([ym,mn,hcN]);
     const W=L.slice(-12),m={};W.forEach(([,k,v])=>m[k]=v);const prev=W.length>1?W[W.length-2][2]:pv.hc.cur;
@@ -3862,17 +3862,17 @@ function mgInv(G){const I=G.inv;if(!I)return '';const R=[['당월 재고','tot']
     <thead><tr><th>구분</th><th class="n">당월</th><th class="n">보유일수</th><th class="n">전월</th><th class="n">증감</th></tr></thead><tbody>
     ${R.map(([l,k],i)=>`<tr class="${i?'ind':'sub'}"><td>${esc(l)}</td><td class="n">${mgN(I.cur[k])}</td><td class="n">${d[k]!=null?d[k]+'일':'–'}</td><td class="n">${mgN(I.prev[k])}</td><td class="n">${mgN(I.cur[k]-I.prev[k])}</td></tr>`).join('')}
     </tbody></table></div><div class="body" style="font-size:12px;color:var(--faint)">재고일수 = 재고금액 ÷ (매출 ÷ 25). 전월 재고일수 ${I.prevDays!=null?I.prevDays+'일':'–'}</div></div>`}
-// 인원현황: 10월까지는 경영회의자료 인원(합계 현원)만, 11월부터는 급여 자료로 주급자(주급)·월급자(14 급여)·한국인(월급)별 전월·입사·퇴사·현원
-const HC_FROM='2026-11',HC_T=[['주급자','주급'],['월급자','14 급여'],['한국인','월급']];
+// 인원현황: 10월까지는 경영회의자료 인원(합계 현원)만, 11월부터는 급여 자료로 주급·보름급(14 급여)·한국인(월급)별 전월·입사·퇴사·현원
+const HC_FROM='2026-11',HC_T=[['주급','주급'],['보름급','14 급여'],['한국인','월급']],HC_MIN=21;
 const ymAdd=(ym,n)=>{const d=new Date(+ym.slice(0,4),+ym.slice(5,7)-1+n,1);return d.getFullYear()+'-'+pad(d.getMonth()+1)};
 // H.m 의 '12월'·'1월'… 이름을 보고 월부터 거꾸로 세어 실제 연월에 맞춤
 const hcYms=(ym,m)=>{const K=Object.keys(m);return K.map((k,i)=>[ymAdd(ym,i-K.length+1),k,m[k]])};
-// 그 달에 15일 이상 근무한 사람 (급여 회차 일수를 달 안에 든 날 비율로 나눠 합산). 아직 진행 중인 달은 자료가 있는 날의 절반 이상
+// 그 달에 3주(21일) 이상 근무한 사람 (급여 회차 일수를 달 안에 든 날 비율로 나눠 합산). 아직 진행 중인 달은 자료가 있는 날에 비례해 기준을 줄임
 const HC_C={};
 function hcSet(ym){const ck=ym+'|'+(DB.payroll||[]).length;if(HC_C[ck])return HC_C[ck];
   const ms=ym+'-01',me=period(ms,'month').end,dd=(a,b)=>Math.round((Date.parse(b)-Date.parse(a))/864e5)+1,out={};
   HC_T.forEach(([,pt])=>{const R=(DB.payroll||[]).filter(r=>r.ptype===pt&&r.from&&r.to&&r.to>=ms&&r.from<=me);if(!R.length){out[pt]=null;return}
-    const cov=R.reduce((a,r)=>r.to>a?r.to:a,'')>me?me:R.reduce((a,r)=>r.to>a?r.to:a,''),th=Math.min(15,Math.ceil(dd(ms,cov)/2)),acc={};
+    const cov=R.reduce((a,r)=>r.to>a?r.to:a,'')>me?me:R.reduce((a,r)=>r.to>a?r.to:a,''),th=cov<me?HC_MIN*dd(ms,cov)/dd(ms,me):HC_MIN,acc={};
     R.forEach(r=>{const a=r.from>ms?r.from:ms,b=r.to<me?r.to:me,k=r.code||r.emp;acc[k]=(acc[k]||0)+(+r.days||0)*dd(a,b)/dd(r.from,r.to)});
     out[pt]={s:new Set(Object.keys(acc).filter(k=>acc[k]>=th-1e-9)),cov,part:cov<me}});
   return HC_C[ck]=out}
@@ -3889,7 +3889,7 @@ function mgHc(G){const H=G.hc;if(!H)return '';const ym=G.ym||mgYm(),L=hcYms(ym,H
     const r=d.rows[g],x=r[k];return `<td class="n"${r.carry?' title="이 달 급여 자료가 아직 없어 전월 인원을 그대로 씀"':''}>${r.carry?'<span class="muted">':''}${k==='in'&&x?'+':k==='out'&&x?'−':''}${nf0.format(x)}${r.carry?'</span>':''}</td>`};
   const th=L.map(([y,k],i)=>`<th class="n">${esc(k)}${D[i]&&D[i].part?`<br><span class="muted" style="font-weight:400">${+D[i].cov.slice(5,7)}.${+D[i].cov.slice(8)}까지</span>`:''}</th>`).join('');
   const body=G4.map(g=>RL.map(([k,lab],j)=>`<tr class="${g==='합계'?(k==='cur'?'total':'sub'):k==='cur'?'sub':'ind'}">${j===0?`<td rowspan="4" style="vertical-align:middle;text-align:center"><b>${g}</b></td>`:''}<td>${lab}</td>${L.map((_,i)=>cell(i,g,k)).join('')}<td class="n">${g==='합계'&&k==='cur'?`<b>${nf0.format(avg)}</b>`:''}</td></tr>`).join('')).join('');
-  return `<div class="card"><header><h2>인원현황</h2><span class="meta">당월 ${cur}명 · 전월 ${prev}명 · ${cur-prev>=0?'+':''}${cur-prev}명 · ${HC_FROM.slice(5)*1}월부터 15일 이상 근무자 기준</span></header>
+  return `<div class="card"><header><h2>인원현황</h2><span class="meta">당월 ${cur}명 · 전월 ${prev}명 · ${cur-prev>=0?'+':''}${cur-prev}명 · ${HC_FROM.slice(5)*1}월부터 3주 이상 근무자 기준</span></header>
     <div class="body">${barsSVG(L.map(x=>x[1]),v,0,L.length-1)}</div>
     <div class="tw frz mgfz"><table class="stmt mgt"><thead><tr><th colspan="2">구분</th>${th}<th class="n">평균</th></tr></thead>
     <tbody>${body}</tbody></table></div></div>`}
@@ -5343,7 +5343,7 @@ document.addEventListener('change',e=>{const t=e.target;if(t&&t.dataset&&t.datas
 // 새로고침 뒤에는 Chrome이 폴더 권한을 다시 물을 수 있음: 화면을 처음 누를 때 자동으로 다시 연결 (권한 창에서 "방문할 때마다 허용"을 고르면 다음부터는 묻지 않음)
 let IB_TRY=false;document.addEventListener('pointerdown',()=>{if(IB.h&&!IB.ok&&!IB_TRY){IB_TRY=true;ibReconnect()}},true);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261125-233439';let VER_NEW=false;
+const APP_VER='20261125-234123';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
 /* ---------- 같은 화면을 다시 그릴 때(자동 번역·자료함·저장 등) 스크롤 위치를 그대로 유지. 다른 화면으로 이동할 때만 맨 위로 ---------- */
 const scrEls=()=>{const m=$('#main');return [document.scrollingElement,m,m&&m.parentElement].filter(Boolean)};
