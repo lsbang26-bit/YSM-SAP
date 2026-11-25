@@ -1667,7 +1667,7 @@ const MODS={
     extra:rows=>groupSummary('분류별 매입',rows,'cat',[['매입액',M('amount'),money],['잔액',apBal,money]],r=>r.account),
     blank:p=>({date:TODAY,vendor:'',folio:'',cat:'제조비용',dept:'',account:'원재료비',item:'',cur:'MXN',sub:0,disc:0,ivaRet:0,isrRet:0,ivaAmt:'',amount:0,iva:'16%',factura:'발행',uuid:'',paid:0,due:addDs(TODAY,30)})},
   ar:{name:'외상매출',desc:'고객사 매출 채권과 수금 현황',data:'ar',dated:true,tight:1,after:(p,id)=>arFacturaCard(p,id),side:()=>arWeekCard(),
-    filters:[['customer','고객사'],['folio','Factura','text'],['item','품목','text'],['amount','합계','range'],['st','상태']],fsum:1,
+    filters:[['customer','고객사'],['folio','Factura','text'],['item','품목','text'],['amount','합계','range'],['st','상태'],['uuid','CFDI 번호 (UUID)','text']],fsum:1,
     cols:[C('date','발행일','date'),C('customer','고객사','text',{sug:'customers'}),C('folio','Factura','text',{opt:1,view:r=>(String(r.folio||'').trim()?`<span class="pill good"${r.uuid?` title="CFDI ${esc(r.uuid)}"`:''}>${esc(r.folio)}</span>`:pill(r.factura||'미발행'))+(+r.amount<0&&String(r.cnFor||'').trim()?` <span class="cnto${cnTarget(r)?'':' bad'}" title="${cnTarget(r)?'이 Factura 잔액에서 차감':'같은 고객사·통화에 이 번호의 Factura가 없습니다'}">→ ${esc(r.cnFor)}</span>`:'')+(arCreditN(r)>0.004?` <span class="cnto" title="적용된 Credit Note">CN −${nf2.format(arCreditN(r))}</span>`:'')}),Object.assign({},UUIDC,{l:'CFDI 번호 (UUID)'}),C('item','품목','text',{opt:1}),C('qty','수량','num',{opt:1,keepBlank:1,view:r=>+r.qty?nfq.format(+r.qty):''}),C('price','단가','money2',{opt:1,keepBlank:1,view:r=>+r.price?fmtCur(+r.price,r.cur,1):''}),CUR,C('fx','환율 (US$ 건)','num',{noTable:1,opt:1}),SUB({sum:1}),IVAF,C('ivaAmt','부가세','money',{noTable:1,opt:1,keepBlank:1}),VATR({sum:1}),C('ivaRet','부가세 Ret','money',{sum:1,opt:1}),TOT({sum:1}),Object.assign({},FACTC_AR,{noTable:1}),C('received','수금액','money',{sum:1}),C('fee','송금수수료(기타)','money',{sum:1,opt:1,keepBlank:1}),C('terms','크레딧 텀(일)','num',{opt:1,keepBlank:1,noTable:1}),C('due','수금기일','date'),
       C('bal','잔액','money',{sum:1,calc:arBal}),C('termsV','크레딧 텀(일)','calc',{n:1,calc:r=>validD(r.due)&&validD(r.date)?diffD(r.date,r.due):''}),C('st','상태','calc',{calc:r=>+r.amount<0?(cnTarget(r)?'CN 적용':r.cnDone?'CN 완료':'CN 미적용'):dueStatus(arBal(r),r.due),pill:1,act:{mod:'ar',label:'입금 완료',show:r=>arBal(r)>0.5}})],
     kpis:(rows,p)=>{const all=DB.ar.filter(r=>r.date<=p.end),od=all.filter(r=>dueStatus(arBal(r),r.due)==='연체');return[kv('기간 청구액',money(sumBy(rows,M('amount'))),rows.length+'건'),kv('기간분 미수',money(sumBy(rows,arBal))),
@@ -5300,7 +5300,7 @@ document.addEventListener('change',e=>{const t=e.target;if(t&&t.dataset&&t.datas
 // 새로고침 뒤에는 Chrome이 폴더 권한을 다시 물을 수 있음: 화면을 처음 누를 때 자동으로 다시 연결 (권한 창에서 "방문할 때마다 허용"을 고르면 다음부터는 묻지 않음)
 let IB_TRY=false;document.addEventListener('pointerdown',()=>{if(IB.h&&!IB.ok&&!IB_TRY){IB_TRY=true;ibReconnect()}},true);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261125-080428';let VER_NEW=false;
+const APP_VER='20261125-085527';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
 /* ---------- 같은 화면을 다시 그릴 때(자동 번역·자료함·저장 등) 스크롤 위치를 그대로 유지. 다른 화면으로 이동할 때만 맨 위로 ---------- */
 const scrEls=()=>{const m=$('#main');return [document.scrollingElement,m,m&&m.parentElement].filter(Boolean)};
