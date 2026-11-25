@@ -1278,15 +1278,19 @@ const advUsedOf=a=>DB.ap.reduce((s,r)=>s+(r.advUse||[]).filter(x=>x.id===a.id).r
 const advLeft=a=>Math.round(((+a.amount||0)-advUsedOf(a))*100)/100;
 const rowFx=r=>+r.amount?mx(r,'amount')/(+r.amount):rate(r.cur);
 // 선지급 건의 잔액 = Factura에 적용한 금액 − 선지급액 (아직 물건·Factura를 못 받은 만큼 − 로 표시, 다 적용되면 0)
-const apBal=r=>isAdv(r)?(advUsedOf(r)-(+r.paid||0))*rowFx(r):mx(r,'amount')-mx(r,'paid')-advOn(r)*rowFx(r);
+const apBal=r=>isAdv(r)?(advUsedOf(r)-(+r.paid||0))*rowFx(r):+r.amount<0&&(apCnTarget(r)||r.cnDone)?0:mx(r,'amount')-mx(r,'paid')-advOn(r)*rowFx(r)-apCreditN(r)*rate(r.cur);
 // Credit Note: 음수 외상매출 건에 적용 Factura(cnFor = 같은 고객사·통화의 Factura 번호)를 고르면 그 Factura 잔액에서 빠지고, Credit Note 자체 잔액은 0
 var CNIX=null,CNDB=null;const cnU=u=>String(u||'').trim().toUpperCase();const cnNm=c=>String(c||'').trim().replace(/\s+/g,' ').toLowerCase();
-function cnIndex(){if(CNIX&&CNDB===DB)return CNIX;CNDB=DB;const T=new Map(),C=new Map(),key=(c,cur,f)=>cnNm(c)+'|'+(cur||'MXN')+'|'+String(f||'').trim().toLowerCase();
-  const U=new Map();(DB.ar||[]).forEach(r=>{if(!(+r.amount>0))return;if(String(r.folio||'').trim())T.set(key(r.customer,r.cur,r.folio),r);const u=cnU(r.uuid);if(u)U.set(u,r)});
-  const tgt=new Map();(DB.ar||[]).forEach(r=>{if(!(+r.amount<0))return;let t=String(r.cnFor||'').trim()?T.get(key(r.customer,r.cur,r.cnFor)):null;
-    if(!t){const u=U.get(cnU(r.cnUuid))||U.get(cnU(r.uuid));if(u&&(u.cur||'MXN')===(r.cur||'MXN'))t=u}if(!t)return;tgt.set(r.id,t);C.set(t.id,(C.get(t.id)||0)-(+r.amount||0))});
-  return CNIX={tgt,C}}
+// 외상매입도 같은 방식: 음수 매입 건(공급사 Credit Note)에 적용 Factura를 고르면 그 매입 Factura 잔액에서 빠짐
+const cnParty=md=>md==='ap'?'vendor':'customer';
+function cnIndex(md='ar'){if(!CNIX||CNDB!==DB){CNIX={};CNDB=DB}if(CNIX[md])return CNIX[md];const P=cnParty(md),D=DB[md]||[],T=new Map(),C=new Map(),key=(c,cur,f)=>cnNm(c)+'|'+(cur||'MXN')+'|'+String(f||'').trim().toLowerCase();
+  const U=new Map();D.forEach(r=>{if(!(+r.amount>0))return;if(String(r.folio||'').trim())T.set(key(r[P],r.cur,r.folio),r);const u=cnU(r.uuid);if(u)U.set(u,r)});
+  const tgt=new Map();D.forEach(r=>{if(!(+r.amount<0))return;let t=String(r.cnFor||'').trim()?T.get(key(r[P],r.cur,r.cnFor)):null;
+    if(!t){const u=U.get(cnU(r.cnUuid))||(md==='ar'?U.get(cnU(r.uuid)):null);if(u&&(u.cur||'MXN')===(r.cur||'MXN'))t=u}if(!t)return;tgt.set(r.id,t);C.set(t.id,(C.get(t.id)||0)-(+r.amount||0))});
+  return CNIX[md]={tgt,C}}
 const cnTarget=r=>cnIndex().tgt.get(r.id)||null, arCreditN=r=>cnIndex().C.get(r.id)||0;
+const apCnTarget=r=>cnIndex('ap').tgt.get(r.id)||null, apCreditN=r=>cnIndex('ap').C.get(r.id)||0;
+const cnTgtOf=(md,r)=>md==='ap'?apCnTarget(r):cnTarget(r);
 const arBal=r=>+r.amount<0&&(cnTarget(r)||r.cnDone)?0:mx(r,'amount')-mx(r,'received')-mx(r,'fee')-arCreditN(r)*rate(r.cur);
 // 송금수수료(기타): 외상매출 입금 때 수수료·작은 차이로 덜 들어온 금액. 수금액 + 송금수수료 = 정리된 채권, 영업외비용(잡손실)로 처리
 const arFeeDate=r=>validD(r.feeDate)?r.feeDate:(cashByLink(r.id).filter(c=>c.linkMod==='ar').map(c=>c.date).sort().pop()||r.due||r.date);
@@ -1461,7 +1465,7 @@ function calcReset(){PAYMAX=null;LINKIX=null;CNIX=null;if(INCC)INCC.clear()}
 function cashByLink(id){if(!LINKIX||LINKDB!==DB){LINKDB=DB;LINKIX=new Map();(DB.cash||[]).forEach(c=>{if(!c.link)return;const a=LINKIX.get(c.link);if(a)a.push(c);else LINKIX.set(c.link,[c])})}return LINKIX.get(id)||[]}
 function usdOpen(r,d,done){
   const L=cashByLink(r.id), linked=sumBy(L,'amount'), upTo=sumBy(L.filter(c=>c.date<=d),'amount'), rest=Math.max(0,(+r[done]||0)-linked);
-  return Math.max(0,(+r.amount||0)-upTo-(done==='received'?arCreditN(r)+(+r.fee>0&&arFeeDate(r)<=d?+r.fee:0):0)-(validD(r.due)&&r.due<=d?rest:0));
+  return Math.max(0,(+r.amount||0)-upTo-(done==='received'?arCreditN(r)+(+r.fee>0&&arFeeDate(r)<=d?+r.fee:0):apCreditN(r))-(validD(r.due)&&r.due<=d?rest:0));
 }
 // 외화환산이익·손실: change in the revaluation of open US$ receivables, payables and loans between the day before the period and its end
 function fxReval(p){
@@ -1660,9 +1664,9 @@ const MODS={
   vat:{name:'부가세',desc:'멕시코 부가세법(LIVA) 기준 현금주의 부가세(IVA)를 자동 계산합니다. 매출세액, 매입세액, 수입 부가세, 납부액',page:()=>vatPage(),toolbar:fsToolbar},
   ap:{name:'외상매입',desc:'공급사 매입 채무와 지급 현황. 분류를 고르면 그 분류의 계정과목만 선택됩니다.',data:'ap',dated:true,tight:1,
     filters:[['vendor','공급사'],['folio','Factura','text'],['cat','분류'],['dept','부서'],['account','계정과목'],['item','품목','text'],['cur','통화'],['amount','합계','range'],['st','상태']],fsum:1,
-    cols:[C('date','거래일','date',{opt:1}),C('vendor','공급사','text',{sug:'suppliers'}),C('folio','Factura #','text',{opt:1,view:r=>(String(r.folio||'').trim()?esc(r.folio):'<span class="muted">–</span>')+(isAdv(r)?` <span class="cnto" title="선지급한 금액 중 아직 Factura에 적용하지 않은 금액">선급금 잔액 ${fmtCur(advLeft(r),r.cur||'MXN',1)}</span>`:'')+(advOn(r)>0.004?` <span class="cnto" title="선급금에서 적용한 금액">선급금 −${nf2.format(advOn(r))}</span>`:'')}),C('cat','분류','sel',{opts:CATS4,pill:1}),C('dept','부서','sel',{opts:['',...DEPTS],opt:1}),ACCT,C('item','품목','text',{wide:1}),C('qty','수량','num',{opt:1,keepBlank:1,view:r=>+r.qty?nfq.format(+r.qty):''}),C('price','단가','money2',{opt:1,keepBlank:1,view:r=>+r.price?fmtCur(+r.price,r.cur,1):''}),UUIDC,CUR,
+    cols:[C('date','거래일','date',{opt:1}),C('vendor','공급사','text',{sug:'suppliers'}),C('folio','Factura #','text',{opt:1,view:r=>(String(r.folio||'').trim()?esc(r.folio):'<span class="muted">–</span>')+(isAdv(r)?` <span class="cnto" title="선지급한 금액 중 아직 Factura에 적용하지 않은 금액">선급금 잔액 ${fmtCur(advLeft(r),r.cur||'MXN',1)}</span>`:'')+(advOn(r)>0.004?` <span class="cnto" title="선급금에서 적용한 금액">선급금 −${nf2.format(advOn(r))}</span>`:'')+(+r.amount<0&&String(r.cnFor||'').trim()?` <span class="cnto${apCnTarget(r)?'':' bad'}" title="${apCnTarget(r)?'이 Factura 잔액에서 차감':'같은 공급사·통화에 이 번호의 Factura가 없습니다'}">→ ${esc(r.cnFor)}</span>`:'')+(apCreditN(r)>0.004?` <span class="cnto" title="적용된 Credit Note">CN −${nf2.format(apCreditN(r))}</span>`:'')}),C('cat','분류','sel',{opts:CATS4,pill:1}),C('dept','부서','sel',{opts:['',...DEPTS],opt:1}),ACCT,C('item','품목','text',{wide:1}),C('qty','수량','num',{opt:1,keepBlank:1,view:r=>+r.qty?nfq.format(+r.qty):''}),C('price','단가','money2',{opt:1,keepBlank:1,view:r=>+r.price?fmtCur(+r.price,r.cur,1):''}),UUIDC,CUR,
       C('fx','환율 (US$ 건)','num',{noTable:1,opt:1,regHide:1}),SUB({sum:1}),C('disc','할인','money',{sum:1,opt:1}),C('ivaRet','부가세 Ret','money',{sum:1,opt:1}),C('isrRet','ISR Ret','money',{sum:1,opt:1}),Object.assign({},IVAF,{regHide:1,opt:1}),C('ivaAmt','부가세','money',{noTable:1,opt:1,keepBlank:1}),VATR({sum:1,l:'부가세'}),TOT({sum:1,form:1,keepBlank:1}),Object.assign({},FACTC,{noTable:1,regHide:1,opt:1}),C('paid','지급액','money',{sum:1,regHide:1,opt:1}),C('terms','크레딧 텀(일)','num',{opt:1,keepBlank:1}),C('due','지급기일','date',{opt:1}),
-      C('bal','잔액','money',{sum:1,calc:apBal}),C('st','상태','calc',{calc:r=>isAdv(r)&&apBal(r)<-0.005?'선급':dueStatus(apBal(r),r.due),pill:1,act:{mod:'ap',label:'지급 완료',show:r=>apBal(r)>0.5}})],
+      C('bal','잔액','money',{sum:1,calc:apBal}),C('st','상태','calc',{calc:r=>!isAdv(r)&&+r.amount<0?(apCnTarget(r)?'CN 적용':r.cnDone?'CN 완료':'CN 미적용'):isAdv(r)&&apBal(r)<-0.005?'선급':dueStatus(apBal(r),r.due),pill:1,act:{mod:'ap',label:'지급 완료',show:r=>apBal(r)>0.5}})],
     kpis:(rows,p)=>{const all=DB.ap.filter(r=>r.date<=p.end),od=all.filter(r=>dueStatus(apBal(r),r.due)==='연체');return[kv('기간 매입액',money(sumBy(rows,M('amount'))),rows.length+'건'),kv('기간분 미지급',money(sumBy(rows,apBal))),
       kv('전체 미지급 잔액',money(sumBy(all,apBal)),p.end+' 기준','warn'),kv('연체',od.length+'건',plain(sumBy(od,apBal)),od.length?'bad':'')]},
     trend:{l:'기간별 매입액',fn:rows=>sumBy(rows,M('amount')),money:1},
@@ -1903,7 +1907,7 @@ const isMoney=c=>c.t==='money'||c.t==='money2';
 function cellView(c,r,p,m){
   if(c.view)return c.view(r);
   let v=c.calc?c.calc(r,p):r[c.k];
-  if(c.pill&&c.act&&c.act.mod==='ar'&&+r.amount<0&&!cnTarget(r)){const h0=pill(v);return r.cnDone?`<button type="button" class="stpill" data-cnundo="${r.id}" title="눌러서 완료 표시 취소">${h0}</button>`:`<span class="stcell">${h0}<button class="act settle" data-cndone="${r.id}" title="적용할 Factura가 없는 Credit Note를 완료로 표시합니다 (경리자료 반영 없음)">적용 완료</button></span>`}
+  if(c.pill&&c.act&&(c.act.mod==='ar'||(c.act.mod==='ap'&&!isAdv(r)))&&+r.amount<0&&!cnTgtOf(c.act.mod,r)){const h0=pill(v);return r.cnDone?`<button type="button" class="stpill" data-cnundo="${r.id}" title="눌러서 완료 표시 취소">${h0}</button>`:`<span class="stcell">${h0}<button class="act settle" data-cndone="${r.id}" title="적용할 Factura가 없는 Credit Note를 완료로 표시합니다 (경리자료 반영 없음)">적용 완료</button></span>`}
   if(c.pill){const h0=pill(v),h=c.act?`<button type="button" class="stpill" data-stedit="${r.id}" data-m="${c.act.mod}" title="눌러서 ${c.act.mod==='ar'?'입금':'지급'} 내역 보기·취소">${h0}</button>`:h0;return c.act&&c.act.show(r)?`<span class="stcell">${h}<button class="act settle" data-settle="${r.id}" data-m="${c.act.mod}">${c.act.label}</button></span>`:h}
   if(c.calc&&v==='')return '<span class="dim">–</span>';
   if(c.cls==='cur')return v==='USD'?'<span class="cur-tag usd">US$</span>':'<span class="dim">MXN</span>';
@@ -3185,7 +3189,7 @@ function formFields(m,r,pre){
     else if(isNum(c))inp=`<input type="text" inputmode="decimal" autocomplete="off" data-numin="${c.t}" ${a} value="${v===''||(+v===0&&(!c.keepBlank||c.k==='amount'||!(+r.sub)))?'':esc(fmtIn(c,v))}" placeholder="${c.keepBlank?'자동':c.t==='money'?'0.00':'0'}">`;
     else inp=`<input type="text" ${a} value="${esc(v)}"${c.sug?` list="dl-${c.sug}"`:''}${c.k==='name'?' required':''}>`;
     const vc=c.k==='iva'&&m.cols.some(x=>x.k==='sub')?`<div class="vatcalc" data-vatcalc aria-live="polite">${vatCalcHTML(+r.sub||0,v,r.cur,hasIvaAmt(r)?+r.ivaAmt:null,m.data==='ap'&&+r.amount?+r.amount:m.data==='ar'?(+r.sub||0)+(hasIvaAmt(r)?+r.ivaAmt:(+r.sub||0)*(IVA_RATES[v]||0))-(+r.ivaRet||0):null)}</div>`:'';
-    const ln=(c.k==='price'&&m.data==='ar')||(c.k==='uuid'&&m.data==='ap')?lnBox(r):c.k==='item'&&m.data==='ped'?pdBox(r):c.k==='repaid'&&m.data==='loans'?pyBox(r):c.k==='uuid'&&m.data==='cash'?xfBox(r):c.k==='received'&&m.data==='ar'?cnBox(r):c.k==='ivaprv'&&m.data==='ped'?`<div class="vatcalc"><span>합계</span><b data-pedtot>${nf2.format(pedTotal(r))}</b></div>`:'';
+    const ln=(c.k==='price'&&m.data==='ar')||(c.k==='uuid'&&m.data==='ap')?lnBox(r):c.k==='item'&&m.data==='ped'?pdBox(r):c.k==='repaid'&&m.data==='loans'?pyBox(r):c.k==='uuid'&&m.data==='cash'?xfBox(r):(c.k==='received'&&m.data==='ar')||(c.k==='due'&&m.data==='ap')?cnBox(r):c.k==='ivaprv'&&m.data==='ped'?`<div class="vatcalc"><span>합계</span><b data-pedtot>${nf2.format(pedTotal(r))}</b></div>`:'';
     return `${sec}<label class="${c.wide?'wide':''}">${esc(c.l)}${inp}</label>${vc}${ln}`}).join('');
 }
 // 계좌간 이체: 보통예금 · 계좌 이체 · 출금이면 받는 계좌·환율·입금액을 받아 그 계좌에 입금 전표를 자동으로 만듦 (두 전표는 xfer 로 서로 연결)
@@ -3230,20 +3234,21 @@ function xfApply(F,row){const B=F.querySelector('[data-xfer]');if(!B||B.hidden||
 function cnBox(r){return `<div class="lnbox cnbox" data-cnbox hidden data-init="${esc(r.cnFor||'')}" data-self="${esc(r.id||'')}"><div class="lnhead"><b>Credit Note 적용 Factura</b><span class="dim" data-cnnote>고른 Factura의 잔액에서 이 금액만큼 빠집니다</span></div>
   <div class="cngrid"><label>관련 CFDI (적용 Factura의 UUID)<input type="text" name="cnUuid" value="${esc(r.cnUuid||'')}" placeholder="UUID를 넣으면 Factura를 자동으로 고릅니다" autocomplete="off"></label><label>적용 Factura<select name="cnFor"></select></label></div></div>`}
 // CFDI 번호로 매출 Factura 찾기: 관련 CFDI 칸, 없으면 이 건의 CFDI 번호 칸
-function cnAuto(F){const B=F&&F.querySelector('[data-cnbox]');if(!B||B.hidden)return;const g=k=>(F.querySelector(`[name="${k}"]`)||{}).value||'',self=B.dataset.self;
-  const us=[cnU(g('cnUuid')),cnU(g('uuid'))].filter(Boolean);if(!us.length)return;const t=DB.ar.find(x=>x.id!==self&&+x.amount>0&&us.includes(cnU(x.uuid)));
-  const note=B.querySelector('[data-cnnote]');if(!t){if(cnU(g('cnUuid')))note.textContent='이 CFDI 번호의 매출 Factura를 찾지 못했습니다';return}
+function cnAuto(F){const B=F&&F.querySelector('[data-cnbox]');if(!B||B.hidden)return;const g=k=>(F.querySelector(`[name="${k}"]`)||{}).value||'',self=B.dataset.self,md=cnMd(F),P=cnParty(md),kn=md==='ap'?'매입':'매출';
+  const us=[cnU(g('cnUuid')),md==='ar'?cnU(g('uuid')):''].filter(Boolean);if(!us.length)return;const t=(DB[md]||[]).find(x=>x.id!==self&&+x.amount>0&&us.includes(cnU(x.uuid)));
+  const note=B.querySelector('[data-cnnote]');if(!t){if(cnU(g('cnUuid')))note.textContent=`이 CFDI 번호의 ${kn} Factura를 찾지 못했습니다`;return}
   const set=(k,v)=>{const el=F.querySelector(`[name="${k}"]`);if(el&&v&&el.value!==v){el.value=v;el.dispatchEvent(new Event('change',{bubbles:true}))}};
-  if(!g('customer'))set('customer',t.customer);if(g('cur')!==(t.cur||'MXN'))set('cur',t.cur||'MXN');
-  setTimeout(()=>{cnSync(F);const S=B.querySelector('select');if(String(t.folio||'').trim()){S.value=String(t.folio).trim();B.querySelector('[data-cnnote]').textContent=`CFDI 번호가 같은 Factura ${t.folio}를 자동으로 골랐습니다`}else B.querySelector('[data-cnnote]').textContent=`CFDI 번호가 같은 매출 건(${t.date})에 적용됩니다 (Factura 번호 없음)`},0)}
+  if(!g(P))set(P,t[P]);if(g('cur')!==(t.cur||'MXN'))set('cur',t.cur||'MXN');
+  setTimeout(()=>{cnSync(F);const S=B.querySelector('select');if(String(t.folio||'').trim()){S.value=String(t.folio).trim();B.querySelector('[data-cnnote]').textContent=`CFDI 번호가 같은 Factura ${t.folio}를 자동으로 골랐습니다`}else B.querySelector('[data-cnnote]').textContent=`CFDI 번호가 같은 ${kn} 건(${t.date})에 적용됩니다 (Factura 번호 없음)`},0)}
+const cnMd=F=>(F&&(F.dataset.reg||F.dataset.edit))==='ap'?'ap':'ar';
 function cnSync(F){const B=F&&F.querySelector('[data-cnbox]');if(!B)return;const g=k=>(F.querySelector(`[name="${k}"]`)||{}).value||'';
-  const neg=pnum(g('amount'))<0||pnum(g('sub'))<0||isCnFolio(g('folio'));B.hidden=!neg;const S=B.querySelector('select'),cur=S.value||B.dataset.init||'',cu=g('cur')||'MXN',nc=cnNm(g('customer')),self=B.dataset.self;
-  const L=DB.ar.filter(x=>x.id!==self&&+x.amount>0&&String(x.folio||'').trim()&&cnNm(x.customer)===nc&&(x.cur||'MXN')===cu).sort((a,b)=>a.date<b.date?1:-1);
-  const opt=x=>{const bal=arBal(x)/rate(x.cur||'MXN');return `<option value="${esc(String(x.folio).trim())}"${String(x.folio).trim()===cur?' selected':''}>${esc(x.folio)} · ${esc(x.date)} · 잔액 ${nf2.format(bal)}</option>`};
+  const md=cnMd(F),P=cnParty(md),neg=pnum(g('amount'))<0||pnum(g('sub'))<0||pnum(g('price'))<0||(md==='ar'&&isCnFolio(g('folio')));B.hidden=!neg;const S=B.querySelector('select'),cur=S.value||B.dataset.init||'',cu=g('cur')||'MXN',nc=cnNm(g(P)),self=B.dataset.self;
+  const L=(DB[md]||[]).filter(x=>x.id!==self&&+x.amount>0&&String(x.folio||'').trim()&&cnNm(x[P])===nc&&(x.cur||'MXN')===cu).sort((a,b)=>a.date<b.date?1:-1);
+  const opt=x=>{const bal=(md==='ap'?apBal(x):arBal(x))/rate(x.cur||'MXN');return `<option value="${esc(String(x.folio).trim())}"${String(x.folio).trim()===cur?' selected':''}>${esc(x.folio)} · ${esc(x.date)} · 잔액 ${nf2.format(bal)}</option>`};
   S.innerHTML='<option value="">(선택 안 함)</option>'+(cur&&!L.some(x=>String(x.folio).trim()===cur)?`<option value="${esc(cur)}" selected>${esc(cur)} (찾을 수 없음)</option>`:'')+L.map(opt).join('');
-  B.querySelector('[data-cnnote]').textContent=L.length?'고른 Factura의 잔액에서 이 금액만큼 빠집니다':'이 고객사·통화의 Factura가 없습니다. 고객사와 통화를 확인해 주세요'}
-document.addEventListener('change',e=>{const t=e.target,F=t.form;if(!F||(F.dataset.reg||F.dataset.edit)!=='ar')return;if(t.name==='cnUuid'||t.name==='uuid'){setTimeout(()=>{cnSync(F);cnAuto(F)});return}if(t.name!=='cnFor')setTimeout(()=>cnSync(F))});
-document.addEventListener('input',e=>{const t=e.target,F=t.form;if(!F||(F.dataset.reg||F.dataset.edit)!=='ar')return;if(t.name!=='cnFor')setTimeout(()=>cnSync(F))});
+  B.querySelector('[data-cnnote]').textContent=L.length?'고른 Factura의 잔액에서 이 금액만큼 빠집니다':md==='ap'?'이 공급사·통화의 Factura가 없습니다. 공급사와 통화를 확인해 주세요':'이 고객사·통화의 Factura가 없습니다. 고객사와 통화를 확인해 주세요'}
+document.addEventListener('change',e=>{const t=e.target,F=t.form;if(!F||!['ar','ap'].includes(F.dataset.reg||F.dataset.edit))return;if(t.name==='cnUuid'||t.name==='uuid'){setTimeout(()=>{cnSync(F);cnAuto(F)});return}if(t.name!=='cnFor')setTimeout(()=>cnSync(F))});
+document.addEventListener('input',e=>{const t=e.target,F=t.form;if(!F||!['ar','ap'].includes(F.dataset.reg||F.dataset.edit))return;if(t.name!=='cnFor')setTimeout(()=>cnSync(F))});
 new MutationObserver(()=>document.querySelectorAll('form [data-cnbox]:not([data-ci])').forEach(B=>{B.dataset.ci=1;cnSync(B.closest('form'))})).observe(document.body,{childList:true,subtree:true});
 function cnApply(F,row){const S=F.querySelector('[data-cnbox] select'),U=F.querySelector('[name="cnUuid"]');if(!S)return;if(+row.amount<0&&S.value)row.cnFor=S.value;else delete row.cnFor;
   const u=U&&cnU(U.value);if(+row.amount<0&&u)row.cnUuid=u;else delete row.cnUuid;CNIX=null}
@@ -5305,7 +5310,7 @@ document.addEventListener('change',e=>{const t=e.target;if(t&&t.dataset&&t.datas
 // 새로고침 뒤에는 Chrome이 폴더 권한을 다시 물을 수 있음: 화면을 처음 누를 때 자동으로 다시 연결 (권한 창에서 "방문할 때마다 허용"을 고르면 다음부터는 묻지 않음)
 let IB_TRY=false;document.addEventListener('pointerdown',()=>{if(IB.h&&!IB.ok&&!IB_TRY){IB_TRY=true;ibReconnect()}},true);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261125-092803';let VER_NEW=false;
+const APP_VER='20261125-115727';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
 /* ---------- 같은 화면을 다시 그릴 때(자동 번역·자료함·저장 등) 스크롤 위치를 그대로 유지. 다른 화면으로 이동할 때만 맨 위로 ---------- */
 const scrEls=()=>{const m=$('#main');return [document.scrollingElement,m,m&&m.parentElement].filter(Boolean)};
@@ -5492,7 +5497,7 @@ document.addEventListener('click',e=>{
   if(d.repnav){const [md,n]=d.repnav.split('|'),k=md==='week'?'rpw':'rpm';UI[k]=+n?shift(repAnchor(md),md,+n):TODAY;saveUI();renderMain();return}
   if(d.repxls){d.repxls==='month'?mgXls():repXls(d.repxls);return}
   if(d.hctpl){hcTemplate();return}
-  if(d.cndone||d.cnundo){const id=d.cndone||d.cnundo,r=DB.ar.find(x=>x.id===id);if(!r)return;const on=!!d.cndone,setv=v=>{if(v)r.cnDone=1;else delete r.cnDone;calcReset();save();renderMain()};setv(on);
+  if(d.cndone||d.cnundo){const id=d.cndone||d.cnundo,r=DB.ar.find(x=>x.id===id)||DB.ap.find(x=>x.id===id);if(!r)return;const on=!!d.cndone,setv=v=>{if(v)r.cnDone=1;else delete r.cnDone;calcReset();save();renderMain()};setv(on);
     toast(on?'Credit Note를 완료로 표시했습니다 (경리자료 반영 없음)':'Credit Note 완료 표시를 취소했습니다',{label:'되돌리기',fn:()=>setv(!on)});return}
   if(d.fdx){modal={type:'fdx'};renderModal();return}
   if(d.fdxt){UI.fdx=!UI.fdx;saveUI();renderMain();return}
@@ -5689,7 +5694,7 @@ document.addEventListener('submit',e=>{
     const id=f.dataset.reg, m=MODS[id], row=fixRow(m,Object.assign({id:uid()},m.blank(curPeriod()),readForm(f,m)));
     if(f.dataset.dupok)delete f.dataset.dupok;else{const dp=folioDup(id,row);if(dp){modal={type:'dup',src:'reg',form:id,list:[{mod:id,row,dup:dp}]};renderModal();return}}
     if(id==='sever'){const e=DB.employees.find(x=>x.name===row.emp);if(e&&!validD(e.leave)&&validD(row.date))e.leave=row.date}
-    DB[m.data].unshift(row);if(id==='ar')cnApply(f,row);const xm=id==='cash'?xfApply(f,row):id==='loans'?loanCashMsg(loanCashSync(row)):'';flashId=row.id;UI.q='';save();if(modal&&modal.type==='add')closeModal();renderMain();
+    DB[m.data].unshift(row);if(id==='ar'||id==='ap')cnApply(f,row);const xm=id==='cash'?xfApply(f,row):id==='loans'?loanCashMsg(loanCashSync(row)):'';flashId=row.id;UI.q='';save();if(modal&&modal.type==='add')closeModal();renderMain();
     const tr=document.querySelector(`[data-row="${row.id}"]`);
     toast((tr?'등록했습니다':'등록했습니다. 선택한 기간 밖의 날짜라 지금 목록에는 보이지 않습니다')+xm);
     return;
@@ -5762,7 +5767,7 @@ document.addEventListener('submit',e=>{
     // 외상매입·외상매출의 품목(적요)·거래처·분류를 고치면 연결된 경리자료 지급·수금 전표도 같이 바뀜
     if(m.data==='ap'||m.data==='ar'){const isAR=m.data==='ar',it=String(r.item||''),pty=String((isAR?r.customer:r.vendor)||'');DB.cash.filter(c=>c.link===r.id&&c.linkMod===m.data).forEach(c=>{
       if(it!==oldItem){const mm=String(c.memo||'');c.memo=oldItem&&mm.startsWith(oldItem)?it+mm.slice(oldItem.length):`${it} ${isAR?'대금 수금':'대금 지급'} (외상${isAR?'매출':'매입'} 연계${r.folio?' · Factura '+r.folio:''})`}
-      if(pty!==oldParty&&(!c.party||c.party===oldParty))c.party=pty;if(!isAR&&r.cat)c.cat=r.cat==='차입금'?'판관비용':r.cat})}if(m.data==='ar')cnApply(f,r);if(m.data==='cash'){if(r.xfer&&!xfOn(f)){const P=DB.cash.find(x=>x.id===r.xfer);if(P&&P.xfer===r.id)Object.assign(P,{date:r.date})}else xfApply(f,r)}
+      if(pty!==oldParty&&(!c.party||c.party===oldParty))c.party=pty;if(!isAR&&r.cat)c.cat=r.cat==='차입금'?'판관비용':r.cat})}if(m.data==='ar'||m.data==='ap')cnApply(f,r);if(m.data==='cash'){if(r.xfer&&!xfOn(f)){const P=DB.cash.find(x=>x.id===r.xfer);if(P&&P.xfer===r.id)Object.assign(P,{date:r.date})}else xfApply(f,r)}
     // 입금·지급 완료로 만든 경리자료 전표를 고치면 연결된 외상매출 수금액·외상매입 지급액도 같은 차이만큼 바뀜 (대쉬보드·잔액 자동 반영)
     if(m.data==='cash'&&r.link&&(r.linkMod==='ar'||r.linkMod==='ap')){const L=DB[r.linkMod].find(x=>x.id===r.link),k=r.linkMod==='ar'?'received':'paid';if(L)L[k]=Math.max(0,r2((+L[k]||0)+(+r.amount||0)-oldAmt))}flashId=r.id;save();closeModal();renderMain();toast('수정했습니다'+lcm,lcm?{label:'경리자료 보기',fn:()=>go('cash')}:undefined);
   }
