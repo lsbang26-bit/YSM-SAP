@@ -1312,8 +1312,9 @@ const arFeeDate=r=>validD(r.feeDate)?r.feeDate:(cashByLink(r.id).filter(c=>c.lin
 const dueStatus=(bal,due)=>bal<=0.5?'완료':(validD(due)&&due<TODAY?'연체':'진행');
 const assetEnd=r=>validD(r.acq)?ds(addD(pd(r.acq),Math.round((+r.life||1)*365)-1)):'';
 const assetPerDay=r=>mx(r,'cost')/((+r.life||1)*365);
-const assetDep=(r,p)=>assetPerDay(r)*overlap(r.acq,assetEnd(r),p.start,p.end);
 const assetAccum=(r,e)=>validD(r.acq)&&r.acq<=e?Math.min(mx(r,'cost'),assetPerDay(r)*(diffD(r.acq,e)+1)):0;
+// 기간 감가 = 기말 누계 − 기초 누계 (내용연수 끝 달에 취득가액을 넘지 않게)
+const assetDep=(r,p)=>validD(p.start)&&validD(p.end)?Math.max(0,assetAccum(r,p.end)-assetAccum(r,ds(addD(pd(p.start),-1)))):0;
 const loanBal=r=>mx(r,'principal')-mx(r,'repaid');
 const loanInt=(r,p)=>loanBal(r)*(+r.rate||0)/100/365*overlap(r.date,r.due,p.start,p.end);
 // 미지급 이자: 남은 잔액을 만기까지 갚는 동안 낼 이자 총액. 마지막 이자 지급일부터 매월 같은 날 원금을 (최근 원금 상환액만큼) 갚는다고 보고,
@@ -1413,7 +1414,7 @@ function payableYTD(e,end){
 }
 // manufacturing cost statement (same layout as the IS sheet's 제조원가명세서)
 const MFG_DEPTS=['생산','품질','생기','생관','금형 보전','물류'], SGA_DEPTS=['법인장','구매/영업','영업','관리'], MFG_EXP=['전력비','가스수도료','수선비','외주가공비','소모품비','복리후생비','차량유지비','운반비','임차료','보험료','세금과공과','여비교통비','통신비','지급수수료','교육훈련비','도서인쇄비','광고선전비','클레임비용'];
-const isMfgAsset=r=>['기계장치','공구기구','건물'].includes(r.cat);
+const isMfgAsset=r=>['기계장치','공구기구','건물','임차자산 개선'].includes(r.cat);
 // 원·부재료 매입: 입고현황이 있는 달은 입고현황, 입고현황이 없는 달은 외상매입·경리자료의 원재료비/부재료비 (부가세 제외)
 const RM_ACC=['원재료비','부재료비'];let INBM=null,INBS=null;
 const rmApMode=d=>{if(INBS!==DB.inbound||!INBM){INBS=DB.inbound;INBM=new Set(DB.inbound.filter(r=>validD(r.date)).map(r=>r.date.slice(0,7)))}return validD(d)&&!INBM.has(d.slice(0,7))};
@@ -1816,7 +1817,7 @@ const MODS={
     extra:(rows,p)=>groupSummary('고객사별 미수 잔액 (전체)',DB.ar.filter(r=>r.date<=p.end),'customer',[['청구액',M('amount'),money],['잔액',arBal,money]]),
     blank:p=>({date:TODAY,customer:'',item:'',cur:'MXN',sub:0,amount:0,iva:'16%',factura:'발행',uuid:'',received:0,due:addDs(TODAY,30)})},
   assets:{name:'자산현황',desc:'유형자산 대장과 정액법 감가상각',data:'assets',dated:false,
-    cols:[C('acq','취득일','date'),C('name','자산명','text',{wide:1}),C('cat','분류','sel',{opts:['건물','기계장치','차량운반구','공구기구','비품']}),CUR,C('cost','취득가액','money',{sum:1}),C('life','내용연수(년)','num'),
+    cols:[C('acq','취득일','date'),C('name','자산명','text',{wide:1}),C('cat','분류','sel',{opts:['건물','임차자산 개선','기계장치','차량운반구','공구기구','비품','소프트웨어']}),CUR,C('cost','취득가액','money',{sum:1}),C('life','내용연수(년)','num'),
       C('dep','기간 상각비','money',{sum:1,calc:(r,p)=>assetDep(r,p)}),C('accum','상각누계','money',{sum:1,calc:(r,p)=>assetAccum(r,p.end)}),C('book','장부가액','money',{sum:1,calc:(r,p)=>mx(r,'cost')-assetAccum(r,p.end)})],
     kpis:(rows,p)=>[kv('자산 수',rows.length+'건'),kv('취득가액 합계',money(sumBy(rows,M('cost')))),kv('기간 감가상각비',money(sumBy(rows,r=>assetDep(r,p))),p.days+'일분'),kv('장부가액 합계',money(sumBy(rows,r=>mx(r,'cost')-assetAccum(r,p.end))),p.end+' 기준','good')],
     trend:{l:'기간별 감가상각비',fn:(rows,p)=>sumBy(rows,r=>assetDep(r,p)),money:1},
@@ -5441,7 +5442,7 @@ function bkUpload(){const i=document.createElement('input');i.type='file';i.acce
   if(BK.ok)await bkSync();try{renderNav()}catch(e){}})();
 /* ---------- Claude 자료함: PC 폴더(예: 바탕화면\work\YSM 자료함)와 그 하위 폴더에 Claude가 넣어 둔 *.ysm.json을 읽어 자료에 바로 반영 ----------
    파일 형식: {"app":"YSM SAP inbox","rows":{"ap":[{...}],"ar":[...],"cash":[...],"ped":[...]}} · 반영한 파일은 "반영완료" 하위 폴더로 옮김 · CFDI UUID가 이미 있으면 건너뜀 */
-const IB={h:null,ok:false,name:'',busy:false,last:null},IB_MODS=['ap','ar','cash','ped','inbound','outbound','hq','paid','loans'];
+const IB={h:null,ok:false,name:'',busy:false,last:null},IB_MODS=['ap','ar','cash','ped','inbound','outbound','hq','paid','loans','assets'];
 async function ibConnect(){if(!window.showDirectoryPicker){toast('이 브라우저는 폴더 연결을 지원하지 않습니다. Chrome이나 Edge에서 열어 주세요');return}
   try{const h=await showDirectoryPicker({id:'ysm-inbox',mode:'readwrite'});if((await h.requestPermission({mode:'readwrite'}))!=='granted')return;IB.h=h;IB.ok=true;IB.name=h.name;await bkIDB('readwrite',st=>st.put(h,'ib'));toast(`Claude 자료함(${h.name})을 연결했습니다`);await ibScan(false);renderNav()}
   catch(e){if(e&&e.name!=='AbortError')toast('폴더 연결 실패: '+(e.message||e))}}
@@ -5567,7 +5568,7 @@ document.addEventListener('change',e=>{const t=e.target;if(t&&t.dataset&&t.datas
 // 새로고침 뒤에는 Chrome이 폴더 권한을 다시 물을 수 있음: 화면을 처음 누를 때 자동으로 다시 연결 (권한 창에서 "방문할 때마다 허용"을 고르면 다음부터는 묻지 않음)
 let IB_TRY=false;document.addEventListener('pointerdown',()=>{if(IB.h&&!IB.ok&&!IB_TRY){IB_TRY=true;ibReconnect()}},true);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261126-173548';let VER_NEW=false;
+const APP_VER='20261126-114439';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
 /* ---------- 같은 화면을 다시 그릴 때(자동 번역·자료함·저장 등) 스크롤 위치를 그대로 유지. 다른 화면으로 이동할 때만 맨 위로 ---------- */
 const scrEls=()=>{const m=$('#main');return [document.scrollingElement,m,m&&m.parentElement].filter(Boolean)};
