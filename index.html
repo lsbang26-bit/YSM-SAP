@@ -871,7 +871,7 @@ const VAC_TYPES=['연차휴가','반차','특별휴가 (유급)','무급휴가']
 const SEV_REASONS=['자진 퇴사 (Renuncia)','합의 퇴사 (Mutuo acuerdo)','해고 · 정당한 사유','해고 · 부당 (사유 없음)'];
 const VKINDS=['원자재','부자재','외주가공','설비·기타'], ISR_R=8, IMSS_R=2.5;
 // Mexican tax (simplified): IVA rates under LIVA, corporate ISR 30% under LISR art. 9
-const IVA_RATES={'16%':.16,'8%':.08,'0%':0,'면세':0}, FACT=['발행','미발행','수입(Pedimento)'], CIT=30, NONDED_BEN=0.53;
+const IVA_RATES={'16%':.16,'8%':.08,'0%':0,'면세':0}, FACT=['발행','미발행','수입(Pedimento)','인보이스(Invoice)'], CIT=30, NONDED_BEN=0.53;
 // payroll row for one employee; ISR/IMSS are placeholder rates the user corrects
 // placeholder employer rates (% of gross) for rows the app creates; Contpaq imports carry the real amounts
 const ER_RATES={imssPat:12,rcv:7,infPat:5,isn:3};
@@ -1707,7 +1707,7 @@ const SUG={
   stockitems:()=>uniq([...MATERIALS.map(m=>m.n),...bomMain(DB).map(b=>b.material),...DB.bom.map(b=>b.product),...PRODUCTS.map(p=>p.n)])
 };
 const TONE={'CN 완료':'good','입금':'good','출금':'bad','완료':'good','진행':'info','연체':'bad','검수완료':'good','검수대기':'warn','반품':'bad','출고완료':'good','출고예정':'info',
-  '거래중':'good','중지':'','발행':'good','미발행':'warn','정산 대기':'warn','지급 완료':'good','승인':'good','신청':'info','반려':'bad','연차휴가':'acc','반차':'acc','무급휴가':'','해고 · 부당 (사유 없음)':'bad','해고 · 정당한 사유':'warn','수입(Pedimento)':'info','수입':'info','국내':'','세금납부':'warn','재직':'good','휴직':'warn','퇴사':'','일치':'good','과잉':'warn','부족':'bad','기초':'info','외주가공':'acc','입사예정':'info','상환중':'info','상환완료':'good','만기임박':'warn','원자재':'info','부자재':'',
+  '거래중':'good','중지':'','발행':'good','미발행':'warn','인보이스(Invoice)':'info','정산 대기':'warn','지급 완료':'good','승인':'good','신청':'info','반려':'bad','연차휴가':'acc','반차':'acc','무급휴가':'','해고 · 부당 (사유 없음)':'bad','해고 · 정당한 사유':'warn','수입(Pedimento)':'info','수입':'info','국내':'','세금납부':'warn','재직':'good','휴직':'warn','퇴사':'','일치':'good','과잉':'warn','부족':'bad','기초':'info','외주가공':'acc','입사예정':'info','상환중':'info','상환완료':'good','만기임박':'warn','원자재':'info','부자재':'',
   '지배기업':'acc','종속기업':'info','자산매입':'info','부가세대급금':'info','제조비용':'warn','판관비용':'acc','차입금':'bad','매출수입':'good','보통예금':'info','영업외수익':'good','영업외비용':'warn','유동부채':'bad','CN 적용':'acc','CN 미적용':'warn'};
 const pill=v=>`<span class="pill ${TONE[v]||''}">${esc(v)}</span>`;
 const kv=(l,v,s,tone,go)=>({l,v,s,tone,go});
@@ -5592,7 +5592,7 @@ document.addEventListener('change',e=>{const t=e.target;if(t&&t.dataset&&t.datas
 // 새로고침 뒤에는 Chrome이 폴더 권한을 다시 물을 수 있음: 화면을 처음 누를 때 자동으로 다시 연결 (권한 창에서 "방문할 때마다 허용"을 고르면 다음부터는 묻지 않음)
 let IB_TRY=false;document.addEventListener('pointerdown',()=>{if(IB.h&&!IB.ok&&!IB_TRY){IB_TRY=true;ibReconnect()}},true);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261126-134223';let VER_NEW=false;
+const APP_VER='20261126-152025';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
 /* ---------- 같은 화면을 다시 그릴 때(자동 번역·자료함·저장 등) 스크롤 위치를 그대로 유지. 다른 화면으로 이동할 때만 맨 위로 ---------- */
 const scrEls=()=>{const m=$('#main');return [document.scrollingElement,m,m&&m.parentElement].filter(Boolean)};
