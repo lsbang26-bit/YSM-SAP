@@ -1445,7 +1445,14 @@ const expAmt=r=>mx(r,'amount')+((+r.ivaRet||0)+(+r.isrRet||0))*rate(r.cur)-(hasC
 const isRefund=r=>r.type==='입금'&&(r.cat==='제조비용'||r.cat==='판관비용');
 // Contpaq 급여(주급·14일)를 경리자료에서 지급한 전표 (거래처 LISTA DE RAYA, 한국인 급여 제외): 급여지급내역에 그 기간 급여가 있으면 비용은 급여지급내역으로 잡고 이 전표는 지급만으로 봄
 let PAYMAX=null;const payMax=()=>{if(PAYMAX===null)PAYMAX=(DB.payroll||[]).reduce((a,r)=>r.src==='Contpaq'&&r.date>a?r.date:a,'');return PAYMAX};
-const isPayCash=r=>r.cat==='제조비용'&&r.account==='노무비'&&/LISTA DE RAYA/i.test(r.party||'')&&!/한국인/.test(r.memo||'')&&!!payMax()&&r.date<=addDs(payMax(),21);
+const isPayCash0=r=>r.cat==='제조비용'&&r.account==='노무비'&&/LISTA DE RAYA/i.test(r.party||'')&&!/한국인/.test(r.memo||'')&&!!payMax()&&r.date<=addDs(payMax(),21);
+// 퇴직정산(finiquito): 작업폴더 YSM 자료함\\퇴직정산의 CALCULO MANUAL FINIQUITO·recibo를 Claude가 사람별로 넣음. DB.finiq = [{date 지급일,no,name,dept 생산|관리,perc 지급 합계,isr,imss,fe 저축기금 근로자분,neto 실지급}]
+// 비용 = 지급 합계 − 저축기금 근로자분(그동안 급여에서 공제해 둔 근로자 돈을 돌려준 것), ISR·IMSS 공제분은 예수금. 같은 날 경리자료의 FINIQUITO·퇴직정산 출금은 지급만으로 봄
+const finiqRows=()=>Array.isArray(DB.finiq)?DB.finiq.filter(r=>r&&validD(r.date)):[];
+const finiqExp=r=>(+r.perc||0)-(+r.fe||0),finiqWh=r=>(+r.isr||0)+(+r.imss||0);
+const finiqBy=(dept,p)=>sumBy(finiqRows().filter(r=>(r.dept||'생산')===dept&&inP(r,p)),finiqExp);
+const isFinCash=r=>r.type==='출금'&&((r.cat==='제조비용'&&r.account==='노무비')||(r.cat==='판관비용'&&r.account==='퇴직급여'))&&/FINIQUITO|퇴사자\s*정산|퇴직\s*정산/i.test((r.party||'')+' '+(r.memo||''))&&finiqRows().some(f=>f.date===r.date&&((f.dept||'생산')==='관리')===(r.cat==='판관비용'));
+const isPayCash=r=>isPayCash0(r)||isFinCash(r);
 // 급여 예수금·회사부담금 (결산): 급여지급내역의 ISR·IMSS 근로자분·Infonavit 대출 공제는 예수금, IMSS 사업주분·RCV·Infonavit 5%는 미지급 사회보험료(회사부담금)로 쌓고,
 // IMSS/INFONAVIT 납부(경리자료 유동부채 · 사회보험료 납부)는 비용이 아니라 이 두 부채를 갚는 것으로 봄. 운영 시작 전달 급여부터 쌓음 (그 전 급여는 이미 납부된 것으로 봄)
 const payAccFrom=()=>{const o=OP_START(),d=new Date(+o.slice(0,4),+o.slice(5,7)-2,1);return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-01'};
@@ -1467,6 +1474,7 @@ const PAY_LAG=5,payDt=r=>addDs(r.date,PAY_LAG),payYm=r=>payDt(r).slice(0,7);
 // 신고가 있는 달은 급여 ISR·ISN을 신고액으로 맞추고(부서별로는 급여 비율로 나눔), 급여 외 원천징수(용역 ISR·IVA Ret)도 예수금으로 쌓음. 신고가 없는 달은 외상매입의 ISR·IVA Ret를 씀
 let TXC=null;
 function taxMon(){if(TXC)return TXC;const o={};(DB.payroll||[]).forEach(r=>{if(!validD(r.date))return;const y=payYm(r),x=o[y]=o[y]||{isr:0,isn:0,ap:0};x.isr+=mx(r,'isr');x.isn+=mx(r,'isn')});
+  finiqRows().forEach(r=>{const y=r.date.slice(0,7),x=o[y]=o[y]||{isr:0,isn:0,ap:0};x.isr+=+r.isr||0});
   (DB.ap||[]).forEach(r=>{if(!validD(r.date))return;const v=((+r.ivaRet||0)+(+r.isrRet||0))*rate(r.cur||'MXN');if(!v)return;const y=r.date.slice(0,7),x=o[y]=o[y]||{isr:0,isn:0,ap:0};x.ap+=v});
   Object.keys(o).forEach(y=>{const x=o[y],D=(DB.taxdecl||{})[y];x.decl=D||null;x.isrF=D&&D.isrSal!=null&&x.isr?(+D.isrSal)/x.isr:1;x.isnF=D&&D.isn!=null&&x.isn?(+D.isn)/x.isn:1;
     x.isrAdj=D&&D.isrSal!=null?(+D.isrSal)-x.isr:0;x.isnAdj=D&&D.isn!=null?(+D.isn)-x.isn:0;x.other=D&&(D.isrHon!=null||D.ivaRet!=null)?(+D.isrHon||0)+(+D.ivaRet||0):x.ap});
@@ -1488,9 +1496,9 @@ function ssSplit(r){if(r.ssWh!=null)return {ym:r.ssYm||String(r.date||'').slice(
   cedRows().forEach(x=>{if(x.ym===ym){W+=x.imss+x.infon;E+=cedER(x)}});
   const wh=W+E>0?Math.round(amt*W/(W+E)*100)/100:0;return {ym,wh,er:amt-wh,W,E}}
 function payLiab(end){const f=payAccFrom(),CV=cedCov(),pf0=payAccPrev()||f,P=(DB.payroll||[]).filter(r=>validD(r.date)&&r.date<=end).map(r=>payAccOf(r,CV)).filter(Boolean).concat(cedRows().filter(x=>x.date>=pf0&&x.date<=end).map(x=>({wh:x.imss+x.infon,ss:cedER(x)}))),S=DB.cash.filter(r=>isSSPay(r)&&r.type==='출금'&&validD(r.date)&&r.date>=f&&r.date<=end).map(ssSplit);
-  const I=DB.cash.filter(r=>isIsnPay(r)&&validD(r.date)&&r.date>=f&&r.date<=end),A=taxAdjRows().filter(x=>x.date<=end),adj=sumBy(A,x=>x.isr),oth=sumBy(A,x=>x.other);
-  return {isnAcc:sumBy(P,x=>x.isn||0)+sumBy(A,x=>x.isn),isnPaid:sumBy(I,r=>(r.type==='입금'?-1:1)*mx(r,'amount')),isrAcc:sumBy(P,x=>x.isr||0)+adj,othAcc:oth,whAcc:sumBy(P,x=>x.wh)+adj+oth,ssAcc:sumBy(P,x=>x.ss),whPaid:sumBy(S,x=>x.wh),ssPaid:sumBy(S,x=>x.er)}}
-const expBy=(cat,acc,p)=>sumBy(DB.ap.filter(r=>!isAdv(r)&&r.cat===cat&&r.account===acc&&inP(r,p)),expAmt)+sumBy(DB.cash.filter(r=>r.type==='출금'&&r.cat===cat&&r.account===acc&&inP(r,p)&&!isPayCash(r)),expAmt)-sumBy(DB.cash.filter(r=>r.type==='입금'&&r.cat===cat&&r.account===acc&&inP(r,p)),expAmt);
+  const I=DB.cash.filter(r=>isIsnPay(r)&&validD(r.date)&&r.date>=f&&r.date<=end),A=taxAdjRows().filter(x=>x.date<=end),adj=sumBy(A,x=>x.isr),oth=sumBy(A,x=>x.other),FQ=finiqRows().filter(r=>r.date>=f&&r.date<=end),fqI=sumBy(FQ,r=>+r.isr||0),fqW=sumBy(FQ,finiqWh);
+  return {isnAcc:sumBy(P,x=>x.isn||0)+sumBy(A,x=>x.isn),isnPaid:sumBy(I,r=>(r.type==='입금'?-1:1)*mx(r,'amount')),isrAcc:sumBy(P,x=>x.isr||0)+adj+fqI,othAcc:oth,whAcc:sumBy(P,x=>x.wh)+adj+oth+fqW,ssAcc:sumBy(P,x=>x.ss),whPaid:sumBy(S,x=>x.wh),ssPaid:sumBy(S,x=>x.er)}}
+const expBy=(cat,acc,p)=>(cat==='판관비용'&&acc==='퇴직급여'?finiqBy('관리',p):0)+sumBy(DB.ap.filter(r=>!isAdv(r)&&r.cat===cat&&r.account===acc&&inP(r,p)),expAmt)+sumBy(DB.cash.filter(r=>r.type==='출금'&&r.cat===cat&&r.account===acc&&inP(r,p)&&!isPayCash(r)),expAmt)-sumBy(DB.cash.filter(r=>r.type==='입금'&&r.cat===cat&&r.account===acc&&inP(r,p)),expAmt);
 // labor cost by department: payroll records (gross + employer contributions) when the period has any; otherwise daily wage × days
 function laborCost(depts,p){
   const all=(DB.payroll||[]).filter(r=>inP(r,p));
@@ -1501,7 +1509,7 @@ const deptCost=(depts,p)=>sumBy(DB.employees.filter(e=>depts.includes(e.dept)),e
 const deptAllow=(depts,p)=>sumBy(DB.employees.filter(e=>depts.includes(e.dept)),e=>{const a=accrual(e,p.start,p.end);return a.ag+a.vp+a.sf});
 function mfgCalc(p){
   const begRM=rmInv(addDs(p.start,-1)), purch=rmPurch(p.start,p.end), endRM=rmInv(p.end), transfer=0, rm=begRM+purch-endRM-transfer;
-  const L=laborCost(MFG_DEPTS,p), wage=L.wage+expBy('제조비용','노무비',p), social=L.social, allow=deptAllow(MFG_DEPTS,p), retire=0, labor=wage+social+allow+retire, hq=hqAlloc(p).mfg;
+  const L=laborCost(MFG_DEPTS,p), wage=L.wage+expBy('제조비용','노무비',p), social=L.social, allow=deptAllow(MFG_DEPTS,p), retire=finiqBy('생산',p), labor=wage+social+allow+retire, hq=hqAlloc(p).mfg;
   const dep=sumBy(DB.assets.filter(isMfgAsset),r=>assetDep(r,p)), ex={};
   MFG_EXP.forEach(a=>ex[a]=expBy('제조비용',a,p));
   const overhead=dep+sumBy(MFG_EXP,a=>ex[a])+hq, total=rm+labor+overhead, begWIP=0, endWIP=0, cogm=total+begWIP-endWIP, begFG=invVal(addDs(p.start,-1)).fg, endFG=invVal(p.end).fg;
@@ -1649,6 +1657,7 @@ function bsRecon(o,end){const O=addDs(OP_START(),-1);if(!(end>O))return o;if(RCC
   (DB.payroll||[]).forEach(r=>{if(!inp(r.date))return;const g=payGross(r),v=payAccOf(r,CV)||{wh:0,ss:0,isn:0},er=payERm(r,CV);if(!LD.has(r.dept))add('deptMiss',g+er);add('payNet',-(g-v.wh)-(er-v.ss-(v.isn||0)))});
   cedRows(p).forEach(x=>{if(!LD.has(x.dept))add('deptMiss',cedER(x));add('payNet',x.imss+x.infon)});
   taxAdjRows().forEach(a=>{if(!inp(a.date))return;add('payNet',a.isr);add('taxDiff',a.other+a.isn)});
+  finiqRows().forEach(r=>{if(inp(r.date))add('payNet',-finiqExp(r)+(r.date>=payAccFrom()?finiqWh(r):0))});
   // 본사관리비 · 이자 · 차입금 · 제수당 · 자산 취득
   (DB.hq||[]).forEach(r=>{if(inp(r.date))add('hqPay',-mx(r,'amount'))});
   DB.loans.forEach(r=>{add('intPay',-loanInt(r,p));const R=rate(r.cur);if(inp(r.date))add('loanClr',mx(r,'principal'));(r.pays||[]).forEach(x=>{if(x.kind==='원금'&&inp(x.date))add('loanClr',-(+x.amount||0)*R)});
@@ -2480,6 +2489,9 @@ function ledgerData(p){
   taxAdjRows().forEach(a=>{if(a.date>p.end)return;const o={src:'payroll',party:'SAT',ctr:a.decl?'세금 신고서':'외상매입 원천징수'};if(a.isr||a.other)post(acc('부채','예수금','cr'),a.date,0,a.isr+a.other,Object.assign({memo:a.ym+(a.decl?' 신고 기준 조정 (급여 ISR '+plain(a.isr)+' · 용역 ISR·IVA Ret '+plain(a.other)+')':' 용역·운송 ISR·IVA Ret')},o));if(a.isn)post(acc('부채','미지급 급여세','cr'),a.date,0,a.isn,Object.assign({},o,{party:'주정부',memo:a.ym+' ISN 신고 기준 조정'}))});
   cedRows().forEach(c=>{if(c.date>p.end||c.date<(payAccPrev()||pf))return;const k=c.date+'|ced|'+c.kind;let x=PQ.get(k);if(!x)PQ.set(k,x={date:c.date,lab:c.ym+(c.kind==='inf'?' INFONAVIT·RCV':' IMSS')+' cédula',wh:0,ss:0,isn:0});x.wh+=c.imss+c.infon;x.ss+=cedER(c)});
   PQ.forEach(x=>{const o={src:'payroll',party:'',ctr:'급여지급내역'};post(acc('부채','예수금','cr'),x.date,0,x.wh,Object.assign({memo:x.lab+' · ISR·IMSS·Infonavit 공제'},o));post(acc('부채','미지급 사회보험료','cr'),x.date,0,x.ss,Object.assign({memo:x.lab+' · IMSS·RCV·Infonavit 회사부담'},o));post(acc('부채','미지급 급여세','cr'),x.date,0,x.isn,Object.assign({memo:x.lab+' · ISN 급여세'},o))});
+  // 퇴직정산(finiquito): 비용(지급 합계 − 저축기금 근로자분) 차변, ISR·IMSS 공제는 예수금 대변
+  finiqRows().forEach(r=>{if(r.date>p.end)return;const mf=(r.dept||'생산')!=='관리',o={src:'payroll',memo:`퇴직정산 ${r.no?'#'+r.no+' ':''}${r.name||''}`,party:r.name||'',ctr:'퇴직정산 (finiquito)'};
+    if(inP(r,p))post(acc(mf?'제조원가':'판매비와관리비','퇴직급여','dr'),r.date,finiqExp(r),0,o);if(r.date>=pf&&finiqWh(r))post(acc('부채','예수금','cr'),r.date,0,finiqWh(r),Object.assign({},o,{memo:o.memo+' · ISR·IMSS 공제'}))});
   (DB.hq||[]).forEach(r=>{if(!inP(r,p))return;const t=mx(r,'amount'),m=t*hqPct(r),o={src:'hq',rid:r.id,memo:r.item||'',party:r.payee||'',ctr:'본사 청구',fc:fc(r,+r.amount||0)};post(acc('제조원가','본사관리비 배부','dr'),r.date,m,0,o);post(acc('판매비와관리비','본사관리비 배부','dr'),r.date,t-m,0,o)});
   // 월별 계산분: 감가상각 · 제수당 · 이자
   const fa=acc('자산','감가상각누계액','cr');fa.fixOpen=1;fa.open=sumBy(DB.assets.filter(r=>validD(r.acq)&&r.acq<p.start),r=>assetAccum(r,addDs(p.start,-1)));
@@ -2877,11 +2889,17 @@ function ssCard(p){const end=minS(p.end,TODAY),L=payLiab(end),f=payAccFrom(),S=D
     ${S.length?`<div class="tw"><table class="tight"><thead><tr><th>납부일</th><th>적요</th><th>대상 월</th><th class="n">납부액</th><th class="n">예수금 (근로자분)</th><th class="n">회사부담금</th></tr></thead><tbody>
       ${S.map(r=>{const x=ssSplit(r);return `<tr><td>${esc(r.date)}</td><td>${esc(r.memo||r.party||'')}</td><td>${esc(x.ym)}${+x.ym.slice(5)%2===0?' <span class="muted small">(RCV·Infonavit 2개월)</span>':''}</td><td class="n">${money(mx(r,'amount'))}</td><td class="n">${money(x.wh)}</td><td class="n">${money(x.er)}</td></tr>`}).join('')}</tbody></table></div>`:`<div class="empty">경리자료에 IMSS/INFONAVIT 납부(유동부채 · 사회보험료 납부)가 아직 없습니다.</div>`}
     <div class="body"><p class="note">납부액은 대상 월 급여의 근로자분(IMSS·Infonavit 대출)과 회사부담금(IMSS 사업주·RCV·Infonavit 5%) 비율로 나눕니다. 짝수 달 납부는 2개월 단위 RCV·Infonavit 몫을 앞 달까지 포함합니다.</p></div></div>`}
+function finiqCard(p){const R=finiqRows().filter(r=>inP(r,p)).sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:String(a.no).localeCompare(String(b.no)));if(!R.length)return '';const T=k=>sumBy(R,r=>+r[k]||0);
+  return `<div class="card"><header><h2>퇴직정산 (finiquito)</h2><span class="meta">${R.length}명 · ${esc(p.label)}</span></header><div class="tw"><table class="tight"><thead><tr><th>지급일</th><th>No</th><th>이름</th><th>부서</th><th class="n">지급 합계</th><th class="n">ISR</th><th class="n">IMSS</th><th class="n">실지급</th><th class="n">저축기금 근로자분</th><th class="n">퇴직비용</th></tr></thead><tbody>
+    ${R.map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.no||'')}</td><td>${esc(r.name||'')}</td><td>${esc(r.dept||'생산')}</td><td class="n">${money(+r.perc||0)}</td><td class="n">${money(+r.isr||0)}</td><td class="n">${money(+r.imss||0)}</td><td class="n">${money((+r.perc||0)-finiqWh(r))}</td><td class="n">${money(+r.fe||0)}</td><td class="n">${money(finiqExp(r))}</td></tr>`).join('')}
+    <tr class="total"><td>합계</td><td></td><td></td><td></td><td class="n"><b>${money(T('perc'))}</b></td><td class="n"><b>${money(T('isr'))}</b></td><td class="n"><b>${money(T('imss'))}</b></td><td class="n"><b>${money(T('perc')-T('isr')-T('imss'))}</b></td><td class="n"><b>${money(T('fe'))}</b></td><td class="n"><b>${money(sumBy(R,finiqExp))}</b></td></tr></tbody></table></div>
+    <div class="body"><p class="note">작업폴더 퇴직정산의 계산서·recibo 기준입니다. 퇴직비용 = 지급 합계 − 저축기금 근로자분(급여에서 공제해 둔 근로자 돈 반환)으로 생산은 제조원가 퇴직급여, 관리는 판관비 퇴직급여로 잡고, ISR·IMSS 공제분은 예수금으로 쌓습니다. 같은 날 경리자료의 FINIQUITO·퇴직정산 출금은 지급으로만 봅니다.</p></div></div>`}
 function paytaxPage(p){
   ptAuto();const G=[...ptGroup(p).values()], t=k=>sumBy(G,x=>x[k]), ret=t('isr'), sua=t('imss')+t('imssPat')+t('rcv')+t('infPat')+t('infon');
   return `<div class="content">${kpiHTML([kv('원천징수 합계',money(sumBy(G,ptWh)),'ISR '+plain(ret),'warn'),kv('IMSS 근로자분',money(t('imss'))),kv('회사부담금 합계',money(sumBy(G,ptEr)),'IMSS·RCV·Infonavit·ISN'),kv('총 납부 예정',money(ret+sua+t('isn')),'SAT · SUA · 주정부','bad')])}
     ${ptCard(p)}
     ${ssCard(p)}
+    ${finiqCard(p)}
     <div class="card"><header><h2>납부처별 요약</h2><span class="meta">${esc(p.label)}</span></header><div class="tw"><table><thead><tr><th>납부처</th><th>항목</th><th>기한</th><th class="n">금액</th></tr></thead><tbody>
       <tr><td>SAT</td><td>ISR 원천징수 (근로자)</td><td>다음 달 17일</td><td class="n">${money(ret)}</td></tr>
       <tr><td>IMSS (SUA)</td><td>IMSS 근로자분 ${plain(t('imss'))} + 사업주분 ${plain(t('imssPat'))}</td><td>다음 달 17일</td><td class="n">${money(t('imss')+t('imssPat'))}</td></tr>
@@ -3977,7 +3995,8 @@ const MG_KEYS=['매출액','스크랩','재료비','원부재료','외주비','�
 // 손익표 한 행을 이루는 그 달의 앱 원천 자료 (금액 MXN)
 function mgSrc(key,q){const L=[],A=(r,src,amt,extra)=>L.push(Object.assign({date:r.date||'',src,party:r.vendor||r.customer||r.party||'',item:r.item||r.memo||'',acc:r.account||'',amt},extra||{}));
   const exp=(cat,accs)=>{DB.ap.filter(r=>!isAdv(r)&&r.cat===cat&&accs.includes(r.account)&&inP(r,q)).forEach(r=>A(r,'외상매입',expAmt(r)));
-    DB.cash.filter(r=>r.cat===cat&&accs.includes(r.account)&&inP(r,q)&&!(r.type==='출금'&&isPayCash(r))).forEach(r=>A(r,'경리자료',(r.type==='입금'?-1:1)*expAmt(r)))};
+    DB.cash.filter(r=>r.cat===cat&&accs.includes(r.account)&&inP(r,q)&&!(r.type==='출금'&&isPayCash(r))).forEach(r=>A(r,'경리자료',(r.type==='입금'?-1:1)*expAmt(r)));
+    const fd=cat==='제조비용'&&accs.includes('노무비')?'생산':cat==='판관비용'&&accs.includes('퇴직급여')?'관리':'';if(fd)finiqRows().filter(r=>(r.dept||'생산')===fd&&inP(r,q)).forEach(r=>A({date:r.date,party:r.name,item:'퇴직정산 (지급 − 저축기금 근로자분)',account:'퇴직급여'},'퇴직정산',finiqExp(r)))};
   const pay=depts=>{const G={};(DB.payroll||[]).filter(r=>inP(r,q)&&depts.includes(r.dept)).forEach(r=>{const k=r.date+'|'+(r.ptype||'');const g=G[k]=G[k]||{date:r.date,src:'급여',party:r.ptype||'급여',item:'',acc:'급여 지급',amt:0,n:0};g.amt+=payGross(r)+payER(r);g.n++});Object.values(G).forEach(g=>{g.item=g.n+'명 (지급액+회사부담금)';L.push(g)})};
   const dep=f=>DB.assets.filter(f).forEach(r=>{const v=assetDep(r,q);if(v)A({date:q.end,party:r.name||r.item||'',item:r.item||r.name||''},'자산현황',v,{acc:'감가상각비'})});
   const rm=()=>{DB.inbound.filter(r=>inP(r,q)&&r.check!=='반품').forEach(r=>A(r,'입고현황',lineAmt(r)+(+r.igi||0)+(+r.dta||0)));DB.ap.filter(r=>!isAdv(r)&&inP(r,q)&&isRmRow(r)).forEach(r=>A(r,'외상매입',expAmt(r)));DB.cash.filter(r=>inP(r,q)&&isRmRow(r)&&r.type!=='이체').forEach(r=>A(r,'경리자료',(r.type==='입금'?-1:1)*expAmt(r)))};
@@ -5548,6 +5567,7 @@ async function ibScan(quiet){if(!IB.h||!IB.ok||IB.busy)return 0;IB.busy=true;let
       // Claude가 IMSS·INFONAVIT cédula(의료보험 폴더 PDF)를 부서별로 묶어 넣는 경우: cedula [{ym,kind:'imss'|'inf',file,total,rows}] → DB.sscedula[ym|kind] (같은 달·종류는 새 자료로 바꿈)
       // 세금 신고 확정액 (ISR, ISN, IVA 폴더): taxdecl [{ym,isrSal,isrHon,ivaRet,isn,file}] → DB.taxdecl[ym] (항목별로 덮어씀)
       if(j&&!isX&&Array.isArray(j.taxdecl)){j.taxdecl.forEach(c=>{if(!c||!/^\d{4}-\d\d$/.test(c.ym||''))return;DB.taxdecl=Object.assign({},DB.taxdecl||{});DB.taxdecl[c.ym]=Object.assign({},DB.taxdecl[c.ym]||{},c);by.paytax=(by.paytax||0)+1;n++});TXC=null;j.rows=j.rows||{}}
+      if(j&&!isX&&Array.isArray(j.finiq)){const F=Array.isArray(DB.finiq)?DB.finiq.slice():[];j.finiq.forEach(c=>{if(!c||!validD(c.date)||!(+c.perc>0))return;const k=String(c.no||c.name)+'|'+c.date,i=F.findIndex(x=>String(x.no||x.name)+'|'+x.date===k),v=Object.assign({id:i>=0?F[i].id:uid()},c,{dept:c.dept==='관리'?'관리':'생산'});if(i>=0)F[i]=v;else F.push(v);by.paytax=(by.paytax||0)+1;n++});DB.finiq=F;TXC=null;calcReset();j.rows=j.rows||{}}
       if(j&&!isX&&Array.isArray(j.cedula)){j.cedula.forEach(c=>{if(!c||!/^\d{4}-\d\d$/.test(c.ym||'')||!CED_IN[c.kind])return;DB.sscedula=Object.assign({},DB.sscedula||{},{[c.ym+'|'+c.kind]:c});by.paytax=(by.paytax||0)+1;n++});j.rows=j.rows||{}}
       if(j&&!isX&&j.mgmt&&j.mgmt.ym){DB.mgmt=Object.assign({},DB.mgmt||{},{[j.mgmt.ym]:j.mgmt});UI.mgym=j.mgmt.ym;by.repm=(by.repm||0)+1;n++;j.rows=j.rows||{}}
       if(!j||!j.rows)continue;files++;let k=0;IB_MODS.forEach(mod=>(j.rows[mod]||[]).forEach(x=>{const a=ibAdd(mod,x);k+=a;if(a)by[mod]=(by[mod]||0)+a}));n+=k;
@@ -5572,7 +5592,7 @@ document.addEventListener('change',e=>{const t=e.target;if(t&&t.dataset&&t.datas
 // 새로고침 뒤에는 Chrome이 폴더 권한을 다시 물을 수 있음: 화면을 처음 누를 때 자동으로 다시 연결 (권한 창에서 "방문할 때마다 허용"을 고르면 다음부터는 묻지 않음)
 let IB_TRY=false;document.addEventListener('pointerdown',()=>{if(IB.h&&!IB.ok&&!IB_TRY){IB_TRY=true;ibReconnect()}},true);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261126-123349';let VER_NEW=false;
+const APP_VER='20261126-134223';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
 /* ---------- 같은 화면을 다시 그릴 때(자동 번역·자료함·저장 등) 스크롤 위치를 그대로 유지. 다른 화면으로 이동할 때만 맨 위로 ---------- */
 const scrEls=()=>{const m=$('#main');return [document.scrollingElement,m,m&&m.parentElement].filter(Boolean)};
