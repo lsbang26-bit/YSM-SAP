@@ -1448,7 +1448,20 @@ const ymEnd=ym=>ds(new Date(+ym.slice(0,4),+ym.slice(5,7),0));
 function cedRows(p){const o=[];Object.values(DB.sscedula||{}).forEach(c=>{if(!c||!c.ym||!CED_IN[c.kind])return;const date=ymEnd(c.ym);if(p&&!(date>=p.start&&date<=p.end))return;(c.rows||[]).forEach(x=>o.push({ym:c.ym,kind:c.kind,date,dept:x.dept||'부서 없음',n:+x.n||0,imss:(+x.imss||0)+(+x.cyvo||0),imssPat:+x.imssPat||0,rcv:+x.rcv||0,infPat:+x.infPat||0,infon:+x.infon||0,isr:0,isn:0}))});return o}
 const payERm=(r,CV)=>(cvx(CV,r.date,'imssPat')?0:mx(r,'imssPat'))+(cvx(CV,r.date,'rcv')?0:mx(r,'rcv'))+(cvx(CV,r.date,'infPat')?0:mx(r,'infPat'))+mx(r,'isn');
 const cedER=x=>x.imssPat+x.rcv+x.infPat;
-function payAccOf(r,CV){const f=payAccFrom(),pf=payAccPrev(),d=r.date;if(!validD(d))return null;CV=CV||cedCov();const g=k=>cvx(CV,d,k)?0:mx(r,k);if(d>=f)return {wh:g('isr')+g('imss')+g('infon'),ss:g('imssPat')+g('rcv')+g('infPat')};if(pf&&d>=pf)return {wh:g('infon'),ss:g('rcv')+g('infPat')};return null}
+// ISR·ISN은 급여를 실제 지급한 달에 신고·납부함 (SAT 신고서·ISN 계산서 기준): 지급일 = 급여 기간 끝 + 5일 (주급 W44 10/25 → 10/30, 월급 M10 9/30 → 10/9 지급분이 10월 신고)
+const PAY_LAG=5,payDt=r=>addDs(r.date,PAY_LAG),payYm=r=>payDt(r).slice(0,7);
+// 세금 신고 확정액 (작업폴더 YSM 자료함\\ISR, ISN, IVA 파일): DB.taxdecl[YYYY-MM] = {isrSal 급여 ISR, isrHon 용역 ISR 원천, ivaRet IVA 원천, isn 급여세, file}
+// 신고가 있는 달은 급여 ISR·ISN을 신고액으로 맞추고(부서별로는 급여 비율로 나눔), 급여 외 원천징수(용역 ISR·IVA Ret)도 예수금으로 쌓음. 신고가 없는 달은 외상매입의 ISR·IVA Ret를 씀
+let TXC=null;
+function taxMon(){if(TXC)return TXC;const o={};(DB.payroll||[]).forEach(r=>{if(!validD(r.date))return;const y=payYm(r),x=o[y]=o[y]||{isr:0,isn:0,ap:0};x.isr+=mx(r,'isr');x.isn+=mx(r,'isn')});
+  (DB.ap||[]).forEach(r=>{if(!validD(r.date))return;const v=((+r.ivaRet||0)+(+r.isrRet||0))*rate(r.cur||'MXN');if(!v)return;const y=r.date.slice(0,7),x=o[y]=o[y]||{isr:0,isn:0,ap:0};x.ap+=v});
+  Object.keys(o).forEach(y=>{const x=o[y],D=(DB.taxdecl||{})[y];x.decl=D||null;x.isrF=D&&D.isrSal!=null&&x.isr?(+D.isrSal)/x.isr:1;x.isnF=D&&D.isn!=null&&x.isn?(+D.isn)/x.isn:1;
+    x.isrAdj=D&&D.isrSal!=null?(+D.isrSal)-x.isr:0;x.isnAdj=D&&D.isn!=null?(+D.isn)-x.isn:0;x.other=D&&(D.isrHon!=null||D.ivaRet!=null)?(+D.isrHon||0)+(+D.ivaRet||0):x.ap});
+  return TXC=o}
+// 신고 조정·급여 외 원천징수: 그 달 말일에 예수금·미지급 급여세로 쌓음 (운영 시작 전달부터)
+function taxAdjRows(){const f=payAccFrom().slice(0,7),T=taxMon();return Object.keys(T).filter(y=>y>=f).map(y=>({ym:y,date:ymEnd(y),isr:T[y].isrAdj,isn:T[y].isnAdj,other:T[y].other,decl:!!T[y].decl}))}
+function payAccOf(r,CV){const f=payAccFrom(),pf=payAccPrev(),d=r.date;if(!validD(d))return null;CV=CV||cedCov();const g=k=>cvx(CV,d,k)?0:mx(r,k),pd=payDt(r)>=f,isr=pd?mx(r,'isr'):0,isn=pd?mx(r,'isn'):0;
+  if(d>=f)return {wh:isr+g('imss')+g('infon'),ss:g('imssPat')+g('rcv')+g('infPat'),isr,isn};if(pf&&d>=pf)return {wh:isr+g('infon'),ss:g('rcv')+g('infPat'),isr,isn};if(pd)return {wh:isr,ss:0,isr,isn};return null}
 const isIsnPay=r=>r.cat==='유동부채'&&r.account==='급여세 납부';
 const isSSPay=r=>r.cat==='유동부채'&&r.account==='사회보험료 납부';
 const SS_MON={ENE:1,JAN:1,FEB:2,MAR:3,ABR:4,APR:4,MAY:5,JUN:6,JUL:7,AGO:8,AUG:8,SEP:9,OCT:10,NOV:11,DIC:12,DEC:12};
@@ -1462,8 +1475,8 @@ function ssSplit(r){if(r.ssWh!=null)return {ym:r.ssYm||String(r.date||'').slice(
   cedRows().forEach(x=>{if(x.ym===ym){W+=x.imss+x.infon;E+=cedER(x)}});
   const wh=W+E>0?Math.round(amt*W/(W+E)*100)/100:0;return {ym,wh,er:amt-wh,W,E}}
 function payLiab(end){const f=payAccFrom(),CV=cedCov(),pf0=payAccPrev()||f,P=(DB.payroll||[]).filter(r=>validD(r.date)&&r.date<=end).map(r=>payAccOf(r,CV)).filter(Boolean).concat(cedRows().filter(x=>x.date>=pf0&&x.date<=end).map(x=>({wh:x.imss+x.infon,ss:cedER(x)}))),S=DB.cash.filter(r=>isSSPay(r)&&r.type==='출금'&&validD(r.date)&&r.date>=f&&r.date<=end).map(ssSplit);
-  const Q=(DB.payroll||[]).filter(r=>validD(r.date)&&r.date>=f&&r.date<=end),I=DB.cash.filter(r=>isIsnPay(r)&&validD(r.date)&&r.date>=f&&r.date<=end);
-  return {isnAcc:sumBy(Q,M('isn')),isnPaid:sumBy(I,r=>(r.type==='입금'?-1:1)*mx(r,'amount')),whAcc:sumBy(P,x=>x.wh),ssAcc:sumBy(P,x=>x.ss),whPaid:sumBy(S,x=>x.wh),ssPaid:sumBy(S,x=>x.er)}}
+  const I=DB.cash.filter(r=>isIsnPay(r)&&validD(r.date)&&r.date>=f&&r.date<=end),A=taxAdjRows().filter(x=>x.date<=end),adj=sumBy(A,x=>x.isr),oth=sumBy(A,x=>x.other);
+  return {isnAcc:sumBy(P,x=>x.isn||0)+sumBy(A,x=>x.isn),isnPaid:sumBy(I,r=>(r.type==='입금'?-1:1)*mx(r,'amount')),isrAcc:sumBy(P,x=>x.isr||0)+adj,othAcc:oth,whAcc:sumBy(P,x=>x.wh)+adj+oth,ssAcc:sumBy(P,x=>x.ss),whPaid:sumBy(S,x=>x.wh),ssPaid:sumBy(S,x=>x.er)}}
 const expBy=(cat,acc,p)=>sumBy(DB.ap.filter(r=>!isAdv(r)&&r.cat===cat&&r.account===acc&&inP(r,p)),expAmt)+sumBy(DB.cash.filter(r=>r.type==='출금'&&r.cat===cat&&r.account===acc&&inP(r,p)&&!isPayCash(r)),expAmt)-sumBy(DB.cash.filter(r=>r.type==='입금'&&r.cat===cat&&r.account===acc&&inP(r,p)),expAmt);
 // labor cost by department: payroll records (gross + employer contributions) when the period has any; otherwise daily wage × days
 function laborCost(depts,p){
@@ -1495,7 +1508,7 @@ function fxRealized(p){
 }
 // open US$ amount of a document on date d: linked payments up to d count; any unlinked settled part counts from the due date
 var LINKIX=null,LINKDB=null,INCC=new Map();
-function calcReset(){PAYMAX=null;LINKIX=null;CNIX=null;if(INCC)INCC.clear()}
+function calcReset(){PAYMAX=null;TXC=null;LINKIX=null;CNIX=null;if(INCC)INCC.clear()}
 function cashByLink(id){if(!LINKIX||LINKDB!==DB){LINKDB=DB;LINKIX=new Map();(DB.cash||[]).forEach(c=>{if(!c.link)return;const a=LINKIX.get(c.link);if(a)a.push(c);else LINKIX.set(c.link,[c])})}return LINKIX.get(id)||[]}
 function usdOpen(r,d,done){
   const L=cashByLink(r.id), linked=sumBy(L,'amount'), upTo=sumBy(L.filter(c=>c.date<=d),'amount'), rest=Math.max(0,(+r[done]||0)-linked);
@@ -2371,7 +2384,8 @@ function ledgerData(p){
   cedRows(p).forEach(c=>{const g=MFG_DEPTS.includes(c.dept)?'제조원가':SGA_DEPTS.includes(c.dept)?'판매비와관리비':null;if(!g)return;const k=g+'|ced|'+c.date+'|'+c.kind;let x=PG.get(k);if(!x)PG.set(k,x={g,date:c.date,lab:c.ym+(c.kind==='inf'?' INFONAVIT·RCV':' IMSS')+' cédula',n:new Set(),w:0,s:0});x.s+=cedER(c)});
   PG.forEach(x=>{const o={src:'payroll',memo:x.n.size?`${x.lab} · ${x.n.size}명`:x.lab,party:'',ctr:'급여지급내역'};post(acc(x.g,x.g==='제조원가'?'노무비 (급여)':'급여','dr'),x.date,x.w,0,o);post(acc(x.g,'법정복리비','dr'),x.date,x.s,0,Object.assign({},o,{ctr:'회사부담금 (IMSS·RCV·Infonavit·ISN)'}))});
   // 급여 예수금·회사부담금 발생 (운영 시작 전달 급여부터, 회차별로 묶음)
-  const PQ=new Map(),pf=payAccFrom();(DB.payroll||[]).forEach(r=>{if(!validD(r.date)||r.date>p.end)return;const v=payAccOf(r,LCV);if(!v)return;const k=r.date+'|'+(r.ptype||'')+'|'+(r.per||'');let x=PQ.get(k);if(!x)PQ.set(k,x={date:r.date,lab:[r.ptype,r.per].filter(Boolean).join(' ')||'급여',wh:0,ss:0,isn:0});x.wh+=v.wh;x.ss+=v.ss;if(r.date>=pf)x.isn+=mx(r,'isn')});
+  const PQ=new Map(),pf=payAccFrom();(DB.payroll||[]).forEach(r=>{if(!validD(r.date)||r.date>p.end)return;const v=payAccOf(r,LCV);if(!v)return;const k=r.date+'|'+(r.ptype||'')+'|'+(r.per||'');let x=PQ.get(k);if(!x)PQ.set(k,x={date:r.date,lab:[r.ptype,r.per].filter(Boolean).join(' ')||'급여',wh:0,ss:0,isn:0});x.wh+=v.wh;x.ss+=v.ss;x.isn+=v.isn||0});
+  taxAdjRows().forEach(a=>{if(a.date>p.end)return;const o={src:'payroll',party:'SAT',ctr:a.decl?'세금 신고서':'외상매입 원천징수'};if(a.isr||a.other)post(acc('부채','예수금','cr'),a.date,0,a.isr+a.other,Object.assign({memo:a.ym+(a.decl?' 신고 기준 조정 (급여 ISR '+plain(a.isr)+' · 용역 ISR·IVA Ret '+plain(a.other)+')':' 용역·운송 ISR·IVA Ret')},o));if(a.isn)post(acc('부채','미지급 급여세','cr'),a.date,0,a.isn,Object.assign({},o,{party:'주정부',memo:a.ym+' ISN 신고 기준 조정'}))});
   cedRows().forEach(c=>{if(c.date>p.end||c.date<(payAccPrev()||pf))return;const k=c.date+'|ced|'+c.kind;let x=PQ.get(k);if(!x)PQ.set(k,x={date:c.date,lab:c.ym+(c.kind==='inf'?' INFONAVIT·RCV':' IMSS')+' cédula',wh:0,ss:0,isn:0});x.wh+=c.imss+c.infon;x.ss+=cedER(c)});
   PQ.forEach(x=>{const o={src:'payroll',party:'',ctr:'급여지급내역'};post(acc('부채','예수금','cr'),x.date,0,x.wh,Object.assign({memo:x.lab+' · ISR·IMSS·Infonavit 공제'},o));post(acc('부채','미지급 사회보험료','cr'),x.date,0,x.ss,Object.assign({memo:x.lab+' · IMSS·RCV·Infonavit 회사부담'},o));post(acc('부채','미지급 급여세','cr'),x.date,0,x.isn,Object.assign({memo:x.lab+' · ISN 급여세'},o))});
   (DB.hq||[]).forEach(r=>{if(!inP(r,p))return;const t=mx(r,'amount'),m=t*hqPct(r),o={src:'hq',rid:r.id,memo:r.item||'',party:r.payee||'',ctr:'본사 청구',fc:fc(r,+r.amount||0)};post(acc('제조원가','본사관리비 배부','dr'),r.date,m,0,o);post(acc('판매비와관리비','본사관리비 배부','dr'),r.date,t-m,0,o)});
@@ -2697,9 +2711,12 @@ const PT_K=['isr','imss','infon','imssPat','rcv','infPat','isn'];let PTROWS=new 
 const ptWh=x=>x.isr+x.imss+x.infon,ptEr=x=>x.imssPat+x.rcv+x.infPat+x.isn,ptTot=x=>ptWh(x)+ptEr(x);
 // cédula가 있는 달은 IMSS·RCV·Infonavit 칸을 cédula 금액으로 바꿈 (ISR·ISN은 급여지급내역). 2개월분 INFONAVIT cédula는 끝 달에 넣고 앞 달 몫은 0
 function ptGroup(p){const G=new Map(),CV=cedCov(),nx=(ym,d)=>{const k=ym+'|'+d;let x=G.get(k);if(!x)G.set(k,x={id:k,ym,dept:d,n:new Set(),cn:0,ced:'',isr:0,imss:0,infon:0,imssPat:0,rcv:0,infPat:0,isn:0});return x};
-  (DB.payroll||[]).filter(r=>inP(r,p)).forEach(r=>{const ym=String(r.date).slice(0,7),x=nx(ym,r.dept||'부서 없음');x.n.add(r.code||r.emp);PT_K.forEach(f=>{if(!cvx(CV,r.date,f))x[f]+=mx(r,f)})});
+  const T=taxMon(),q={start:addDs(p.start,-PAY_LAG),end:p.end};(DB.payroll||[]).filter(r=>inP(r,q)).forEach(r=>{const d=r.dept||'부서 없음',ym=String(r.date).slice(0,7),py=payYm(r);
+    if(inP(r,p)){const x=nx(ym,d);x.n.add(r.code||r.emp);['imss','infon','imssPat','rcv','infPat'].forEach(f=>{if(!cvx(CV,r.date,f))x[f]+=mx(r,f)})}
+    const pdt=payDt(r);if(pdt>=p.start&&pdt<=p.end){const t=T[py]||{},x=nx(py,d);x.isr+=mx(r,'isr')*(t.isrF||1);x.isn+=mx(r,'isn')*(t.isnF||1);if(t.decl)x.decl=1}});
   cedRows(p).forEach(c=>{const x=nx(c.ym,c.dept);x.cn=Math.max(x.cn,c.n);x.ced=x.ced?'imss+inf':c.kind;['imss','imssPat','rcv','infPat','infon'].forEach(f=>x[f]+=c[f])});
   G.forEach(x=>{if(CV[x.ym])x.ced=x.ced||'0'});return G}
+const ptOther=yms=>sumBy(uniq(yms),y=>{const t=taxMon()[y];return t?t.other:0});
 function ptRows(p){const G=ptGroup(p);
   const L=[...G.values()].sort((a,b)=>a.ym<b.ym?1:a.ym>b.ym?-1:(DEPTS.indexOf(a.dept)+99)%99-(DEPTS.indexOf(b.dept)+99)%99);PTROWS=new Map(L.map(x=>[x.id,x]));return L}
 // 지급 상태: DB.ptPay[key] = 묶음 id, DB.ptBatch[id] = {date,bank,keys,nocash}. 경리자료 전표가 지워지면 미지급으로 돌아감
@@ -2718,25 +2735,25 @@ function ptAuto(){const f=payAccFrom().slice(0,7),used=new Set(),G=ptGroup({star
 function ptCard(p){const L=ptRows(p),S=selOf('paytax'),n0=v=>v?money(v):'<span class="muted">–</span>';
   if(!L.length)return `<div class="card"><header><h2>부서별 원천징수 · 회사부담금</h2></header><div class="empty">이 기간에 급여지급내역이 없습니다.</div></div>`;
   const T=k=>sumBy(L,x=>typeof k==='function'?k(x):x[k]);
-  return `<div class="card"><header class="fhead"><h2>부서별 원천징수 · 회사부담금</h2><span class="meta">${esc(p.label)} · 급여 지급일이 속한 달 기준 · cédula 표시 달은 IMSS·RCV·Infonavit를 작업폴더 cédula 금액으로 계산</span>
+  return `<div class="card"><header class="fhead"><h2>부서별 원천징수 · 회사부담금</h2><span class="meta">${esc(p.label)} · 급여 지급일이 속한 달 기준 · ISR·ISN은 급여 지급일(기간 끝 + 5일)이 속한 달 · 확정 표시는 작업폴더 cédula·신고서 금액</span>
     <div class="selwrap"><button class="btn primary" data-ptpay="1">지급 완료</button><div class="selsum" data-selsum="paytax" aria-live="polite"></div></div></header>
     <div class="tw frz"><table data-seltbl="paytax"><thead><tr><th class="ck" rowspan="2"><input type="checkbox" data-selall="paytax" aria-label="전체 선택"></th><th rowspan="2">월</th><th rowspan="2">부서</th><th class="n" rowspan="2">인원</th>
       <th colspan="4" class="grp">원천징수 (예수금)</th><th colspan="5" class="grp">회사부담금</th><th class="n" rowspan="2">납부 합계</th><th rowspan="2">상태</th></tr>
       <tr><th class="n">ISR</th><th class="n">IMSS</th><th class="n">Infonavit</th><th class="n">계</th><th class="n">IMSS 사업주</th><th class="n">RCV</th><th class="n">Infonavit 5%</th><th class="n">ISN</th><th class="n">계</th></tr></thead><tbody>
-      ${L.map(x=>{const B=ptBatchOf(x.id);return `<tr data-row="${esc(x.id)}" class="${S.has(x.id)?'sel':''}"><td class="ck"><input type="checkbox" data-selrow="paytax" value="${esc(x.id)}" aria-label="선택"${S.has(x.id)?' checked':''}></td><td class="mono">${esc(x.ym)}${x.ced?' <span class="muted small" title="IMSS·RCV·Infonavit 금액은 작업폴더 cédula 기준">cédula</span>':''}</td><td>${deptTag(x.dept)}</td><td class="n">${x.n.size||x.cn}명</td>
+      ${L.map(x=>{const B=ptBatchOf(x.id);return `<tr data-row="${esc(x.id)}" class="${S.has(x.id)?'sel':''}"><td class="ck"><input type="checkbox" data-selrow="paytax" value="${esc(x.id)}" aria-label="선택"${S.has(x.id)?' checked':''}></td><td class="mono">${esc(x.ym)}${x.ced||x.decl?` <span class="muted small" title="${[x.ced?'IMSS·RCV·Infonavit = cédula':'',x.decl?'ISR·ISN = 신고서':''].filter(Boolean).join(' · ')}">확정</span>`:''}</td><td>${deptTag(x.dept)}</td><td class="n">${x.n.size||x.cn}명</td>
         <td class="n">${n0(x.isr)}</td><td class="n">${n0(x.imss)}</td><td class="n">${n0(x.infon)}</td><td class="n"><b>${money(ptWh(x))}</b></td><td class="n">${n0(x.imssPat)}</td><td class="n">${n0(x.rcv)}</td><td class="n">${n0(x.infPat)}</td><td class="n">${n0(x.isn)}</td><td class="n"><b>${money(ptEr(x))}</b></td><td class="n"><b>${money(ptTot(x))}</b></td>
         <td>${B&&B.pre?'<span class="pill good" title="운영 시작 전 급여 · 이미 납부한 것으로 봄">지급 완료</span>':B?`<button type="button" class="stpill" data-ptview="${esc(B.id)}" title="${esc(B.date)} 지급${B.adopt?' · 경리자료 전표와 연결':''} · 눌러서 전표 보기·취소"><span class="pill good">지급 완료</span></button>`:'<span class="pill warn">미지급</span>'}</td></tr>`}).join('')}
       </tbody><tfoot><tr class="total"><td></td><td>합계</td><td></td><td></td>${['isr','imss','infon',ptWh,'imssPat','rcv','infPat','isn',ptEr,ptTot].map(k=>`<td class="n"><b>${money(T(k))}</b></td>`).join('')}<td></td></tr></tfoot></table></div></div>`}
 function ptSelSum(el){const rs=[...selOf('paytax')].map(k=>PTROWS.get(k)).filter(Boolean);if(!rs.length){el.innerHTML='';return}
   el.innerHTML=`<span>선택 ${rs.length}건</span><span>원천징수 <b>${money(sumBy(rs,ptWh))}</b></span><span>회사부담 <b>${money(sumBy(rs,ptEr))}</b></span><span>납부 합계 <b>${money(sumBy(rs,ptTot))}</b></span>`}
 // 납부처별 금액: SAT(ISR) · IMSS/INFONAVIT(근로자분+사업주·RCV·Infonavit) · 주정부(ISN)
-const ptParts=rs=>{const s=k=>sumBy(rs,x=>x[k]);return {sat:s('isr'),ssWh:s('imss')+s('infon'),ssEr:s('imssPat')+s('rcv')+s('infPat'),isn:s('isn')}};
+const ptParts=rs=>{const s=k=>sumBy(rs,x=>x[k]),ot=ptOther(rs.map(x=>x.ym));return {satPay:s('isr'),satOth:ot,sat:s('isr')+ot,ssWh:s('imss')+s('infon'),ssEr:s('imssPat')+s('rcv')+s('infPat'),isn:s('isn')}};
 function ptPayModal(){const keys=modal.keys||[],rs=keys.map(k=>PTROWS.get(k)).filter(Boolean),P=ptParts(rs),yms=uniq(rs.map(x=>x.ym)).sort(),bn=bankNames('MXN').length?bankNames('MXN'):bankNames();
   const d0=(()=>{const y=yms[yms.length-1];if(!y)return TODAY;const x=new Date(+y.slice(0,4),+y.slice(5,7),17);return ds(x)<TODAY?ds(x):TODAY})();
   return `<div class="modal-bg"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mt"><form data-ptpayf="1"><header><h3 id="mt">원천징수·회사부담금 지급 완료</h3><button type="button" class="x" data-close="1" aria-label="닫기">×</button></header>
     <div class="mbody" style="display:grid;gap:14px"><div style="font-size:13px">${yms.join(', ')} · ${uniq(rs.map(x=>x.dept)).join(', ')} · ${rs.length}건</div>
       <table class="tight"><thead><tr><th>납부처</th><th>분류 · 계정</th><th class="n">금액 (MXN)</th></tr></thead><tbody>
-      <tr><td>SAT · ISR 원천세</td><td>유동부채 · 예수금</td><td class="n">${money(P.sat)}</td></tr>
+      <tr><td>SAT · ISR 원천세<br><span class="muted small">급여 ISR ${plain(P.satPay)} · 용역 ISR·IVA Ret ${plain(P.satOth)}</span></td><td>유동부채 · 예수금</td><td class="n">${money(P.sat)}</td></tr>
       <tr><td>IMSS/INFONAVIT</td><td>유동부채 · 사회보험료 납부<br><span class="muted small">근로자분 ${plain(P.ssWh)} · 회사부담 ${plain(P.ssEr)}</span></td><td class="n">${money(P.ssWh+P.ssEr)}</td></tr>
       <tr><td>주정부 · ISN 급여세</td><td>유동부채 · 급여세 납부</td><td class="n">${money(P.isn)}</td></tr>
       <tr class="total"><td><b>합계</b></td><td></td><td class="n"><b>${money(P.sat+P.ssWh+P.ssEr+P.isn)}</b></td></tr></tbody></table>
@@ -2745,7 +2762,7 @@ function ptPayModal(){const keys=modal.keys||[],rs=keys.map(k=>PTROWS.get(k)).fi
       <p class="note" style="margin:0">확인하면 경리자료에 납부처별 출금 전표(최대 3건)가 만들어지고, 결산에서 예수금·미지급 사회보험료·미지급 급여세가 줄어듭니다.</p></div>
     <footer><button type="button" class="btn" data-close="1">취소</button><button type="submit" class="btn primary">지급 확인</button></footer></form></div></div>`}
 function ptViewModal(){const id=modal.id,B=(DB.ptBatch||{})[id];if(!B){modal=null;return ''}const L=ptCash(id,B);
-  const rs=(B.keys||[]).map(k=>PTROWS.get(k)).filter(Boolean),P=ptParts(rs),pd=f=>sumBy(L.filter(f),c=>mx(c,'amount')),cmp=[['SAT · ISR',P.sat,pd(c=>c.account==='예수금')],['IMSS/INFONAVIT',P.ssWh+P.ssEr,pd(isSSPay)],['주정부 · ISN',P.isn,pd(isIsnPay)]];
+  const rs=(B.keys||[]).map(k=>PTROWS.get(k)).filter(Boolean),P=ptParts(rs),pd=f=>sumBy(L.filter(f),c=>mx(c,'amount')),cmp=[['SAT · ISR (급여 '+plain(P.satPay)+' + 용역 ISR·IVA Ret '+plain(P.satOth)+')',P.sat,pd(c=>c.account==='예수금')],['IMSS/INFONAVIT',P.ssWh+P.ssEr,pd(isSSPay)],['주정부 · ISN',P.isn,pd(isIsnPay)]];
   return `<div class="modal-bg"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mt"><header><h3 id="mt">원천징수·회사부담금 지급 내역</h3><button type="button" class="x" data-close="1" aria-label="닫기">×</button></header>
     <div class="mbody" style="display:grid;gap:12px"><div style="font-size:13px">${esc(B.date)} · ${(B.keys||[]).map(k=>esc(k.replace('|',' ')).replace(/ /,' · ')).join(', ')}</div>
     ${L.length?`<table class="tight"><thead><tr><th>지급일</th><th>은행</th><th>분류 · 계정</th><th class="n">금액</th><th></th></tr></thead><tbody>${L.map(c=>`<tr><td>${esc(c.date)}</td><td>${esc(bankOf(c))}</td><td>${esc(c.cat)} · ${esc(c.account)}</td><td class="n">${money(+c.amount||0)}</td><td><button type="button" class="act" data-cashgo="${c.id}">경리자료 →</button></td></tr>`).join('')}</tbody></table>`:'<p class="note" style="margin:0">지급 완료로 표시만 했습니다 (경리자료 전표 없음).</p>'}
@@ -2754,10 +2771,10 @@ function ptViewModal(){const id=modal.id,B=(DB.ptBatch||{})[id];if(!B){modal=nul
     <footer><button type="button" class="btn danger" data-ptundo="${esc(id)}">지급 취소</button><button type="button" class="btn primary" data-close="1">닫기</button></footer></div></div>`}
 function ssCard(p){const end=minS(p.end,TODAY),L=payLiab(end),f=payAccFrom(),S=DB.cash.filter(r=>isSSPay(r)&&r.type==='출금'&&validD(r.date)&&r.date>=f&&r.date<=end).sort((a,b)=>a.date<b.date?-1:1);
   const isr=sumBy(DB.cash.filter(r=>r.cat==='유동부채'&&r.account==='예수금'&&validD(r.date)&&r.date>=f&&r.date<=end),r=>(r.type==='입금'?-1:1)*mx(r,'amount'));
-  const P=(DB.payroll||[]).filter(r=>validD(r.date)&&r.date>=f&&r.date<=end),isrAcc=sumBy(P,M('isr')),wsAcc=L.whAcc-isrAcc,pf=payAccPrev();
+  const P=(DB.payroll||[]).filter(r=>validD(r.date)&&r.date>=f&&r.date<=end),isrAcc=L.isrAcc+L.othAcc,wsAcc=L.whAcc-isrAcc,pf=payAccPrev();
   return `<div class="card"><header><h2>예수금 · 회사부담금 결산</h2><span class="meta">${f.slice(0,7)} 급여부터${pf?` (RCV·Infonavit은 ${pf.slice(0,7)}부터)`:''} · ${end} 기준 · IMSS/INFONAVIT 납부는 비용이 아니라 아래 부채를 갚는 것으로 반영</span></header><div class="tw"><table>
     <thead><tr><th>구분</th><th class="n">급여에서 발생</th><th class="n">납부</th><th class="n">잔액 (재무상태표)</th></tr></thead><tbody>
-    <tr><td>예수금 · ISR (SAT)</td><td class="n">${money(isrAcc)}</td><td class="n">${money(isr)}</td><td class="n"><b>${money(isrAcc-isr)}</b></td></tr>
+    <tr><td>예수금 · ISR·IVA Ret (SAT)<br><span class="muted small">급여 ISR ${plain(L.isrAcc)} + 용역 ISR·IVA Ret ${plain(L.othAcc)} · 급여 지급월 기준</span></td><td class="n">${money(isrAcc)}</td><td class="n">${money(isr)}</td><td class="n"><b>${money(isrAcc-isr)}</b></td></tr>
     <tr><td>예수금 · IMSS 근로자분 + Infonavit 대출</td><td class="n">${money(wsAcc)}</td><td class="n">${money(L.whPaid)}</td><td class="n"><b>${money(wsAcc-L.whPaid)}</b></td></tr>
     <tr><td>미지급 사회보험료 · IMSS 사업주분 + RCV + Infonavit 5%</td><td class="n">${money(L.ssAcc)}</td><td class="n">${money(L.ssPaid)}</td><td class="n"><b>${money(L.ssAcc-L.ssPaid)}</b></td></tr>
     <tr><td>미지급 급여세 · ISN (주정부)</td><td class="n">${money(L.isnAcc)}</td><td class="n">${money(L.isnPaid)}</td><td class="n"><b>${money(L.isnAcc-L.isnPaid)}</b></td></tr></tbody></table></div>
@@ -5433,6 +5450,8 @@ async function ibScan(quiet){if(!IB.h||!IB.ok||IB.busy)return 0;IB.busy=true;let
       if(j&&!isX&&Array.isArray(j.banks)){let nb=0;j.banks.forEach(b=>{if(!b||!b.name)return;const ex=BANKS().find(x=>x.name===b.name);if(ex){if(b.upd){['open','since'].forEach(k=>{if(b[k]!=null)ex[k]=k==='open'?+b[k]||0:String(b[k])});nb++}return}SET().banks=BANKS().concat({name:String(b.name),cur:b.cur==='USD'?'USD':'MXN',open:+b.open||0,since:b.since||''});nb++});if(nb){syncOpenCash();by.bank=(by.bank||0)+nb;n+=nb}j.rows=j.rows||{}}
       // Claude가 본사 경영회의자료(YSM)를 넣는 경우: mgmt {ym,...} → DB.mgmt[ym] (같은 달은 새 자료로 바꿈)
       // Claude가 IMSS·INFONAVIT cédula(의료보험 폴더 PDF)를 부서별로 묶어 넣는 경우: cedula [{ym,kind:'imss'|'inf',file,total,rows}] → DB.sscedula[ym|kind] (같은 달·종류는 새 자료로 바꿈)
+      // 세금 신고 확정액 (ISR, ISN, IVA 폴더): taxdecl [{ym,isrSal,isrHon,ivaRet,isn,file}] → DB.taxdecl[ym] (항목별로 덮어씀)
+      if(j&&!isX&&Array.isArray(j.taxdecl)){j.taxdecl.forEach(c=>{if(!c||!/^\d{4}-\d\d$/.test(c.ym||''))return;DB.taxdecl=Object.assign({},DB.taxdecl||{});DB.taxdecl[c.ym]=Object.assign({},DB.taxdecl[c.ym]||{},c);by.paytax=(by.paytax||0)+1;n++});TXC=null;j.rows=j.rows||{}}
       if(j&&!isX&&Array.isArray(j.cedula)){j.cedula.forEach(c=>{if(!c||!/^\d{4}-\d\d$/.test(c.ym||'')||!CED_IN[c.kind])return;DB.sscedula=Object.assign({},DB.sscedula||{},{[c.ym+'|'+c.kind]:c});by.paytax=(by.paytax||0)+1;n++});j.rows=j.rows||{}}
       if(j&&!isX&&j.mgmt&&j.mgmt.ym){DB.mgmt=Object.assign({},DB.mgmt||{},{[j.mgmt.ym]:j.mgmt});UI.mgym=j.mgmt.ym;by.repm=(by.repm||0)+1;n++;j.rows=j.rows||{}}
       if(!j||!j.rows)continue;files++;let k=0;IB_MODS.forEach(mod=>(j.rows[mod]||[]).forEach(x=>{const a=ibAdd(mod,x);k+=a;if(a)by[mod]=(by[mod]||0)+a}));n+=k;
@@ -5457,7 +5476,7 @@ document.addEventListener('change',e=>{const t=e.target;if(t&&t.dataset&&t.datas
 // 새로고침 뒤에는 Chrome이 폴더 권한을 다시 물을 수 있음: 화면을 처음 누를 때 자동으로 다시 연결 (권한 창에서 "방문할 때마다 허용"을 고르면 다음부터는 묻지 않음)
 let IB_TRY=false;document.addEventListener('pointerdown',()=>{if(IB.h&&!IB.ok&&!IB_TRY){IB_TRY=true;ibReconnect()}},true);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261126-164735';let VER_NEW=false;
+const APP_VER='20261126-170831';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
 /* ---------- 같은 화면을 다시 그릴 때(자동 번역·자료함·저장 등) 스크롤 위치를 그대로 유지. 다른 화면으로 이동할 때만 맨 위로 ---------- */
 const scrEls=()=>{const m=$('#main');return [document.scrollingElement,m,m&&m.parentElement].filter(Boolean)};
