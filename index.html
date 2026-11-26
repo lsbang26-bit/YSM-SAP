@@ -1444,7 +1444,7 @@ const isIsnPay=r=>r.cat==='유동부채'&&r.account==='급여세 납부';
 const isSSPay=r=>r.cat==='유동부채'&&r.account==='사회보험료 납부';
 const SS_MON={ENE:1,JAN:1,FEB:2,MAR:3,ABR:4,APR:4,MAY:5,JUN:6,JUL:7,AGO:8,AUG:8,SEP:9,OCT:10,NOV:11,DIC:12,DEC:12};
 // 납부 대상 월: 적요의 월 이름(OCT·OCTUBRE·10월) → 없으면 납부일 전달. 짝수 달(2개월 단위 RCV·Infonavit 납부 달)은 앞 달 RCV·Infonavit도 포함해 근로자분:회사부담 비율로 나눔
-function ssSplit(r){const amt=mx(r,'amount'),t=String(r.memo||'')+' '+String(r.item||''),d=r.date||TODAY;let m=0;
+function ssSplit(r){if(r.ssWh!=null)return {ym:r.ssYm||String(r.date||'').slice(0,7),wh:+r.ssWh||0,er:mx(r,'amount')-(+r.ssWh||0),W:0,E:0};const amt=mx(r,'amount'),t=String(r.memo||'')+' '+String(r.item||''),d=r.date||TODAY;let m=0;
   const a=t.toUpperCase().match(/\b(ENE|JAN|FEB|MAR|ABR|APR|MAY|JUN|JUL|AGO|AUG|SEP|OCT|NOV|DIC|DEC)[A-Z]*\b/),b=t.match(/(\d{1,2})\s*월/);
   if(a)m=SS_MON[a[1]];else if(b&&+b[1]>=1&&+b[1]<=12)m=+b[1];
   let y=+d.slice(0,4);if(m){if(m>+d.slice(5,7))y--}else{const x=new Date(y,+d.slice(5,7)-2,1);y=x.getFullYear();m=x.getMonth()+1}
@@ -1870,7 +1870,7 @@ const MODS={
       return[kv('정산 건수',rows.length+'건'),kv('정산 대기',money(t(w)),w.length+'건',w.length?'warn':''),kv('지급 완료',money(t(d)),d.length+'건','good'),kv('평균 근속',rows.length?(avg(rows.map(r=>{const c=severCalc(r);return c?c.yrs:0}))).toFixed(1)+'년':'–')]},
     blank:p=>({date:TODAY,emp:'',reason:'자진 퇴사 (Renuncia)',unpaid:0,vacAdj:0,status:'정산 대기',pdate:'',memo:''})},
   paymon:{name:'월별 급여',desc:'급여지급내역을 기간별(W1…)·월별로 모아 직원별·부서별로 봅니다 (주급 · 14 급여 · 월급)',importMod:'payroll',page:()=>payMonPage(),toolbar:()=>payMonToolbar()},
-  paytax:{name:'원천징수·회사부담금',desc:'급여지급내역의 원천징수(ISR·IMSS·Infonavit)와 회사부담금(IMSS 사업주분·RCV·Infonavit 5%·ISN)을 직원·부서별로 모으고 납부처별로 요약합니다',importMod:'payroll',page:p=>paytaxPage(p)},
+  paytax:{name:'원천징수·회사부담금',desc:'급여지급내역의 원천징수(ISR·IMSS·Infonavit)와 회사부담금(IMSS 사업주분·RCV·Infonavit 5%·ISN)을 월·부서별로 모으고, 지급 완료하면 경리자료에 납부 전표를 만듭니다',importMod:'payroll',page:p=>paytaxPage(p)},
   vac:{name:'휴가관리',desc:'직원별 연차 부여·사용·잔여일수와 휴가 사용 내역 (LFT 2023 개정 기준). 잔여일수는 퇴직금 정산의 미사용 휴가에 그대로 쓰입니다.',data:'vac',dated:true,page:p=>vacPage(p),
     cols:[C('date','시작일','date'),C('to','종료일','date'),C('emp','직원','text',{sug:'employees'}),C('type','구분','sel',{opts:VAC_TYPES,pill:1}),C('days','사용일수','num',{sum:1}),
       C('status','상태','sel',{opts:['승인','신청','반려'],pill:1}),C('memo','사유','text',{wide:1})],
@@ -2046,7 +2046,7 @@ function selVisible(id){const m=MODS[id];if(!m||!m.cols)return [];const S=selOf(
 function syncSel(){
   document.querySelectorAll('[data-delsel]').forEach(b=>{const n=selVisible(b.dataset.delsel).length;b.disabled=!n;b.textContent=n?`선택삭제 (${n})`:'선택삭제'});
   // 외상매입·매출: 체크한 줄의 합계·잔액 (MXN 환산)
-  document.querySelectorAll('[data-selsum]').forEach(el=>{const id=el.dataset.selsum,rs=selVisible(id),isAP=id==='ap';if(!rs.length){el.innerHTML='';return}
+  document.querySelectorAll('[data-selsum]').forEach(el=>{const id=el.dataset.selsum;if(id==='paytax'){ptSelSum(el);return}const rs=selVisible(id),isAP=id==='ap';if(!rs.length){el.innerHTML='';return}
     // 경리자료: 체크한 전표의 입금·출금 합계와 순액 (MXN 환산). 모두 US$ 이면 US$ 금액
     if(id==='cash'){const I=rs.filter(r=>r.type==='입금'),O=rs.filter(r=>r.type!=='입금'),cs=uniq(rs.map(r=>r.cur||'MXN')),u=cs.length===1&&cs[0]==='USD',sm=L=>u?sumBy(L,r=>+r.amount||0):sumBy(L,M('amount')),f=v=>u?fmtCur(v,'USD',1):money(v);
       el.innerHTML=`<span>선택 ${rs.length}건</span>${I.length?`<span>입금 <b>${f(sm(I))}</b></span>`:''}${O.length?`<span>출금 <b>${f(sm(O))}</b></span>`:''}${I.length&&O.length?`<span>순액 <b>${f(sm(I)-sm(O))}</b></span>`:''}${!u&&cs.includes('USD')?'<span class="dim">MXN 환산</span>':''}`;return}
@@ -2680,6 +2680,48 @@ function deptPayCard(p){
     </tbody></table></div><div class="body"><p class="note">기간 안에 급여지급내역이 하나도 없으면 인원관리의 일급 × 근무일수로 추정합니다.</p></div></div>`;
 }
 // 결산: 예수금·미지급 사회보험료 발생과 IMSS/INFONAVIT 납부 대사 (기간 말 잔액)
+// 원천징수·회사부담금: 월(급여 지급일 기준) × 부서별 묶음. 체크해서 합계를 보고, 지급 완료하면 경리자료에 납부처별 출금 전표(SAT 예수금 · IMSS/INFONAVIT 사회보험료 · 주정부 급여세)를 만듦
+const PT_K=['isr','imss','infon','imssPat','rcv','infPat','isn'];let PTROWS=new Map();
+const ptWh=x=>x.isr+x.imss+x.infon,ptEr=x=>x.imssPat+x.rcv+x.infPat+x.isn,ptTot=x=>ptWh(x)+ptEr(x);
+function ptRows(p){const G=new Map();(DB.payroll||[]).filter(r=>inP(r,p)).forEach(r=>{const ym=String(r.date).slice(0,7),d=r.dept||'부서 없음',k=ym+'|'+d;let x=G.get(k);if(!x)G.set(k,x={id:k,ym,dept:d,n:new Set(),isr:0,imss:0,infon:0,imssPat:0,rcv:0,infPat:0,isn:0});x.n.add(r.code||r.emp);PT_K.forEach(f=>x[f]+=mx(r,f))});
+  const L=[...G.values()].sort((a,b)=>a.ym<b.ym?1:a.ym>b.ym?-1:(DEPTS.indexOf(a.dept)+99)%99-(DEPTS.indexOf(b.dept)+99)%99);PTROWS=new Map(L.map(x=>[x.id,x]));return L}
+// 지급 상태: DB.ptPay[key] = 묶음 id, DB.ptBatch[id] = {date,bank,keys,nocash}. 경리자료 전표가 지워지면 미지급으로 돌아감
+const ptBatchOf=k=>{const id=(DB.ptPay||{})[k],B=id&&(DB.ptBatch||{})[id];if(!B)return null;if(!B.nocash&&!DB.cash.some(c=>c.linkMod==='paytax'&&c.link===id))return null;return Object.assign({id},B)};
+function ptCard(p){const L=ptRows(p),S=selOf('paytax'),n0=v=>v?money(v):'<span class="muted">–</span>';
+  if(!L.length)return `<div class="card"><header><h2>부서별 원천징수 · 회사부담금</h2></header><div class="empty">이 기간에 급여지급내역이 없습니다.</div></div>`;
+  const T=k=>sumBy(L,x=>typeof k==='function'?k(x):x[k]);
+  return `<div class="card"><header class="fhead"><h2>부서별 원천징수 · 회사부담금</h2><span class="meta">${esc(p.label)} · 급여 지급일이 속한 달 기준</span>
+    <div class="selwrap"><button class="btn primary" data-ptpay="1">지급 완료</button><div class="selsum" data-selsum="paytax" aria-live="polite"></div></div></header>
+    <div class="tw frz"><table data-seltbl="paytax"><thead><tr><th class="ck" rowspan="2"><input type="checkbox" data-selall="paytax" aria-label="전체 선택"></th><th rowspan="2">월</th><th rowspan="2">부서</th><th class="n" rowspan="2">인원</th>
+      <th colspan="4" class="grp">원천징수 (예수금)</th><th colspan="5" class="grp">회사부담금</th><th class="n" rowspan="2">납부 합계</th><th rowspan="2">상태</th></tr>
+      <tr><th class="n">ISR</th><th class="n">IMSS</th><th class="n">Infonavit</th><th class="n">계</th><th class="n">IMSS 사업주</th><th class="n">RCV</th><th class="n">Infonavit 5%</th><th class="n">ISN</th><th class="n">계</th></tr></thead><tbody>
+      ${L.map(x=>{const B=ptBatchOf(x.id);return `<tr data-row="${esc(x.id)}" class="${S.has(x.id)?'sel':''}"><td class="ck"><input type="checkbox" data-selrow="paytax" value="${esc(x.id)}" aria-label="선택"${S.has(x.id)?' checked':''}></td><td class="mono">${esc(x.ym)}</td><td>${deptTag(x.dept)}</td><td class="n">${x.n.size}명</td>
+        <td class="n">${n0(x.isr)}</td><td class="n">${n0(x.imss)}</td><td class="n">${n0(x.infon)}</td><td class="n"><b>${money(ptWh(x))}</b></td><td class="n">${n0(x.imssPat)}</td><td class="n">${n0(x.rcv)}</td><td class="n">${n0(x.infPat)}</td><td class="n">${n0(x.isn)}</td><td class="n"><b>${money(ptEr(x))}</b></td><td class="n"><b>${money(ptTot(x))}</b></td>
+        <td>${B?`<button type="button" class="stpill" data-ptview="${esc(B.id)}" title="${esc(B.date)} 지급 · 눌러서 전표 보기·취소"><span class="pill good">지급 완료</span></button>`:'<span class="pill warn">미지급</span>'}</td></tr>`}).join('')}
+      </tbody><tfoot><tr class="total"><td></td><td>합계</td><td></td><td></td>${['isr','imss','infon',ptWh,'imssPat','rcv','infPat','isn',ptEr,ptTot].map(k=>`<td class="n"><b>${money(T(k))}</b></td>`).join('')}<td></td></tr></tfoot></table></div></div>`}
+function ptSelSum(el){const rs=[...selOf('paytax')].map(k=>PTROWS.get(k)).filter(Boolean);if(!rs.length){el.innerHTML='';return}
+  el.innerHTML=`<span>선택 ${rs.length}건</span><span>원천징수 <b>${money(sumBy(rs,ptWh))}</b></span><span>회사부담 <b>${money(sumBy(rs,ptEr))}</b></span><span>납부 합계 <b>${money(sumBy(rs,ptTot))}</b></span>`}
+// 납부처별 금액: SAT(ISR) · IMSS/INFONAVIT(근로자분+사업주·RCV·Infonavit) · 주정부(ISN)
+const ptParts=rs=>{const s=k=>sumBy(rs,x=>x[k]);return {sat:s('isr'),ssWh:s('imss')+s('infon'),ssEr:s('imssPat')+s('rcv')+s('infPat'),isn:s('isn')}};
+function ptPayModal(){const keys=modal.keys||[],rs=keys.map(k=>PTROWS.get(k)).filter(Boolean),P=ptParts(rs),yms=uniq(rs.map(x=>x.ym)).sort(),bn=bankNames('MXN').length?bankNames('MXN'):bankNames();
+  const d0=(()=>{const y=yms[yms.length-1];if(!y)return TODAY;const x=new Date(+y.slice(0,4),+y.slice(5,7),17);return ds(x)<TODAY?ds(x):TODAY})();
+  return `<div class="modal-bg"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mt"><form data-ptpayf="1"><header><h3 id="mt">원천징수·회사부담금 지급 완료</h3><button type="button" class="x" data-close="1" aria-label="닫기">×</button></header>
+    <div class="mbody" style="display:grid;gap:14px"><div style="font-size:13px">${yms.join(', ')} · ${uniq(rs.map(x=>x.dept)).join(', ')} · ${rs.length}건</div>
+      <table class="tight"><thead><tr><th>납부처</th><th>분류 · 계정</th><th class="n">금액 (MXN)</th></tr></thead><tbody>
+      <tr><td>SAT · ISR 원천세</td><td>유동부채 · 예수금</td><td class="n">${money(P.sat)}</td></tr>
+      <tr><td>IMSS/INFONAVIT</td><td>유동부채 · 사회보험료 납부<br><span class="muted small">근로자분 ${plain(P.ssWh)} · 회사부담 ${plain(P.ssEr)}</span></td><td class="n">${money(P.ssWh+P.ssEr)}</td></tr>
+      <tr><td>주정부 · ISN 급여세</td><td>유동부채 · 급여세 납부</td><td class="n">${money(P.isn)}</td></tr>
+      <tr class="total"><td><b>합계</b></td><td></td><td class="n"><b>${money(P.sat+P.ssWh+P.ssEr+P.isn)}</b></td></tr></tbody></table>
+      <div class="form"><label>지급일<input type="date" name="sdate" value="${d0}" required></label><label>지급 은행<select name="sbank" required>${bn.map(n=>`<option${n===bankFor('MXN')?' selected':''}>${esc(n)}</option>`).join('')}</select></label></div>
+      <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px"><input type="checkbox" name="snocash" style="margin-top:2px"><span>이미 경리자료에 납부 전표가 있음 · 지급 완료로 표시만 하고 전표는 만들지 않음</span></label>
+      <p class="note" style="margin:0">확인하면 경리자료에 납부처별 출금 전표(최대 3건)가 만들어지고, 결산에서 예수금·미지급 사회보험료·미지급 급여세가 줄어듭니다.</p></div>
+    <footer><button type="button" class="btn" data-close="1">취소</button><button type="submit" class="btn primary">지급 확인</button></footer></form></div></div>`}
+function ptViewModal(){const id=modal.id,B=(DB.ptBatch||{})[id];if(!B){modal=null;return ''}const L=DB.cash.filter(c=>c.linkMod==='paytax'&&c.link===id);
+  return `<div class="modal-bg"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mt"><header><h3 id="mt">원천징수·회사부담금 지급 내역</h3><button type="button" class="x" data-close="1" aria-label="닫기">×</button></header>
+    <div class="mbody" style="display:grid;gap:12px"><div style="font-size:13px">${esc(B.date)} · ${(B.keys||[]).map(k=>esc(k.replace('|',' ')).replace(/ /,' · ')).join(', ')}</div>
+    ${L.length?`<table class="tight"><thead><tr><th>지급일</th><th>은행</th><th>분류 · 계정</th><th class="n">금액</th><th></th></tr></thead><tbody>${L.map(c=>`<tr><td>${esc(c.date)}</td><td>${esc(bankOf(c))}</td><td>${esc(c.cat)} · ${esc(c.account)}</td><td class="n">${money(+c.amount||0)}</td><td><button type="button" class="act" data-cashgo="${c.id}">경리자료 →</button></td></tr>`).join('')}</tbody></table>`:'<p class="note" style="margin:0">지급 완료로 표시만 했습니다 (경리자료 전표 없음).</p>'}
+    <p class="note" style="margin:0">지급 취소를 누르면 지급 완료 표시와 연결된 경리자료 전표가 함께 지워집니다.</p></div>
+    <footer><button type="button" class="btn danger" data-ptundo="${esc(id)}">지급 취소</button><button type="button" class="btn primary" data-close="1">닫기</button></footer></div></div>`}
 function ssCard(p){const end=minS(p.end,TODAY),L=payLiab(end),f=payAccFrom(),S=DB.cash.filter(r=>isSSPay(r)&&r.type==='출금'&&validD(r.date)&&r.date>=f&&r.date<=end).sort((a,b)=>a.date<b.date?-1:1);
   const isr=sumBy(DB.cash.filter(r=>r.cat==='유동부채'&&r.account==='예수금'&&validD(r.date)&&r.date>=f&&r.date<=end),r=>(r.type==='입금'?-1:1)*mx(r,'amount'));
   const P=(DB.payroll||[]).filter(r=>validD(r.date)&&r.date>=f&&r.date<=end),isrAcc=sumBy(P,M('isr')),wsAcc=L.whAcc-isrAcc,pf=payAccPrev();
@@ -2694,17 +2736,8 @@ function ssCard(p){const end=minS(p.end,TODAY),L=payLiab(end),f=payAccFrom(),S=D
     <div class="body"><p class="note">납부액은 대상 월 급여의 근로자분(IMSS·Infonavit 대출)과 회사부담금(IMSS 사업주·RCV·Infonavit 5%) 비율로 나눕니다. 짝수 달 납부는 2개월 단위 RCV·Infonavit 몫을 앞 달까지 포함합니다.</p></div></div>`}
 function paytaxPage(p){
   const rows=DB.payroll.filter(r=>inP(r,p)), t=k=>sumBy(rows,M(k)), ret=t('isr'), sua=t('imss')+t('imssPat')+t('rcv')+t('infPat')+t('infon');
-  const by={};rows.forEach(r=>{const k=r.emp;const o=by[k]||(by[k]={emp:r.emp,dept:r.dept,n:0,g:0,isr:0,imss:0,infon:0,oded:0,imssPat:0,rcv:0,infPat:0,isn:0});o.n++;o.g+=payGross(r);['isr','imss','infon','oded','imssPat','rcv','infPat','isn'].forEach(k2=>o[k2]+=mx(r,k2))});
-  const L=Object.values(by).sort((a,b)=>DEPTS.indexOf(a.dept)-DEPTS.indexOf(b.dept)||a.emp.localeCompare(b.emp)), S=k=>sumBy(L,k);
-  const wh=o=>o.isr+o.imss+o.infon+o.oded, er=o=>o.imssPat+o.rcv+o.infPat+o.isn;
   return `<div class="content">${kpiHTML([kv('원천징수 합계',money(sumBy(rows,payDed)),'ISR '+plain(ret),'warn'),kv('IMSS 근로자분',money(t('imss'))),kv('회사부담금 합계',money(sumBy(rows,payER)),'IMSS·RCV·Infonavit·ISN'),kv('총 납부 예정',money(ret+sua+t('isn')),'SAT · SUA · 주정부','bad')])}
-    <div class="card"><header><h2>직원별 원천징수 · 회사부담금</h2><span class="meta">${esc(p.label)} · ${L.length}명 · ${rows.length}건</span></header>${L.length?`<div class="tw"><table>
-      <thead><tr><th rowspan="2">직원</th><th rowspan="2">부서</th><th class="n" rowspan="2">총지급액</th><th colspan="5" class="grp">원천징수 (Deducciones)</th><th colspan="5" class="grp">회사부담금 (Aportaciones patronales)</th></tr>
-      <tr><th class="n">ISR</th><th class="n">IMSS</th><th class="n">Infonavit</th><th class="n">기타</th><th class="n">합계</th><th class="n">IMSS 사업주</th><th class="n">RCV</th><th class="n">Infonavit 5%</th><th class="n">ISN</th><th class="n">합계</th></tr></thead><tbody>
-      ${L.map(o=>`<tr><td>${esc(o.emp)}</td><td>${deptTag(o.dept)}</td><td class="n">${money(o.g)}</td><td class="n">${money(o.isr)}</td><td class="n">${money(o.imss)}</td><td class="n">${money(o.infon)}</td><td class="n">${money(o.oded)}</td><td class="n"><b>${money(wh(o))}</b></td>
-        <td class="n">${money(o.imssPat)}</td><td class="n">${money(o.rcv)}</td><td class="n">${money(o.infPat)}</td><td class="n">${money(o.isn)}</td><td class="n"><b>${money(er(o))}</b></td></tr>`).join('')}
-      </tbody><tfoot><tr><td>합계</td><td></td><td class="n">${money(S('g'))}</td><td class="n">${money(S('isr'))}</td><td class="n">${money(S('imss'))}</td><td class="n">${money(S('infon'))}</td><td class="n">${money(S('oded'))}</td><td class="n">${money(sumBy(L,wh))}</td>
-        <td class="n">${money(S('imssPat'))}</td><td class="n">${money(S('rcv'))}</td><td class="n">${money(S('infPat'))}</td><td class="n">${money(S('isn'))}</td><td class="n">${money(sumBy(L,er))}</td></tr></tfoot></table></div>`:'<div class="empty">이 기간에 급여지급내역이 없습니다.</div>'}</div>
+    ${ptCard(p)}
     ${ssCard(p)}
     <div class="card"><header><h2>납부처별 요약</h2><span class="meta">${esc(p.label)}</span></header><div class="tw"><table><thead><tr><th>납부처</th><th>항목</th><th>기한</th><th class="n">금액</th></tr></thead><tbody>
       <tr><td>SAT</td><td>ISR 원천징수 (근로자)</td><td>다음 달 17일</td><td class="n">${money(ret)}</td></tr>
@@ -4491,6 +4524,8 @@ function renderModal(){
   if(modal&&modal.type==='fsd'){host.innerHTML=fsdModal(modal.k);return}
   if(modal&&modal.type==='fdx'){host.innerHTML=fdxModal();return}
   if(modal&&modal.type==='pedpay'){host.innerHTML=pedPayModal();return}
+  if(modal&&modal.type==='ptpay'){host.innerHTML=ptPayModal();return}
+  if(modal&&modal.type==='ptview'){host.innerHTML=ptViewModal();return}
   if(modal&&modal.type==='dup'){host.innerHTML=dupModal();return}
   if(modal&&modal.type==='armatch'){host.innerHTML=arMatchModal();const q=host.querySelector('[name="am_amt"]');if(q&&!modal.run)q.focus();return}
   if(modal&&modal.type==='banktx'){host.innerHTML=bankTxModal(modal);return}
@@ -5390,7 +5425,7 @@ document.addEventListener('change',e=>{const t=e.target;if(t&&t.dataset&&t.datas
 // 새로고침 뒤에는 Chrome이 폴더 권한을 다시 물을 수 있음: 화면을 처음 누를 때 자동으로 다시 연결 (권한 창에서 "방문할 때마다 허용"을 고르면 다음부터는 묻지 않음)
 let IB_TRY=false;document.addEventListener('pointerdown',()=>{if(IB.h&&!IB.ok&&!IB_TRY){IB_TRY=true;ibReconnect()}},true);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261126-161920';let VER_NEW=false;
+const APP_VER='20261126-162817';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
 /* ---------- 같은 화면을 다시 그릴 때(자동 번역·자료함·저장 등) 스크롤 위치를 그대로 유지. 다른 화면으로 이동할 때만 맨 위로 ---------- */
 const scrEls=()=>{const m=$('#main');return [document.scrollingElement,m,m&&m.parentElement].filter(Boolean)};
@@ -5589,6 +5624,9 @@ document.addEventListener('click',e=>{
   if(d.krwadd){const S=DB.settings,F=S.krwFix=S.krwFix||JSON.parse(JSON.stringify(KRW_FIX0)),ys=Object.keys(F).map(Number),y=String(ys.length?Math.max(...ys)+1:THIS_YEAR);F[y]={usd:'',mxn:''};save();renderMain();return}
   if(d.krwdel){const S=DB.settings,F=S.krwFix=S.krwFix||JSON.parse(JSON.stringify(KRW_FIX0));delete F[d.krwdel];save();renderMain();return}
   if(d.pedpay){modal={type:'pedpay',id:d.pedpay};renderModal();return}
+  if(d.ptpay){const ks=[...selOf('paytax')].filter(k=>PTROWS.has(k));if(!ks.length){toast('지급할 줄을 먼저 체크해 주세요');return}const done=ks.filter(k=>ptBatchOf(k));if(done.length){toast(`이미 지급 완료된 줄 ${done.length}건이 있습니다. 체크를 풀고 다시 눌러 주세요`);return}modal={type:'ptpay',keys:ks};renderModal();return}
+  if(d.ptview){modal={type:'ptview',id:d.ptview};renderModal();return}
+  if(d.ptundo){const id=d.ptundo,B=(DB.ptBatch||{})[id];if(!B)return;const n=DB.cash.length;DB.cash=DB.cash.filter(c=>!(c.linkMod==='paytax'&&c.link===id));const k=n-DB.cash.length;(B.keys||[]).forEach(x=>{if((DB.ptPay||{})[x]===id)delete DB.ptPay[x]});delete DB.ptBatch[id];save();closeModal();renderMain();toast(`지급 완료를 취소했습니다${k?` · 경리자료 전표 ${k}건 삭제`:''}`);return}
   if(d.pedundo){const r=DB.ped.find(x=>x.id===d.pedundo);if(!r)return;const n=DB.cash.length;DB.cash=DB.cash.filter(c=>!(c.link===r.id&&c.linkMod==='ped'));const k=n-DB.cash.length;delete r.pay;flashId=r.id;save();closeModal();renderMain();toast(`지급 완료를 취소했습니다${k?` · 경리자료 전표 ${k}건 삭제`:''}`);return}
   if(d.zm!==undefined){const v=+d.zm;UI.zm=v?Math.round(Math.min(1.6,Math.max(0.7,zmV()+v*0.1))*10)/10:1;saveUI();zmApply();renderMain();return}
   if(d.hcwt){const W=hcWeeks(),cur=hcSels(curPeriod());let S=d.hcwt==='*'?(cur.length===W.length?[W[W.length-1]]:W.slice()):cur.includes(d.hcwt)?cur.filter(w=>w!==d.hcwt):cur.concat(d.hcwt);if(!S.length)S=[d.hcwt];UI.hcws=S;saveUI();renderMain();return}
@@ -5793,6 +5831,15 @@ document.addEventListener('submit',e=>{
     const since=f.querySelector('[name="since"]').value;if(!validD(since)){toast('기준일을 확인해 주세요');return}
     BANKS().forEach((b,i)=>{const el=f.querySelector(`[name="open${i}"]`);if(el){b.open=parseFloat(el.value)||0;b.since=since}});
     syncOpenCash();save();closeModal();renderMain();toast(`${since} 기준 기초시재를 저장했습니다`);return;
+  }
+  if(f.dataset.ptpayf){
+    const keys=(modal&&modal.keys)||[],rs=keys.map(k=>PTROWS.get(k)).filter(Boolean);if(!rs.length){closeModal();return}const date=f.querySelector('[name="sdate"]').value;if(!validD(date)){toast('지급일을 확인해 주세요');return}
+    const id='pt'+uid(),nc=f.querySelector('[name="snocash"]').checked,bank=f.querySelector('[name="sbank"]').value||bankFor('MXN'),P=ptParts(rs),yms=uniq(rs.map(x=>x.ym)).sort(),tag=`${yms.join(', ')} 급여 · ${uniq(rs.map(x=>x.dept)).join('·')}`,ssYm=yms[yms.length-1];
+    DB.ptBatch=DB.ptBatch||{};DB.ptPay=DB.ptPay||{};DB.ptBatch[id]={date,bank,keys,nocash:nc?1:0};keys.forEach(k=>DB.ptPay[k]=id);let made=0;
+    if(!nc){const base={date,bank,type:'출금',cat:'유동부채',cur:'MXN',iva:'면세',factura:'미발행',uuid:'',link:id,linkMod:'paytax'};
+      [['SAT','예수금',`ISR 원천세 · ${tag}`,P.sat,{}],['IMSS','사회보험료 납부',`IMSS/INFONAVIT · ${tag}`,r2(P.ssWh+P.ssEr),{ssWh:r2(P.ssWh),ssYm}],['SECRETARIA Y FINANZAS TESORERIA','급여세 납부',`ISN 급여세 · ${tag}`,P.isn,{}]].filter(x=>x[3]>0.004).reverse()
+        .forEach(([party,account,memo,v,ex])=>{DB.cash.unshift(Object.assign({id:uid(),party,account,memo,amount:r2(v),sub:r2(v)},base,ex));made++});UI.lastBank=bank}
+    selOf('paytax').clear();save();closeModal();renderMain();toast(nc?`지급 완료로 표시했습니다 (${date}, 경리자료 전표 없음)`:`지급 완료 처리했고 경리자료에 ${bank} 출금 전표 ${made}건을 만들었습니다`,nc?undefined:{label:'경리자료 보기',fn:()=>go('cash')});return;
   }
   if(f.dataset.pedpayf){
     const r=DB.ped.find(x=>x.id===f.dataset.pedpayf);if(!r)return;const date=f.querySelector('[name="sdate"]').value;if(!validD(date)){toast('지급일을 확인해 주세요');return}
