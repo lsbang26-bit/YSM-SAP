@@ -778,9 +778,12 @@ const pct=v=>isFinite(v)?(v*100).toFixed(1)+'%':'–';
 const uid=()=>'r'+Math.random().toString(36).slice(2,10);
 const pad3=n=>String(n).padStart(3,'0');
 // 급여지급내역(payroll)은 양이 많아 브라우저 저장 한도(약 5MB)를 넘으므로 IndexedDB에 따로 저장. localStorage에는 payroll:[] + payIdb:1만 둠
-let PAY_OK=true,payT=null;const payPut=v=>bkIDB('readwrite',st=>st.put(v,'payroll'));
+let PAY_OK=true,payT=null,PAY_FP=null;const payPut=v=>(PAY_FP=payFp(v),bkIDB('readwrite',st=>st.put(v,'payroll')));
+// 급여 1만 건 이상을 저장할 때마다 다시 쓰면 느려서, 내용 지문이 같으면 건너뜀
+const PAY_FK=['id','date','emp','code','dept','cdept','ptype','per','pyear','from','to','days','cur','daily','sueldo','ot','bonus','isr','imss','infon','oded','imssPat','rcv','infPat','isn','src','isNew','newChk'];
+function payFp(L){let h=2166136261>>>0;for(const r of L||[]){if(!r)continue;for(const k of PAY_FK){const v=r[k];const t=v==null?'':String(v);for(let i=0;i<t.length;i++){h^=t.charCodeAt(i);h=Math.imul(h,16777619)>>>0}h^=31;h=Math.imul(h,16777619)>>>0}}return (L?L.length:0)+':'+h}
 const LS={get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},set(k,v){try{let t;
-  if(k===KEY&&v&&Array.isArray(v.payroll)){if(v!==DB||PAY_OK){const pr=v.payroll;clearTimeout(payT);payT=setTimeout(()=>payPut(pr),400)}t=JSON.stringify(Object.assign({},v,{payroll:[],payIdb:1}))}else t=JSON.stringify(v);
+  if(k===KEY&&v&&Array.isArray(v.payroll)){if(v!==DB||PAY_OK){const pr=v.payroll;clearTimeout(payT);payT=setTimeout(()=>{if(payFp(pr)!==PAY_FP)payPut(pr)},400)}t=JSON.stringify(Object.assign({},v,{payroll:[],payIdb:1}))}else t=JSON.stringify(v);
   localStorage.setItem(k,t);return true}catch(e){return false}}};
 const TODAY_D=new Date();TODAY_D.setHours(0,0,0,0);
 const TODAY=ds(TODAY_D), THIS_YEAR=TODAY_D.getFullYear();
@@ -1985,16 +1988,20 @@ function chartsHTML(m,p,id){
       <div class="body">${rows.length?barsSVG(B.ps.map(q=>q.short),vals,tm,cur):'<div class="empty">필터에 맞는 자료가 없습니다.</div>'}</div></div>
     <div class="duo even">${C.by.map(([t,k,fn,mo,sub])=>hbarsHTML(t,id,k,rows,fn,mo,sub)).join('')}</div>`;
 }
+const TBL_CAP=300;
 function tableHTML(m,p,modId){
   const rows=sortRows(m,viewRows(m,p,modId)), cols=m.cols.filter(c=>!c.rowCur&&!c.noTable), em=m.editAs||modId;
+  // 줄이 아주 많으면(급여 등) 한 번에 다 그리면 화면이 멈춰서 앞쪽 TBL_CAP줄만 그림. 합계는 전체 기준
+  const cap=(UI.rowAll||{})[modId]?rows.length:TBL_CAP,shown=rows.length>cap?rows.slice(0,cap):rows;
   if(!rows.length)return `<div class="empty">${m.filters&&fltOn(m,modId).length?'필터에 맞는 자료가 없습니다.':!m.filters&&UI.q?'검색 결과가 없습니다.':'이 기간에 등록된 자료가 없습니다. 등록 양식이나 엑셀 일괄 등록으로 입력하세요.'}</div>`;
   const hasSum=cols.some(c=>c.sum);
   const al=c=>isNum(c)?'n':m.tight&&(c.pill||c.t==='date')?'c':m.tight&&c.sug?'clip':'';
   const S=selOf(modId), nOn=rows.filter(r=>S.has(r.id)).length;
   const nNew=(DB[m.data]||[]).filter(r=>r.isNew).length,nCls=(DB[m.data]||[]).filter(r=>r.needCls).length,nKo=typeof koRows==='function'?koRows().filter(r=>(DB[m.data]||[]).includes(r)).length:0;
   return `${nNew?`<div class="newbar">🤖 Claude가 새로 넣은 자료 <b>${nNew}건</b> (노란색 줄 · NEW)${nCls?` · <b style="color:var(--bad)">처음 보는 거래처 ${nCls}건은 분류를 확인해 주세요</b> (Claude에게 "분류해줘"라고 하셔도 됩니다)`:''}<button class="btn" data-newall="${em}" style="margin-left:auto;padding:4px 10px;font-size:12px">모두 확인</button></div>`:''}<div class="tw frz"><table${m.tight?' class="tight"':''} data-seltbl="${modId}"><thead><tr><th class="ck"><input type="checkbox" data-selall="${modId}" aria-label="전체 선택"${nOn&&nOn===rows.length?' checked':''}></th>${cols.map(c=>`<th class="${al(c)}" data-ck="${c.k}">${esc(c.l)}<span class="cres" data-cres="${modId}|${c.k}" title="끌어서 칸 폭 조절 · 두 번 클릭하면 원래대로"></span></th>`).join('')}<th class="n">관리</th></tr></thead><tbody>
-    ${rows.map(r=>`<tr data-row="${r.id}" class="${r.id===flashId?'flash':''}${S.has(r.id)?' sel':''}${r.isNew?' newrow':''}"><td class="ck"><input type="checkbox" data-selrow="${modId}" value="${r.id}" aria-label="선택"${S.has(r.id)?' checked':''}>${r.isNew?`<button class="newb" data-newok="${r.id}" data-m="${em}" title="${r.needCls?'처음 보는 거래처라 분류를 추정했습니다 · 확인 후 누르세요':'새로 들어온 자료 · 누르면 확인 처리'}">${r.needCls?'분류 확인':'NEW'}</button>`:''}</td>${cols.map(c=>`<td data-ck="${c.k}" class="${al(c)}${c.calc?' calc':''}${c.wide?' w':''}"${m.tight&&(c.wide||c.sug)?` title="${esc(r[c.k])}"`:''}>${cellView(c,r,p,m)}</td>`).join('')}
+    ${shown.map(r=>`<tr data-row="${r.id}" class="${r.id===flashId?'flash':''}${S.has(r.id)?' sel':''}${r.isNew?' newrow':''}"><td class="ck"><input type="checkbox" data-selrow="${modId}" value="${r.id}" aria-label="선택"${S.has(r.id)?' checked':''}>${r.isNew?`<button class="newb" data-newok="${r.id}" data-m="${em}" title="${r.needCls?'처음 보는 거래처라 분류를 추정했습니다 · 확인 후 누르세요':'새로 들어온 자료 · 누르면 확인 처리'}">${r.needCls?'분류 확인':'NEW'}</button>`:''}</td>${cols.map(c=>`<td data-ck="${c.k}" class="${al(c)}${c.calc?' calc':''}${c.wide?' w':''}"${m.tight&&(c.wide||c.sug)?` title="${esc(r[c.k])}"`:''}>${cellView(c,r,p,m)}</td>`).join('')}
       <td><div class="acts"><button class="act" data-editrow="${r.id}" data-m="${em}">수정</button><button class="act danger" data-delrow="${r.id}" data-m="${em}">삭제</button></div></td></tr>`).join('')}
+    ${shown.length<rows.length?`<tr><td colspan="${cols.length+2}" style="text-align:center;padding:10px"><span class="muted">${nf0.format(rows.length)}건 중 앞 ${nf0.format(shown.length)}건만 표시 (합계는 전체) · 기간·필터로 좁히거나 </span><button class="btn" data-rowall="${modId}" style="padding:4px 10px;font-size:12px">모두 보기</button></td></tr>`:''}
     </tbody>${m.footSplit?splitFoot(m,p,rows,cols):hasSum?footRow(m,cols,`합계 · ${rows.length}건`,'',c=>c.sum?footVal(c,rows,p,m):''):''}</table></div>`;
 }
 function footRow(m,cols,label,cls,fn,bare){
@@ -5343,7 +5350,7 @@ document.addEventListener('change',e=>{const t=e.target;if(t&&t.dataset&&t.datas
 // 새로고침 뒤에는 Chrome이 폴더 권한을 다시 물을 수 있음: 화면을 처음 누를 때 자동으로 다시 연결 (권한 창에서 "방문할 때마다 허용"을 고르면 다음부터는 묻지 않음)
 let IB_TRY=false;document.addEventListener('pointerdown',()=>{if(IB.h&&!IB.ok&&!IB_TRY){IB_TRY=true;ibReconnect()}},true);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261125-234604';let VER_NEW=false;
+const APP_VER='20261126-152249';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
 /* ---------- 같은 화면을 다시 그릴 때(자동 번역·자료함·저장 등) 스크롤 위치를 그대로 유지. 다른 화면으로 이동할 때만 맨 위로 ---------- */
 const scrEls=()=>{const m=$('#main');return [document.scrollingElement,m,m&&m.parentElement].filter(Boolean)};
@@ -5431,7 +5438,7 @@ function toast(msg,action){
 }
 
 /* ---------- events ---------- */
-function go(id){Object.keys(SEL).forEach(k=>delete SEL[k]);let tab=null;if(id==='dash-rep')id='repw';if(MODS[id]&&MODS[id].tab){tab=UI.dtab=MODS[id].tab;id='dash-all'}if(!MODS[id])return;UI.mod=id;UI.q='';saveUI();render();closeSide();window.scrollTo(0,0);
+function go(id){Object.keys(SEL).forEach(k=>delete SEL[k]);let tab=null;if(id==='dash-rep')id='repw';if(MODS[id]&&MODS[id].tab){tab=UI.dtab=MODS[id].tab;id='dash-all'}if(!MODS[id])return;UI.mod=id;UI.q='';UI.rowAll={};saveUI();render();closeSide();window.scrollTo(0,0);
   if(tab){const el=document.querySelector('.dtabs');if(el)el.scrollIntoView({block:'start'})}}
 document.addEventListener('click',e=>{
   if(e.target.classList.contains('modal-bg')){closeModal();return}
@@ -5584,6 +5591,7 @@ document.addEventListener('click',e=>{
     else{L.forEach(x=>{DB[MODS[x.mod].data].unshift(x.row);flashId=x.row.id});UI.q='';save();renderMain();toast('중복 Factura지만 등록했습니다')}return}
   if(d.kofix){koFix(true);return}
   if(d.newok){const m=MODS[d.m],r=m&&DB[m.data].find(x=>x.id===d.newok);if(r){delete r.isNew;delete r.needCls;save();renderMain()}return}
+  if(d.rowall){UI.rowAll=Object.assign({},UI.rowAll,{[d.rowall]:1});renderMain();return}
   if(d.newall){const m=MODS[d.newall];if(m){DB[m.data].forEach(r=>{delete r.isNew;delete r.needCls});save();renderMain();toast('신규 표시를 모두 지웠습니다')}return}
   if(d.saveas){const f=t.closest('form');if(f){f.dataset.saveas='1';f.requestSubmit()}return}
   if(d.ib){({conn:ibConnect,re:ibReconnect,scan:()=>ibScan(false)}[d.ib]||(()=>{}))();return}
