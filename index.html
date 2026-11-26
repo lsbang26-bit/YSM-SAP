@@ -857,8 +857,8 @@ const ACCOUNTS={
   '보통예금':['계좌 이체','예금 입금','예금 인출'],
   '영업외수익':['이자수익','외환차익','임대료수익','유형자산처분이익','잡이익'],
   '영업외비용':['외환차손','유형자산처분손실','기부금','잡손실','이자비용'],
-  '유동부채':['단기차입금','예수금','사회보험료 납부']};
-const NOVAT_ACC=['차입금 입금','원금 상환','단기차입금','예수금','사회보험료 납부','수입 부가세','부가세대급금'];
+  '유동부채':['단기차입금','예수금','사회보험료 납부','급여세 납부']};
+const NOVAT_ACC=['차입금 입금','원금 상환','단기차입금','예수금','사회보험료 납부','급여세 납부','수입 부가세','부가세대급금'];
 const CATS4=['자산매입','제조비용','판관비용','차입금'];
 const PTYPES=['주급','14 급여','월급','특별'];
 const PER_PFX={'주급':'W','14 급여':'C','월급':'M','특별':'S'};
@@ -1193,7 +1193,7 @@ function seedGroup(D,r,withParentAP){
     D.ic.push({id:uid(),date:s25,seller:QRO,buyer:USA,item:'AB-100 반제품 수출',cur:'USD',amount:a2,settled:old?a2:0});
   }
 }
-function migrate(D){if((D.ver||1)<3)D=migrate3(D);if(D.ver<4){upgradeV4(D,rng(11));D.ver=4}if(D.ver<5){upgradeV5(D,rng(13),false);D.ver=5}if(D.ver<6){upgradeV6(D);D.ver=6}if(D.ver<7){upgradeV7(D,rng(17));D.ver=7}if(D.ver<8){upgradeV8(D,rng(19));D.ver=8}if(D.ver<9){upgradeV9(D);D.ver=9}if(D.ver<10){upgradeV10(D);D.ver=10}if(D.ver<11){upgradeV11(D);D.ver=11}if(D.ver<12){upgradeV12(D);D.ver=12}if(D.ver<13){upgradeV13(D);D.ver=13}if(D.ver<14){upgradeV14(D);D.ver=14}if(D.ver<15){upgradeV15(D);D.ver=15}if(D.ver<16){upgradeV16(D);D.ver=16}if(D.ver<17){(D.production||[]).forEach(x=>{if(x.pn!=null)return;const[pn,it]=splitProd(x.product);Object.assign(x,{plant:'YSM',pn,item:it,spec:'',model:'',cat:'',amount:0})});D.ver=17}(D.ap||[]).forEach(r=>{if((r.iva==='0%'||r.iva==='면세')&&+r.ivaAmt&&+r.sub){r.ivaAmt=0;r.amount=Math.round(((+r.sub||0)-(+r.disc||0)-(+r.ivaRet||0)-(+r.isrRet||0))*100)/100}});if(!Array.isArray(D.ped))D.ped=[];if(!Array.isArray(D.hc))D.hc=[];(D.cash||[]).forEach(r=>{if(r.type==='출금'&&['제조비용','판관비용'].includes(r.cat)&&['복리후생비','세금과공과','법정복리비'].includes(r.account)&&/IMSS|INFO\w*NAVIT/i.test(r.party||'')&&/INFO\w*NAVIT|\bSUA\b|CUOTA|OBRERO|PATRONAL|BIMESTR/i.test((r.memo||'')+' '+(r.item||''))){r.cat='유동부채';r.account='사회보험료 납부'}});(D.payroll||[]).forEach(r=>{if(r.ptype==='2주급')r.ptype='14 급여'});return D}
+function migrate(D){if((D.ver||1)<3)D=migrate3(D);if(D.ver<4){upgradeV4(D,rng(11));D.ver=4}if(D.ver<5){upgradeV5(D,rng(13),false);D.ver=5}if(D.ver<6){upgradeV6(D);D.ver=6}if(D.ver<7){upgradeV7(D,rng(17));D.ver=7}if(D.ver<8){upgradeV8(D,rng(19));D.ver=8}if(D.ver<9){upgradeV9(D);D.ver=9}if(D.ver<10){upgradeV10(D);D.ver=10}if(D.ver<11){upgradeV11(D);D.ver=11}if(D.ver<12){upgradeV12(D);D.ver=12}if(D.ver<13){upgradeV13(D);D.ver=13}if(D.ver<14){upgradeV14(D);D.ver=14}if(D.ver<15){upgradeV15(D);D.ver=15}if(D.ver<16){upgradeV16(D);D.ver=16}if(D.ver<17){(D.production||[]).forEach(x=>{if(x.pn!=null)return;const[pn,it]=splitProd(x.product);Object.assign(x,{plant:'YSM',pn,item:it,spec:'',model:'',cat:'',amount:0})});D.ver=17}(D.ap||[]).forEach(r=>{if((r.iva==='0%'||r.iva==='면세')&&+r.ivaAmt&&+r.sub){r.ivaAmt=0;r.amount=Math.round(((+r.sub||0)-(+r.disc||0)-(+r.ivaRet||0)-(+r.isrRet||0))*100)/100}});if(!Array.isArray(D.ped))D.ped=[];if(!Array.isArray(D.hc))D.hc=[];(D.cash||[]).forEach(r=>{if(r.type==='출금'&&['제조비용','판관비용'].includes(r.cat)&&['복리후생비','세금과공과','법정복리비'].includes(r.account)&&/IMSS|INFO\w*NAVIT/i.test(r.party||'')&&/INFO\w*NAVIT|\bSUA\b|CUOTA|OBRERO|PATRONAL|BIMESTR/i.test((r.memo||'')+' '+(r.item||''))){r.cat='유동부채';r.account='사회보험료 납부'}if(r.type==='출금'&&['제조비용','판관비용'].includes(r.cat)&&r.account==='세금과공과'&&/TESORERIA|FINANZAS/i.test(r.party||'')&&/고용세|급여세|\bISN\b|N[OÓ]MINA|REMUNERACI/i.test((r.memo||'')+' '+(r.item||''))){r.cat='유동부채';r.account='급여세 납부'}});(D.payroll||[]).forEach(r=>{if(r.ptype==='2주급')r.ptype='14 급여'});return D}
 function migrate3(D){
   if(D.ver>=3)return D;
   if(D.ver===2){D.settings.openRM=D.settings.openRM||2500000;seedGroup(D,rng(7),false);D.ver=3;return D}
@@ -1440,6 +1440,7 @@ const PAY_WH=r=>mx(r,'isr')+mx(r,'imss')+mx(r,'infon'),PAY_SS=r=>mx(r,'imssPat')
 // 시작 달이 짝수 달이면(2개월 단위 RCV·Infonavit) 앞 달 급여의 RCV·Infonavit 몫도 같은 납부로 나가므로 함께 쌓음
 const payAccPrev=()=>{const f=payAccFrom();if(+f.slice(5,7)%2)return null;const d=new Date(+f.slice(0,4),+f.slice(5,7)-2,1);return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-01'};
 function payAccOf(r){const f=payAccFrom(),pf=payAccPrev(),d=r.date;if(!validD(d))return null;if(d>=f)return {wh:PAY_WH(r),ss:PAY_SS(r)};if(pf&&d>=pf)return {wh:mx(r,'infon'),ss:mx(r,'rcv')+mx(r,'infPat')};return null}
+const isIsnPay=r=>r.cat==='유동부채'&&r.account==='급여세 납부';
 const isSSPay=r=>r.cat==='유동부채'&&r.account==='사회보험료 납부';
 const SS_MON={ENE:1,JAN:1,FEB:2,MAR:3,ABR:4,APR:4,MAY:5,JUN:6,JUL:7,AGO:8,AUG:8,SEP:9,OCT:10,NOV:11,DIC:12,DEC:12};
 // 납부 대상 월: 적요의 월 이름(OCT·OCTUBRE·10월) → 없으면 납부일 전달. 짝수 달(2개월 단위 RCV·Infonavit 납부 달)은 앞 달 RCV·Infonavit도 포함해 근로자분:회사부담 비율로 나눔
@@ -1451,7 +1452,8 @@ function ssSplit(r){const amt=mx(r,'amount'),t=String(r.memo||'')+' '+String(r.i
   let W=0,E=0;(DB.payroll||[]).forEach(q=>{const k=String(q.date||'').slice(0,7);if(k===ym){W+=mx(q,'imss')+mx(q,'infon');E+=mx(q,'imssPat')+mx(q,'rcv')+mx(q,'infPat')}else if(bi&&k===pv){W+=mx(q,'infon');E+=mx(q,'rcv')+mx(q,'infPat')}});
   const wh=W+E>0?Math.round(amt*W/(W+E)*100)/100:0;return {ym,wh,er:amt-wh,W,E}}
 function payLiab(end){const f=payAccFrom(),P=(DB.payroll||[]).filter(r=>validD(r.date)&&r.date<=end).map(payAccOf).filter(Boolean),S=DB.cash.filter(r=>isSSPay(r)&&r.type==='출금'&&validD(r.date)&&r.date>=f&&r.date<=end).map(ssSplit);
-  return {whAcc:sumBy(P,x=>x.wh),ssAcc:sumBy(P,x=>x.ss),whPaid:sumBy(S,x=>x.wh),ssPaid:sumBy(S,x=>x.er)}}
+  const Q=(DB.payroll||[]).filter(r=>validD(r.date)&&r.date>=f&&r.date<=end),I=DB.cash.filter(r=>isIsnPay(r)&&validD(r.date)&&r.date>=f&&r.date<=end);
+  return {isnAcc:sumBy(Q,M('isn')),isnPaid:sumBy(I,r=>(r.type==='입금'?-1:1)*mx(r,'amount')),whAcc:sumBy(P,x=>x.wh),ssAcc:sumBy(P,x=>x.ss),whPaid:sumBy(S,x=>x.wh),ssPaid:sumBy(S,x=>x.er)}}
 const expBy=(cat,acc,p)=>sumBy(DB.ap.filter(r=>!isAdv(r)&&r.cat===cat&&r.account===acc&&inP(r,p)),expAmt)+sumBy(DB.cash.filter(r=>r.type==='출금'&&r.cat===cat&&r.account===acc&&inP(r,p)&&!isPayCash(r)),expAmt)-sumBy(DB.cash.filter(r=>r.type==='입금'&&r.cat===cat&&r.account===acc&&inP(r,p)),expAmt);
 // labor cost by department: payroll records (gross + employer contributions) when the period has any; otherwise daily wage × days
 function laborCost(depts,p){
@@ -1553,13 +1555,13 @@ function balance(end){
   const ap0=sumBy(DB.ap.filter(r=>r.date<=end&&!isAdv(r)),apBal);
   const loans=sumBy(DB.loans.filter(r=>r.date<=end),loanBal);
   const stLoan=sumBy(DB.cash.filter(r=>r.cat==='유동부채'&&r.account==='단기차입금'&&validD(r.date)&&r.date<=end),r=>(r.type==='입금'?1:-1)*mx(r,'amount'));
-  const PL=payLiab(end),dep=sumBy(DB.cash.filter(r=>r.cat==='유동부채'&&r.account==='예수금'&&validD(r.date)&&r.date<=end),r=>(r.type==='입금'?1:-1)*mx(r,'amount'))+PL.whAcc-PL.whPaid,ssLiab=PL.ssAcc-PL.ssPaid;
+  const PL=payLiab(end),dep=sumBy(DB.cash.filter(r=>r.cat==='유동부채'&&r.account==='예수금'&&validD(r.date)&&r.date<=end),r=>(r.type==='입금'?1:-1)*mx(r,'amount'))+PL.whAcc-PL.whPaid,ssLiab=PL.ssAcc-PL.ssPaid,isnLiab=PL.isnAcc-PL.isnPaid;
   const accr=sumBy(DB.employees,e=>{const y=payableYTD(e,end);return y.ag+y.vp+y.sf});
   const v=vatCalc({start:'0000-01-01',end}), vatRec=vatAP(end), vatLiab=v.net-v.paid+vatAR(end);
   const y0=end.slice(0,4)+'-01-01', citLiab=citCalc({start:y0,end}).isr-sumBy(DB.cash.filter(r=>r.account==='법인세 납부'&&r.date>=y0&&r.date<=end),M('amount'));
   let prepaid=0,apAdv=0;DB.ap.filter(a=>isAdv(a)&&a.date<=end).forEach(a=>{const used=DB.ap.filter(r=>r.date<=end).reduce((s,r)=>s+(r.advUse||[]).filter(x=>x.id===a.id).reduce((t,x)=>t+(+x.amt||0),0),0),v=(used-(+a.paid||0))*rowFx(a);if(v<0)prepaid-=v;else apAdv+=v});
-  const ap=ap0+apAdv,assets=cashBal+ar+inv+fixed+vatRec+prepaid, liab=ap+loans+stLoan+dep+ssLiab+accr+vatLiab+citLiab;
-  return {cashBal,ar,inv,fixed,vatRec,prepaid,assets,ap,loans,stLoan,dep,ssLiab,accr,vatLiab,citLiab,liab,equity:assets-liab};
+  const ap=ap0+apAdv,assets=cashBal+ar+inv+fixed+vatRec+prepaid, liab=ap+loans+stLoan+dep+ssLiab+isnLiab+accr+vatLiab+citLiab;
+  return {cashBal,ar,inv,fixed,vatRec,prepaid,assets,ap,loans,stLoan,dep,ssLiab,isnLiab,accr,vatLiab,citLiab,liab,equity:assets-liab};
 }
 
 /* ---------- suggestions ---------- */
@@ -2317,6 +2319,7 @@ function ledgerData(p){
     if(c.link&&c.linkMod==='ap'&&apIds.has(c.link))return {a:acc('부채','외상매입금','cr'),l:'외상매입금',v:A0};
     if(c.link&&c.linkMod==='ar'&&arIds.has(c.link))return {a:acc('자산','외상매출금','dr'),l:'외상매출금',v:A0};
     if(cat==='보통예금'){const P=c.xfer&&cix.get(c.xfer);return {l:P?'보통예금 · '+bankOf(P):k||'보통예금'}}
+    if(cat==='유동부채'&&k==='급여세 납부')return {a:acc('부채','미지급 급여세','cr'),l:'미지급 급여세 (ISN)',v:A0};
     if(cat==='유동부채')return {a:acc('부채',k||'단기차입금','cr'),l:k||'단기차입금',v:A0};
     if(cat==='세금납부')return {a:acc('세금납부',k||'세금 납부','dr'),l:k||'세금 납부',v:A0};
     if(cat==='부가세대급금')return {a:acc('자산','부가세대급금',out?'dr':'cr'),l:'부가세대급금',v:A0};
@@ -2357,8 +2360,8 @@ function ledgerData(p){
   const PG=new Map();(DB.payroll||[]).forEach(r=>{if(!inP(r,p))return;const g=MFG_DEPTS.includes(r.dept)?'제조원가':SGA_DEPTS.includes(r.dept)?'판매비와관리비':null;if(!g)return;const k=g+'|'+r.date+'|'+(r.ptype||'')+'|'+(r.per||'');let x=PG.get(k);if(!x)PG.set(k,x={g,date:r.date,lab:[r.ptype,r.per].filter(Boolean).join(' ')||'급여',n:new Set(),w:0,s:0});x.n.add(r.emp);x.w+=payGross(r);x.s+=payER(r)});
   PG.forEach(x=>{const o={src:'payroll',memo:`${x.lab} · ${x.n.size}명`,party:'',ctr:'급여지급내역'};post(acc(x.g,x.g==='제조원가'?'노무비 (급여)':'급여','dr'),x.date,x.w,0,o);post(acc(x.g,'법정복리비','dr'),x.date,x.s,0,Object.assign({},o,{ctr:'회사부담금 (IMSS·RCV·Infonavit·ISN)'}))});
   // 급여 예수금·회사부담금 발생 (운영 시작 전달 급여부터, 회차별로 묶음)
-  const PQ=new Map(),pf=payAccFrom();(DB.payroll||[]).forEach(r=>{if(!validD(r.date)||r.date>p.end)return;const v=payAccOf(r);if(!v)return;const k=r.date+'|'+(r.ptype||'')+'|'+(r.per||'');let x=PQ.get(k);if(!x)PQ.set(k,x={date:r.date,lab:[r.ptype,r.per].filter(Boolean).join(' ')||'급여',wh:0,ss:0});x.wh+=v.wh;x.ss+=v.ss});
-  PQ.forEach(x=>{const o={src:'payroll',party:'',ctr:'급여지급내역'};post(acc('부채','예수금','cr'),x.date,0,x.wh,Object.assign({memo:x.lab+' · ISR·IMSS·Infonavit 공제'},o));post(acc('부채','미지급 사회보험료','cr'),x.date,0,x.ss,Object.assign({memo:x.lab+' · IMSS·RCV·Infonavit 회사부담'},o))});
+  const PQ=new Map(),pf=payAccFrom();(DB.payroll||[]).forEach(r=>{if(!validD(r.date)||r.date>p.end)return;const v=payAccOf(r);if(!v)return;const k=r.date+'|'+(r.ptype||'')+'|'+(r.per||'');let x=PQ.get(k);if(!x)PQ.set(k,x={date:r.date,lab:[r.ptype,r.per].filter(Boolean).join(' ')||'급여',wh:0,ss:0,isn:0});x.wh+=v.wh;x.ss+=v.ss;if(r.date>=pf)x.isn+=mx(r,'isn')});
+  PQ.forEach(x=>{const o={src:'payroll',party:'',ctr:'급여지급내역'};post(acc('부채','예수금','cr'),x.date,0,x.wh,Object.assign({memo:x.lab+' · ISR·IMSS·Infonavit 공제'},o));post(acc('부채','미지급 사회보험료','cr'),x.date,0,x.ss,Object.assign({memo:x.lab+' · IMSS·RCV·Infonavit 회사부담'},o));post(acc('부채','미지급 급여세','cr'),x.date,0,x.isn,Object.assign({memo:x.lab+' · ISN 급여세'},o))});
   (DB.hq||[]).forEach(r=>{if(!inP(r,p))return;const t=mx(r,'amount'),m=t*hqPct(r),o={src:'hq',rid:r.id,memo:r.item||'',party:r.payee||'',ctr:'본사 청구',fc:fc(r,+r.amount||0)};post(acc('제조원가','본사관리비 배부','dr'),r.date,m,0,o);post(acc('판매비와관리비','본사관리비 배부','dr'),r.date,t-m,0,o)});
   // 월별 계산분: 감가상각 · 제수당 · 이자
   const fa=acc('자산','감가상각누계액','cr');fa.fixOpen=1;fa.open=sumBy(DB.assets.filter(r=>validD(r.acq)&&r.acq<p.start),r=>assetAccum(r,addDs(p.start,-1)));
@@ -2411,7 +2414,7 @@ const FSD_PL={sales:['매출액',fsdA('매출|제품매출')],
   finExp:['금융비용',fsdG('영업외비용')],interest:['이자비용 (차입금현황)',fsdA('영업외비용|이자비용')],fxLoss:['외환차손 (US$ 외상 결제)',fsdA('영업외비용|외환차손'),e=>e.src==='fs'],fxtLoss:['외화환산손실',fsdA('영업외비용|외화환산손실')],
   othExp:['기타 영업외비용',a=>a.g==='영업외비용'&&a.n!=='이자비용'&&a.n!=='외화환산손실',e=>e.src!=='fs'],cogs:['매출원가',fsdG('제조원가'),null,'아래 거래는 당기 제조비용(재료 매입·노무비·제조경비)입니다. 재고 증감을 반영한 매출원가 계산은 다음과 같습니다',p=>{const m=mfgCalc(p);return [['기초원재료',m.begRM],['당기재료매입',m.purch],['기말원재료',-m.endRM],['노무비',m.labor],['제조경비',m.overhead],['기초제품',m.begFG],['기말제품',-m.endFG],['매출원가',m.cogs,1]]}]};
 const FSD_BS={cashBal:['현금및현금성자산',a=>a.n.startsWith('보통예금 · ')],ar:['매출채권 (외상매출)',fsdA('자산|외상매출금')],fixed:['유형자산 장부가액',a=>a.n.startsWith('유형자산 · ')||a.n==='감가상각누계액'],
-  ap:['매입채무 (외상매입)',fsdA('부채|외상매입금')],stLoan:['단기차입금 (경리자료)',fsdA('부채|단기차입금')],dep:['예수금',fsdA('부채|예수금')],ssLiab:['미지급 사회보험료 (회사부담금)',fsdA('부채|미지급 사회보험료')],loans:['차입금 (차입금현황)',fsdA('부채|차입금')]};
+  ap:['매입채무 (외상매입)',fsdA('부채|외상매입금')],stLoan:['단기차입금 (경리자료)',fsdA('부채|단기차입금')],dep:['예수금',fsdA('부채|예수금')],ssLiab:['미지급 사회보험료 (회사부담금)',fsdA('부채|미지급 사회보험료')],isnLiab:['미지급 급여세 (ISN)',fsdA('부채|미지급 급여세')],loans:['차입금 (차입금현황)',fsdA('부채|차입금')]};
 const FSD_M={rm:['원재료비',fsdA('제조원가|원·부재료 매입 (입고)'),null,'재고액은 재고조사 평가액이고, 아래 거래는 당기 매입분입니다',p=>{const m=mfgCalc(p);return [['기초원재료',m.begRM],['당기재료매입',m.purch],['기말원재료',-m.endRM],['원재료비',m.rm,1]]}],purch:['당기재료매입액',fsdA('제조원가|원·부재료 매입 (입고)')],
   labor:['노무비',fsdA('제조원가|노무비 (급여)','제조원가|노무비','제조원가|법정복리비','제조원가|제수당')],wage:['급상여(제)',fsdA('제조원가|노무비 (급여)','제조원가|노무비')],social:['법정복리비(제)',fsdA('제조원가|법정복리비')],allow:['제수당(제)',fsdA('제조원가|제수당')],
   overhead:['제조경비',a=>a.g==='제조원가'&&!['원·부재료 매입 (입고)','노무비 (급여)','노무비','법정복리비','제수당'].includes(a.n)],dep:['감가상각비(제)',fsdA('제조원가|감가상각비')],hq:['본사관리비 배부(제)',fsdA('제조원가|본사관리비 배부')]};
@@ -2472,7 +2475,7 @@ function fsPage(){
     <div class="card"><header><h2>재무상태표</h2><span class="meta">각 기간 말일 기준 (진행 중인 기간은 오늘 기준)</span></header><div class="tw"><table class="stmt">
       ${head(P.map(p=>p.label+' 말'),false)}<tbody>
       ${bsRow('자산 총계','assets','sub')}${bsRow('현금및현금성자산','cashBal','ind')}${bsRow('매출채권 (외상매출)','ar','ind')}${bsRow('재고자산 (원·부자재·제품, 재고조사 평가)','inv','ind')}${bsRow('유형자산 장부가액','fixed','ind')}${bsRow('부가세 대급금 (미지급 매입분 IVA)','vatRec','ind')}${bsRow('선급금 (Factura 전 선지급 잔액)','prepaid','ind')}
-      ${bsRow('부채 총계','liab','sub')}${bsRow('매입채무 (외상매입)','ap','ind')}${bsRow('단기차입금 (경리자료)','stLoan','ind')}${bsRow('예수금 (ISR·IMSS·Infonavit 근로자분)','dep','ind')}${bsRow('미지급 사회보험료 (IMSS·RCV·Infonavit 회사부담금)','ssLiab','ind')}${bsRow('차입금 (차입금현황)','loans','ind')}${bsRow('미지급 인건비 (미지급금)','accr','ind')}${bsRow('부가세 예수금·미납부 (IVA)','vatLiab','ind')}${bsRow('미지급 법인세 (ISR, − 는 선급)','citLiab','ind')}
+      ${bsRow('부채 총계','liab','sub')}${bsRow('매입채무 (외상매입)','ap','ind')}${bsRow('단기차입금 (경리자료)','stLoan','ind')}${bsRow('예수금 (ISR·IMSS·Infonavit 근로자분)','dep','ind')}${bsRow('미지급 사회보험료 (IMSS·RCV·Infonavit 회사부담금)','ssLiab','ind')}${bsRow('미지급 급여세 (ISN 주정부)','isnLiab','ind')}${bsRow('차입금 (차입금현황)','loans','ind')}${bsRow('미지급 인건비 (미지급금)','accr','ind')}${bsRow('부가세 예수금·미납부 (IVA)','vatLiab','ind')}${bsRow('미지급 법인세 (ISR, − 는 선급)','citLiab','ind')}
       ${bsRow('자본 총계','equity','total')}</tbody></table></div></div>
     <div class="card"><div class="body" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
       ${BANKS().map((b,i)=>`<span style="font-size:12px;color:var(--muted)">기초 현금 · ${esc(b.name)}${b.cur==='USD'?' (US$)':''}</span><input class="cell n" type="number" step="any" data-bankopen="${i}" value="${+b.open||0}" style="width:150px">`).join('')}
@@ -2684,7 +2687,8 @@ function ssCard(p){const end=minS(p.end,TODAY),L=payLiab(end),f=payAccFrom(),S=D
     <thead><tr><th>구분</th><th class="n">급여에서 발생</th><th class="n">납부</th><th class="n">잔액 (재무상태표)</th></tr></thead><tbody>
     <tr><td>예수금 · ISR (SAT)</td><td class="n">${money(isrAcc)}</td><td class="n">${money(isr)}</td><td class="n"><b>${money(isrAcc-isr)}</b></td></tr>
     <tr><td>예수금 · IMSS 근로자분 + Infonavit 대출</td><td class="n">${money(wsAcc)}</td><td class="n">${money(L.whPaid)}</td><td class="n"><b>${money(wsAcc-L.whPaid)}</b></td></tr>
-    <tr><td>미지급 사회보험료 · IMSS 사업주분 + RCV + Infonavit 5%</td><td class="n">${money(L.ssAcc)}</td><td class="n">${money(L.ssPaid)}</td><td class="n"><b>${money(L.ssAcc-L.ssPaid)}</b></td></tr></tbody></table></div>
+    <tr><td>미지급 사회보험료 · IMSS 사업주분 + RCV + Infonavit 5%</td><td class="n">${money(L.ssAcc)}</td><td class="n">${money(L.ssPaid)}</td><td class="n"><b>${money(L.ssAcc-L.ssPaid)}</b></td></tr>
+    <tr><td>미지급 급여세 · ISN (주정부)</td><td class="n">${money(L.isnAcc)}</td><td class="n">${money(L.isnPaid)}</td><td class="n"><b>${money(L.isnAcc-L.isnPaid)}</b></td></tr></tbody></table></div>
     ${S.length?`<div class="tw"><table class="tight"><thead><tr><th>납부일</th><th>적요</th><th>대상 월</th><th class="n">납부액</th><th class="n">예수금 (근로자분)</th><th class="n">회사부담금</th></tr></thead><tbody>
       ${S.map(r=>{const x=ssSplit(r);return `<tr><td>${esc(r.date)}</td><td>${esc(r.memo||r.party||'')}</td><td>${esc(x.ym)}${+x.ym.slice(5)%2===0?' <span class="muted small">(RCV·Infonavit 2개월)</span>':''}</td><td class="n">${money(mx(r,'amount'))}</td><td class="n">${money(x.wh)}</td><td class="n">${money(x.er)}</td></tr>`}).join('')}</tbody></table></div>`:`<div class="empty">경리자료에 IMSS/INFONAVIT 납부(유동부채 · 사회보험료 납부)가 아직 없습니다.</div>`}
     <div class="body"><p class="note">납부액은 대상 월 급여의 근로자분(IMSS·Infonavit 대출)과 회사부담금(IMSS 사업주·RCV·Infonavit 5%) 비율로 나눕니다. 짝수 달 납부는 2개월 단위 RCV·Infonavit 몫을 앞 달까지 포함합니다.</p></div></div>`}
@@ -5386,7 +5390,7 @@ document.addEventListener('change',e=>{const t=e.target;if(t&&t.dataset&&t.datas
 // 새로고침 뒤에는 Chrome이 폴더 권한을 다시 물을 수 있음: 화면을 처음 누를 때 자동으로 다시 연결 (권한 창에서 "방문할 때마다 허용"을 고르면 다음부터는 묻지 않음)
 let IB_TRY=false;document.addEventListener('pointerdown',()=>{if(IB.h&&!IB.ok&&!IB_TRY){IB_TRY=true;ibReconnect()}},true);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261126-154808';let VER_NEW=false;
+const APP_VER='20261126-161920';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
 /* ---------- 같은 화면을 다시 그릴 때(자동 번역·자료함·저장 등) 스크롤 위치를 그대로 유지. 다른 화면으로 이동할 때만 맨 위로 ---------- */
 const scrEls=()=>{const m=$('#main');return [document.scrollingElement,m,m&&m.parentElement].filter(Boolean)};
