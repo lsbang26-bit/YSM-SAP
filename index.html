@@ -1439,7 +1439,16 @@ const payAccFrom=()=>{const o=OP_START(),d=new Date(+o.slice(0,4),+o.slice(5,7)-
 const PAY_WH=r=>mx(r,'isr')+mx(r,'imss')+mx(r,'infon'),PAY_SS=r=>mx(r,'imssPat')+mx(r,'rcv')+mx(r,'infPat');
 // 시작 달이 짝수 달이면(2개월 단위 RCV·Infonavit) 앞 달 급여의 RCV·Infonavit 몫도 같은 납부로 나가므로 함께 쌓음
 const payAccPrev=()=>{const f=payAccFrom();if(+f.slice(5,7)%2)return null;const d=new Date(+f.slice(0,4),+f.slice(5,7)-2,1);return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-01'};
-function payAccOf(r){const f=payAccFrom(),pf=payAccPrev(),d=r.date;if(!validD(d))return null;if(d>=f)return {wh:PAY_WH(r),ss:PAY_SS(r)};if(pf&&d>=pf)return {wh:mx(r,'infon'),ss:mx(r,'rcv')+mx(r,'infPat')};return null}
+// IMSS·INFONAVIT 확정 금액 (작업폴더 YSM 자료함\\의료보험의 cédula 파일을 Claude가 부서별로 묶어 넣음): DB.sscedula['YYYY-MM|imss'|'YYYY-MM|inf'] = {ym,kind,file,total,rows:[{dept,n,imss,cyvo,imssPat,rcv,infPat,infon}]}
+// imss = 그 달 IMSS 근로자분·사업주분, inf = 그 달로 끝나는 2개월분 RCV(Retiro+CyV 사업주, CyV 근로자는 cyvo)·Infonavit 5%·대출 상환. cédula가 있는 달은 그 항목을 급여지급내역 대신 cédula 금액으로 씀
+const CED_IN={imss:['imss','imssPat'],inf:['rcv','infPat','infon']};
+function cedCov(){const o={};Object.values(DB.sscedula||{}).forEach(c=>{if(!c||!c.ym||!CED_IN[c.kind])return;const ys=c.kind==='inf'?[c.ym,ymAdd(c.ym,-1)]:[c.ym];ys.forEach(y=>{(o[y]=o[y]||new Set());CED_IN[c.kind].forEach(f=>o[y].add(f))})});return o}
+const cvx=(CV,d,f)=>{const S=CV[String(d||'').slice(0,7)];return !!(S&&S.has(f))};
+const ymEnd=ym=>ds(new Date(+ym.slice(0,4),+ym.slice(5,7),0));
+function cedRows(p){const o=[];Object.values(DB.sscedula||{}).forEach(c=>{if(!c||!c.ym||!CED_IN[c.kind])return;const date=ymEnd(c.ym);if(p&&!(date>=p.start&&date<=p.end))return;(c.rows||[]).forEach(x=>o.push({ym:c.ym,kind:c.kind,date,dept:x.dept||'부서 없음',n:+x.n||0,imss:(+x.imss||0)+(+x.cyvo||0),imssPat:+x.imssPat||0,rcv:+x.rcv||0,infPat:+x.infPat||0,infon:+x.infon||0,isr:0,isn:0}))});return o}
+const payERm=(r,CV)=>(cvx(CV,r.date,'imssPat')?0:mx(r,'imssPat'))+(cvx(CV,r.date,'rcv')?0:mx(r,'rcv'))+(cvx(CV,r.date,'infPat')?0:mx(r,'infPat'))+mx(r,'isn');
+const cedER=x=>x.imssPat+x.rcv+x.infPat;
+function payAccOf(r,CV){const f=payAccFrom(),pf=payAccPrev(),d=r.date;if(!validD(d))return null;CV=CV||cedCov();const g=k=>cvx(CV,d,k)?0:mx(r,k);if(d>=f)return {wh:g('isr')+g('imss')+g('infon'),ss:g('imssPat')+g('rcv')+g('infPat')};if(pf&&d>=pf)return {wh:g('infon'),ss:g('rcv')+g('infPat')};return null}
 const isIsnPay=r=>r.cat==='유동부채'&&r.account==='급여세 납부';
 const isSSPay=r=>r.cat==='유동부채'&&r.account==='사회보험료 납부';
 const SS_MON={ENE:1,JAN:1,FEB:2,MAR:3,ABR:4,APR:4,MAY:5,JUN:6,JUL:7,AGO:8,AUG:8,SEP:9,OCT:10,NOV:11,DIC:12,DEC:12};
@@ -1449,16 +1458,17 @@ function ssSplit(r){if(r.ssWh!=null)return {ym:r.ssYm||String(r.date||'').slice(
   if(a)m=SS_MON[a[1]];else if(b&&+b[1]>=1&&+b[1]<=12)m=+b[1];
   let y=+d.slice(0,4);if(m){if(m>+d.slice(5,7))y--}else{const x=new Date(y,+d.slice(5,7)-2,1);y=x.getFullYear();m=x.getMonth()+1}
   const ym=y+'-'+pad(m),pv=(()=>{const x=new Date(y,m-2,1);return x.getFullYear()+'-'+pad(x.getMonth()+1)})(),bi=m%2===0;
-  let W=0,E=0;(DB.payroll||[]).forEach(q=>{const k=String(q.date||'').slice(0,7);if(k===ym){W+=mx(q,'imss')+mx(q,'infon');E+=mx(q,'imssPat')+mx(q,'rcv')+mx(q,'infPat')}else if(bi&&k===pv){W+=mx(q,'infon');E+=mx(q,'rcv')+mx(q,'infPat')}});
+  const CV=cedCov(),g=(q,f)=>cvx(CV,q.date,f)?0:mx(q,f);let W=0,E=0;(DB.payroll||[]).forEach(q=>{const k=String(q.date||'').slice(0,7);if(k===ym){W+=g(q,'imss')+g(q,'infon');E+=g(q,'imssPat')+g(q,'rcv')+g(q,'infPat')}else if(bi&&k===pv){W+=g(q,'infon');E+=g(q,'rcv')+g(q,'infPat')}});
+  cedRows().forEach(x=>{if(x.ym===ym){W+=x.imss+x.infon;E+=cedER(x)}});
   const wh=W+E>0?Math.round(amt*W/(W+E)*100)/100:0;return {ym,wh,er:amt-wh,W,E}}
-function payLiab(end){const f=payAccFrom(),P=(DB.payroll||[]).filter(r=>validD(r.date)&&r.date<=end).map(payAccOf).filter(Boolean),S=DB.cash.filter(r=>isSSPay(r)&&r.type==='출금'&&validD(r.date)&&r.date>=f&&r.date<=end).map(ssSplit);
+function payLiab(end){const f=payAccFrom(),CV=cedCov(),pf0=payAccPrev()||f,P=(DB.payroll||[]).filter(r=>validD(r.date)&&r.date<=end).map(r=>payAccOf(r,CV)).filter(Boolean).concat(cedRows().filter(x=>x.date>=pf0&&x.date<=end).map(x=>({wh:x.imss+x.infon,ss:cedER(x)}))),S=DB.cash.filter(r=>isSSPay(r)&&r.type==='출금'&&validD(r.date)&&r.date>=f&&r.date<=end).map(ssSplit);
   const Q=(DB.payroll||[]).filter(r=>validD(r.date)&&r.date>=f&&r.date<=end),I=DB.cash.filter(r=>isIsnPay(r)&&validD(r.date)&&r.date>=f&&r.date<=end);
   return {isnAcc:sumBy(Q,M('isn')),isnPaid:sumBy(I,r=>(r.type==='입금'?-1:1)*mx(r,'amount')),whAcc:sumBy(P,x=>x.wh),ssAcc:sumBy(P,x=>x.ss),whPaid:sumBy(S,x=>x.wh),ssPaid:sumBy(S,x=>x.er)}}
 const expBy=(cat,acc,p)=>sumBy(DB.ap.filter(r=>!isAdv(r)&&r.cat===cat&&r.account===acc&&inP(r,p)),expAmt)+sumBy(DB.cash.filter(r=>r.type==='출금'&&r.cat===cat&&r.account===acc&&inP(r,p)&&!isPayCash(r)),expAmt)-sumBy(DB.cash.filter(r=>r.type==='입금'&&r.cat===cat&&r.account===acc&&inP(r,p)),expAmt);
 // labor cost by department: payroll records (gross + employer contributions) when the period has any; otherwise daily wage × days
 function laborCost(depts,p){
   const all=(DB.payroll||[]).filter(r=>inP(r,p));
-  if(all.length){const rows=all.filter(r=>depts.includes(r.dept));return {wage:sumBy(rows,payGross),social:sumBy(rows,payER),src:'payroll'}}
+  if(all.length){const rows=all.filter(r=>depts.includes(r.dept)),CV=cedCov();return {wage:sumBy(rows,payGross),social:sumBy(rows,r=>payERm(r,CV))+sumBy(cedRows(p).filter(x=>depts.includes(x.dept)),cedER),src:'payroll'}}
   return {wage:deptCost(depts,p),social:0,src:'estimate'};
 }
 const deptCost=(depts,p)=>sumBy(DB.employees.filter(e=>depts.includes(e.dept)),e=>empCost(e,p));
@@ -2357,10 +2367,12 @@ function ledgerData(p){
   // 손익 계정: 기간 안의 것만
   DB.outbound.forEach(r=>{if(!inP(r,p))return;const v=lineAmt(r);post(acc('매출','제품매출','cr'),r.date,0,v,{src:'outbound',rid:r.id,memo:[r.pn,r.item].filter(Boolean).join(' ')+(+r.qty?` · ${nf0.format(+r.qty)}${r.unit?' '+r.unit:''}`:''),party:r.customer||'',ctr:'외상매출금',fc:fc(r,(+r.qty||0)*(+r.price||0))})});
   DB.inbound.forEach(r=>{if(!inP(r,p)||r.check==='반품')return;const v=lineAmt(r)+(+r.igi||0)+(+r.dta||0);post(acc('제조원가','원·부재료 매입 (입고)','dr'),r.date,v,0,{src:'inbound',rid:r.id,memo:(r.kind?r.kind+' · ':'')+(r.item||''),party:r.vendor||'',ctr:'외상매입금 (외상매입 화면)',fc:fc(r,(+r.qty||0)*(+r.price||0))})});
-  const PG=new Map();(DB.payroll||[]).forEach(r=>{if(!inP(r,p))return;const g=MFG_DEPTS.includes(r.dept)?'제조원가':SGA_DEPTS.includes(r.dept)?'판매비와관리비':null;if(!g)return;const k=g+'|'+r.date+'|'+(r.ptype||'')+'|'+(r.per||'');let x=PG.get(k);if(!x)PG.set(k,x={g,date:r.date,lab:[r.ptype,r.per].filter(Boolean).join(' ')||'급여',n:new Set(),w:0,s:0});x.n.add(r.emp);x.w+=payGross(r);x.s+=payER(r)});
-  PG.forEach(x=>{const o={src:'payroll',memo:`${x.lab} · ${x.n.size}명`,party:'',ctr:'급여지급내역'};post(acc(x.g,x.g==='제조원가'?'노무비 (급여)':'급여','dr'),x.date,x.w,0,o);post(acc(x.g,'법정복리비','dr'),x.date,x.s,0,Object.assign({},o,{ctr:'회사부담금 (IMSS·RCV·Infonavit·ISN)'}))});
+  const PG=new Map(),LCV=cedCov();(DB.payroll||[]).forEach(r=>{if(!inP(r,p))return;const g=MFG_DEPTS.includes(r.dept)?'제조원가':SGA_DEPTS.includes(r.dept)?'판매비와관리비':null;if(!g)return;const k=g+'|'+r.date+'|'+(r.ptype||'')+'|'+(r.per||'');let x=PG.get(k);if(!x)PG.set(k,x={g,date:r.date,lab:[r.ptype,r.per].filter(Boolean).join(' ')||'급여',n:new Set(),w:0,s:0});x.n.add(r.emp);x.w+=payGross(r);x.s+=payERm(r,LCV)});
+  cedRows(p).forEach(c=>{const g=MFG_DEPTS.includes(c.dept)?'제조원가':SGA_DEPTS.includes(c.dept)?'판매비와관리비':null;if(!g)return;const k=g+'|ced|'+c.date+'|'+c.kind;let x=PG.get(k);if(!x)PG.set(k,x={g,date:c.date,lab:c.ym+(c.kind==='inf'?' INFONAVIT·RCV':' IMSS')+' cédula',n:new Set(),w:0,s:0});x.s+=cedER(c)});
+  PG.forEach(x=>{const o={src:'payroll',memo:x.n.size?`${x.lab} · ${x.n.size}명`:x.lab,party:'',ctr:'급여지급내역'};post(acc(x.g,x.g==='제조원가'?'노무비 (급여)':'급여','dr'),x.date,x.w,0,o);post(acc(x.g,'법정복리비','dr'),x.date,x.s,0,Object.assign({},o,{ctr:'회사부담금 (IMSS·RCV·Infonavit·ISN)'}))});
   // 급여 예수금·회사부담금 발생 (운영 시작 전달 급여부터, 회차별로 묶음)
-  const PQ=new Map(),pf=payAccFrom();(DB.payroll||[]).forEach(r=>{if(!validD(r.date)||r.date>p.end)return;const v=payAccOf(r);if(!v)return;const k=r.date+'|'+(r.ptype||'')+'|'+(r.per||'');let x=PQ.get(k);if(!x)PQ.set(k,x={date:r.date,lab:[r.ptype,r.per].filter(Boolean).join(' ')||'급여',wh:0,ss:0,isn:0});x.wh+=v.wh;x.ss+=v.ss;if(r.date>=pf)x.isn+=mx(r,'isn')});
+  const PQ=new Map(),pf=payAccFrom();(DB.payroll||[]).forEach(r=>{if(!validD(r.date)||r.date>p.end)return;const v=payAccOf(r,LCV);if(!v)return;const k=r.date+'|'+(r.ptype||'')+'|'+(r.per||'');let x=PQ.get(k);if(!x)PQ.set(k,x={date:r.date,lab:[r.ptype,r.per].filter(Boolean).join(' ')||'급여',wh:0,ss:0,isn:0});x.wh+=v.wh;x.ss+=v.ss;if(r.date>=pf)x.isn+=mx(r,'isn')});
+  cedRows().forEach(c=>{if(c.date>p.end||c.date<(payAccPrev()||pf))return;const k=c.date+'|ced|'+c.kind;let x=PQ.get(k);if(!x)PQ.set(k,x={date:c.date,lab:c.ym+(c.kind==='inf'?' INFONAVIT·RCV':' IMSS')+' cédula',wh:0,ss:0,isn:0});x.wh+=c.imss+c.infon;x.ss+=cedER(c)});
   PQ.forEach(x=>{const o={src:'payroll',party:'',ctr:'급여지급내역'};post(acc('부채','예수금','cr'),x.date,0,x.wh,Object.assign({memo:x.lab+' · ISR·IMSS·Infonavit 공제'},o));post(acc('부채','미지급 사회보험료','cr'),x.date,0,x.ss,Object.assign({memo:x.lab+' · IMSS·RCV·Infonavit 회사부담'},o));post(acc('부채','미지급 급여세','cr'),x.date,0,x.isn,Object.assign({memo:x.lab+' · ISN 급여세'},o))});
   (DB.hq||[]).forEach(r=>{if(!inP(r,p))return;const t=mx(r,'amount'),m=t*hqPct(r),o={src:'hq',rid:r.id,memo:r.item||'',party:r.payee||'',ctr:'본사 청구',fc:fc(r,+r.amount||0)};post(acc('제조원가','본사관리비 배부','dr'),r.date,m,0,o);post(acc('판매비와관리비','본사관리비 배부','dr'),r.date,t-m,0,o)});
   // 월별 계산분: 감가상각 · 제수당 · 이자
@@ -2683,21 +2695,37 @@ function deptPayCard(p){
 // 원천징수·회사부담금: 월(급여 지급일 기준) × 부서별 묶음. 체크해서 합계를 보고, 지급 완료하면 경리자료에 납부처별 출금 전표(SAT 예수금 · IMSS/INFONAVIT 사회보험료 · 주정부 급여세)를 만듦
 const PT_K=['isr','imss','infon','imssPat','rcv','infPat','isn'];let PTROWS=new Map();
 const ptWh=x=>x.isr+x.imss+x.infon,ptEr=x=>x.imssPat+x.rcv+x.infPat+x.isn,ptTot=x=>ptWh(x)+ptEr(x);
-function ptRows(p){const G=new Map();(DB.payroll||[]).filter(r=>inP(r,p)).forEach(r=>{const ym=String(r.date).slice(0,7),d=r.dept||'부서 없음',k=ym+'|'+d;let x=G.get(k);if(!x)G.set(k,x={id:k,ym,dept:d,n:new Set(),isr:0,imss:0,infon:0,imssPat:0,rcv:0,infPat:0,isn:0});x.n.add(r.code||r.emp);PT_K.forEach(f=>x[f]+=mx(r,f))});
+// cédula가 있는 달은 IMSS·RCV·Infonavit 칸을 cédula 금액으로 바꿈 (ISR·ISN은 급여지급내역). 2개월분 INFONAVIT cédula는 끝 달에 넣고 앞 달 몫은 0
+function ptGroup(p){const G=new Map(),CV=cedCov(),nx=(ym,d)=>{const k=ym+'|'+d;let x=G.get(k);if(!x)G.set(k,x={id:k,ym,dept:d,n:new Set(),cn:0,ced:'',isr:0,imss:0,infon:0,imssPat:0,rcv:0,infPat:0,isn:0});return x};
+  (DB.payroll||[]).filter(r=>inP(r,p)).forEach(r=>{const ym=String(r.date).slice(0,7),x=nx(ym,r.dept||'부서 없음');x.n.add(r.code||r.emp);PT_K.forEach(f=>{if(!cvx(CV,r.date,f))x[f]+=mx(r,f)})});
+  cedRows(p).forEach(c=>{const x=nx(c.ym,c.dept);x.cn=Math.max(x.cn,c.n);x.ced=x.ced?'imss+inf':c.kind;['imss','imssPat','rcv','infPat','infon'].forEach(f=>x[f]+=c[f])});
+  G.forEach(x=>{if(CV[x.ym])x.ced=x.ced||'0'});return G}
+function ptRows(p){const G=ptGroup(p);
   const L=[...G.values()].sort((a,b)=>a.ym<b.ym?1:a.ym>b.ym?-1:(DEPTS.indexOf(a.dept)+99)%99-(DEPTS.indexOf(b.dept)+99)%99);PTROWS=new Map(L.map(x=>[x.id,x]));return L}
 // 지급 상태: DB.ptPay[key] = 묶음 id, DB.ptBatch[id] = {date,bank,keys,nocash}. 경리자료 전표가 지워지면 미지급으로 돌아감
-const ptBatchOf=k=>{const id=(DB.ptPay||{})[k],B=id&&(DB.ptBatch||{})[id];if(!B)return null;if(!B.nocash&&!DB.cash.some(c=>c.linkMod==='paytax'&&c.link===id))return null;return Object.assign({id},B)};
+const ptBatchOf=k=>{if(String(k).slice(0,7)<payAccFrom().slice(0,7))return {id:'',pre:1};const id=(DB.ptPay||{})[k],B=id&&(DB.ptBatch||{})[id];if(!B)return null;
+  if(B.adopt){if(!(B.cashIds||[]).some(i=>DB.cash.some(c=>c.id===i)))return null}else if(!B.nocash&&!DB.cash.some(c=>c.linkMod==='paytax'&&c.link===id))return null;return Object.assign({id},B)};
+const ptCash=(id,B)=>DB.cash.filter(c=>(c.linkMod==='paytax'&&c.link===id)||(B&&(B.cashIds||[]).includes(c.id)));
+// 경리자료 대사: 운영 시작 달부터 지급 표시가 없는 달은 경리자료에 이미 등록한 납부 전표를 찾아 그 달 전 부서를 지급 완료로 연결 (전표는 새로 만들지 않음)
+//  IMSS/INFONAVIT = 유동부채 · 사회보험료 납부 중 대상 월이 그 달인 것, SAT = 유동부채 · 예수금(거래처 SAT) 다음 달 출금, ISN = 유동부채 · 급여세 납부 다음 달 출금
+function ptAuto(){const f=payAccFrom().slice(0,7),used=new Set(),G=ptGroup({start:payAccFrom(),end:TODAY});let ch=0;
+  Object.values(DB.ptBatch||{}).forEach(B=>(B.cashIds||[]).forEach(i=>used.add(i)));DB.cash.forEach(c=>{if(c.linkMod==='paytax')used.add(c.id)});
+  uniq([...G.values()].map(x=>x.ym)).filter(y=>y>=f&&y<TODAY.slice(0,7)).sort().forEach(ym=>{if((DB.ptAutoOff||{})[ym])return;const keys=[...G.values()].filter(x=>x.ym===ym).map(x=>x.id);if(keys.some(k=>ptBatchOf(k)))return;
+    const nx=ymAdd(ym,1),ok=c=>c.type==='출금'&&!used.has(c.id)&&validD(c.date),ss=DB.cash.filter(c=>ok(c)&&isSSPay(c)&&c.date>ym&&ssSplit(c).ym===ym);if(!ss.length)return;
+    const ot=DB.cash.filter(c=>ok(c)&&String(c.date).slice(0,7)===nx&&(isIsnPay(c)||(c.cat==='유동부채'&&c.account==='예수금'&&/\bSAT\b/i.test(c.party||''))));
+    const L=ss.concat(ot),id='pt'+uid();DB.ptBatch=DB.ptBatch||{};DB.ptPay=DB.ptPay||{};DB.ptBatch[id]={date:L.map(c=>c.date).sort().pop(),bank:'',keys,adopt:1,cashIds:L.map(c=>c.id)};keys.forEach(k=>DB.ptPay[k]=id);L.forEach(c=>used.add(c.id));ch++});
+  if(ch)save();return ch}
 function ptCard(p){const L=ptRows(p),S=selOf('paytax'),n0=v=>v?money(v):'<span class="muted">–</span>';
   if(!L.length)return `<div class="card"><header><h2>부서별 원천징수 · 회사부담금</h2></header><div class="empty">이 기간에 급여지급내역이 없습니다.</div></div>`;
   const T=k=>sumBy(L,x=>typeof k==='function'?k(x):x[k]);
-  return `<div class="card"><header class="fhead"><h2>부서별 원천징수 · 회사부담금</h2><span class="meta">${esc(p.label)} · 급여 지급일이 속한 달 기준</span>
+  return `<div class="card"><header class="fhead"><h2>부서별 원천징수 · 회사부담금</h2><span class="meta">${esc(p.label)} · 급여 지급일이 속한 달 기준 · cédula 표시 달은 IMSS·RCV·Infonavit를 작업폴더 cédula 금액으로 계산</span>
     <div class="selwrap"><button class="btn primary" data-ptpay="1">지급 완료</button><div class="selsum" data-selsum="paytax" aria-live="polite"></div></div></header>
     <div class="tw frz"><table data-seltbl="paytax"><thead><tr><th class="ck" rowspan="2"><input type="checkbox" data-selall="paytax" aria-label="전체 선택"></th><th rowspan="2">월</th><th rowspan="2">부서</th><th class="n" rowspan="2">인원</th>
       <th colspan="4" class="grp">원천징수 (예수금)</th><th colspan="5" class="grp">회사부담금</th><th class="n" rowspan="2">납부 합계</th><th rowspan="2">상태</th></tr>
       <tr><th class="n">ISR</th><th class="n">IMSS</th><th class="n">Infonavit</th><th class="n">계</th><th class="n">IMSS 사업주</th><th class="n">RCV</th><th class="n">Infonavit 5%</th><th class="n">ISN</th><th class="n">계</th></tr></thead><tbody>
-      ${L.map(x=>{const B=ptBatchOf(x.id);return `<tr data-row="${esc(x.id)}" class="${S.has(x.id)?'sel':''}"><td class="ck"><input type="checkbox" data-selrow="paytax" value="${esc(x.id)}" aria-label="선택"${S.has(x.id)?' checked':''}></td><td class="mono">${esc(x.ym)}</td><td>${deptTag(x.dept)}</td><td class="n">${x.n.size}명</td>
+      ${L.map(x=>{const B=ptBatchOf(x.id);return `<tr data-row="${esc(x.id)}" class="${S.has(x.id)?'sel':''}"><td class="ck"><input type="checkbox" data-selrow="paytax" value="${esc(x.id)}" aria-label="선택"${S.has(x.id)?' checked':''}></td><td class="mono">${esc(x.ym)}${x.ced?' <span class="muted small" title="IMSS·RCV·Infonavit 금액은 작업폴더 cédula 기준">cédula</span>':''}</td><td>${deptTag(x.dept)}</td><td class="n">${x.n.size||x.cn}명</td>
         <td class="n">${n0(x.isr)}</td><td class="n">${n0(x.imss)}</td><td class="n">${n0(x.infon)}</td><td class="n"><b>${money(ptWh(x))}</b></td><td class="n">${n0(x.imssPat)}</td><td class="n">${n0(x.rcv)}</td><td class="n">${n0(x.infPat)}</td><td class="n">${n0(x.isn)}</td><td class="n"><b>${money(ptEr(x))}</b></td><td class="n"><b>${money(ptTot(x))}</b></td>
-        <td>${B?`<button type="button" class="stpill" data-ptview="${esc(B.id)}" title="${esc(B.date)} 지급 · 눌러서 전표 보기·취소"><span class="pill good">지급 완료</span></button>`:'<span class="pill warn">미지급</span>'}</td></tr>`}).join('')}
+        <td>${B&&B.pre?'<span class="pill good" title="운영 시작 전 급여 · 이미 납부한 것으로 봄">지급 완료</span>':B?`<button type="button" class="stpill" data-ptview="${esc(B.id)}" title="${esc(B.date)} 지급${B.adopt?' · 경리자료 전표와 연결':''} · 눌러서 전표 보기·취소"><span class="pill good">지급 완료</span></button>`:'<span class="pill warn">미지급</span>'}</td></tr>`}).join('')}
       </tbody><tfoot><tr class="total"><td></td><td>합계</td><td></td><td></td>${['isr','imss','infon',ptWh,'imssPat','rcv','infPat','isn',ptEr,ptTot].map(k=>`<td class="n"><b>${money(T(k))}</b></td>`).join('')}<td></td></tr></tfoot></table></div></div>`}
 function ptSelSum(el){const rs=[...selOf('paytax')].map(k=>PTROWS.get(k)).filter(Boolean);if(!rs.length){el.innerHTML='';return}
   el.innerHTML=`<span>선택 ${rs.length}건</span><span>원천징수 <b>${money(sumBy(rs,ptWh))}</b></span><span>회사부담 <b>${money(sumBy(rs,ptEr))}</b></span><span>납부 합계 <b>${money(sumBy(rs,ptTot))}</b></span>`}
@@ -2716,11 +2744,13 @@ function ptPayModal(){const keys=modal.keys||[],rs=keys.map(k=>PTROWS.get(k)).fi
       <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px"><input type="checkbox" name="snocash" style="margin-top:2px"><span>이미 경리자료에 납부 전표가 있음 · 지급 완료로 표시만 하고 전표는 만들지 않음</span></label>
       <p class="note" style="margin:0">확인하면 경리자료에 납부처별 출금 전표(최대 3건)가 만들어지고, 결산에서 예수금·미지급 사회보험료·미지급 급여세가 줄어듭니다.</p></div>
     <footer><button type="button" class="btn" data-close="1">취소</button><button type="submit" class="btn primary">지급 확인</button></footer></form></div></div>`}
-function ptViewModal(){const id=modal.id,B=(DB.ptBatch||{})[id];if(!B){modal=null;return ''}const L=DB.cash.filter(c=>c.linkMod==='paytax'&&c.link===id);
+function ptViewModal(){const id=modal.id,B=(DB.ptBatch||{})[id];if(!B){modal=null;return ''}const L=ptCash(id,B);
+  const rs=(B.keys||[]).map(k=>PTROWS.get(k)).filter(Boolean),P=ptParts(rs),pd=f=>sumBy(L.filter(f),c=>mx(c,'amount')),cmp=[['SAT · ISR',P.sat,pd(c=>c.account==='예수금')],['IMSS/INFONAVIT',P.ssWh+P.ssEr,pd(isSSPay)],['주정부 · ISN',P.isn,pd(isIsnPay)]];
   return `<div class="modal-bg"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mt"><header><h3 id="mt">원천징수·회사부담금 지급 내역</h3><button type="button" class="x" data-close="1" aria-label="닫기">×</button></header>
     <div class="mbody" style="display:grid;gap:12px"><div style="font-size:13px">${esc(B.date)} · ${(B.keys||[]).map(k=>esc(k.replace('|',' ')).replace(/ /,' · ')).join(', ')}</div>
     ${L.length?`<table class="tight"><thead><tr><th>지급일</th><th>은행</th><th>분류 · 계정</th><th class="n">금액</th><th></th></tr></thead><tbody>${L.map(c=>`<tr><td>${esc(c.date)}</td><td>${esc(bankOf(c))}</td><td>${esc(c.cat)} · ${esc(c.account)}</td><td class="n">${money(+c.amount||0)}</td><td><button type="button" class="act" data-cashgo="${c.id}">경리자료 →</button></td></tr>`).join('')}</tbody></table>`:'<p class="note" style="margin:0">지급 완료로 표시만 했습니다 (경리자료 전표 없음).</p>'}
-    <p class="note" style="margin:0">지급 취소를 누르면 지급 완료 표시와 연결된 경리자료 전표가 함께 지워집니다.</p></div>
+    ${B.adopt&&rs.length===(B.keys||[]).length?`<table class="tight"><thead><tr><th>납부처</th><th class="n">계산 (급여·cédula)</th><th class="n">경리자료</th><th class="n">차이</th></tr></thead><tbody>${cmp.map(([a,c,d])=>`<tr><td>${a}</td><td class="n">${money(c)}</td><td class="n">${money(d)}</td><td class="n">${Math.abs(d-c)<0.01?'<span class="pill good">일치</span>':money(d-c)}</td></tr>`).join('')}</tbody></table>`:''}
+    <p class="note" style="margin:0">${B.adopt?'이미 경리자료에 있던 납부 전표와 연결해 지급 완료로 표시했습니다. 지급 취소를 누르면 표시만 풀리고 경리자료 전표는 그대로 남습니다.':'지급 취소를 누르면 지급 완료 표시와 연결된 경리자료 전표가 함께 지워집니다.'}</p></div>
     <footer><button type="button" class="btn danger" data-ptundo="${esc(id)}">지급 취소</button><button type="button" class="btn primary" data-close="1">닫기</button></footer></div></div>`}
 function ssCard(p){const end=minS(p.end,TODAY),L=payLiab(end),f=payAccFrom(),S=DB.cash.filter(r=>isSSPay(r)&&r.type==='출금'&&validD(r.date)&&r.date>=f&&r.date<=end).sort((a,b)=>a.date<b.date?-1:1);
   const isr=sumBy(DB.cash.filter(r=>r.cat==='유동부채'&&r.account==='예수금'&&validD(r.date)&&r.date>=f&&r.date<=end),r=>(r.type==='입금'?-1:1)*mx(r,'amount'));
@@ -2735,8 +2765,8 @@ function ssCard(p){const end=minS(p.end,TODAY),L=payLiab(end),f=payAccFrom(),S=D
       ${S.map(r=>{const x=ssSplit(r);return `<tr><td>${esc(r.date)}</td><td>${esc(r.memo||r.party||'')}</td><td>${esc(x.ym)}${+x.ym.slice(5)%2===0?' <span class="muted small">(RCV·Infonavit 2개월)</span>':''}</td><td class="n">${money(mx(r,'amount'))}</td><td class="n">${money(x.wh)}</td><td class="n">${money(x.er)}</td></tr>`}).join('')}</tbody></table></div>`:`<div class="empty">경리자료에 IMSS/INFONAVIT 납부(유동부채 · 사회보험료 납부)가 아직 없습니다.</div>`}
     <div class="body"><p class="note">납부액은 대상 월 급여의 근로자분(IMSS·Infonavit 대출)과 회사부담금(IMSS 사업주·RCV·Infonavit 5%) 비율로 나눕니다. 짝수 달 납부는 2개월 단위 RCV·Infonavit 몫을 앞 달까지 포함합니다.</p></div></div>`}
 function paytaxPage(p){
-  const rows=DB.payroll.filter(r=>inP(r,p)), t=k=>sumBy(rows,M(k)), ret=t('isr'), sua=t('imss')+t('imssPat')+t('rcv')+t('infPat')+t('infon');
-  return `<div class="content">${kpiHTML([kv('원천징수 합계',money(sumBy(rows,payDed)),'ISR '+plain(ret),'warn'),kv('IMSS 근로자분',money(t('imss'))),kv('회사부담금 합계',money(sumBy(rows,payER)),'IMSS·RCV·Infonavit·ISN'),kv('총 납부 예정',money(ret+sua+t('isn')),'SAT · SUA · 주정부','bad')])}
+  ptAuto();const G=[...ptGroup(p).values()], t=k=>sumBy(G,x=>x[k]), ret=t('isr'), sua=t('imss')+t('imssPat')+t('rcv')+t('infPat')+t('infon');
+  return `<div class="content">${kpiHTML([kv('원천징수 합계',money(sumBy(G,ptWh)),'ISR '+plain(ret),'warn'),kv('IMSS 근로자분',money(t('imss'))),kv('회사부담금 합계',money(sumBy(G,ptEr)),'IMSS·RCV·Infonavit·ISN'),kv('총 납부 예정',money(ret+sua+t('isn')),'SAT · SUA · 주정부','bad')])}
     ${ptCard(p)}
     ${ssCard(p)}
     <div class="card"><header><h2>납부처별 요약</h2><span class="meta">${esc(p.label)}</span></header><div class="tw"><table><thead><tr><th>납부처</th><th>항목</th><th>기한</th><th class="n">금액</th></tr></thead><tbody>
@@ -2745,10 +2775,10 @@ function paytaxPage(p){
       <tr><td>IMSS · INFONAVIT (SUA)</td><td>RCV ${plain(t('rcv'))} + Infonavit 5% ${plain(t('infPat'))} + Infonavit 대출 ${plain(t('infon'))}</td><td>2개월마다 17일</td><td class="n">${money(t('rcv')+t('infPat')+t('infon'))}</td></tr>
       <tr><td>주정부</td><td>급여세 ISN</td><td>다음 달 (주마다 다름)</td><td class="n">${money(t('isn'))}</td></tr>
       <tr class="total"><td>합계</td><td></td><td></td><td class="n"><b>${money(ret+sua+t('isn'))}</b></td></tr></tbody></table></div>
-      <div class="body"><p class="note">급여지급내역(lista de raya)에서 모은 금액입니다. 자동 생성분의 회사부담 비율(IMSS ${ER_RATES.imssPat}%, RCV ${ER_RATES.rcv}%, Infonavit ${ER_RATES.infPat}%, ISN ${ER_RATES.isn}%)은 임시값이며, 회사부담금은 재무제표·제조원가의 법정복리비로 반영됩니다.</p></div></div>
+      <div class="body"><p class="note">급여지급내역(lista de raya)에서 모은 금액입니다. 작업폴더 의료보험의 IMSS·INFONAVIT cédula가 들어온 달은 IMSS·RCV·Infonavit를 cédula 금액으로 씁니다. 자동 생성분의 회사부담 비율(IMSS ${ER_RATES.imssPat}%, RCV ${ER_RATES.rcv}%, Infonavit ${ER_RATES.infPat}%, ISN ${ER_RATES.isn}%)은 임시값이며, 회사부담금은 재무제표·제조원가의 법정복리비로 반영됩니다.</p></div></div>
   </div>`;
 }
-MODS.paytax.dash=p=>{const rows=DB.payroll.filter(r=>inP(r,p));return kpiHTML([kv('원천징수 합계',money(sumBy(rows,payDed)),'','warn'),kv('회사부담금 합계',money(sumBy(rows,payER))),kv('총 인건비',money(sumBy(rows,r=>payGross(r)+payER(r))),'총지급 + 회사부담')])};
+MODS.paytax.dash=p=>{const rows=DB.payroll.filter(r=>inP(r,p)),G=[...ptGroup(p).values()];return kpiHTML([kv('원천징수 합계',money(sumBy(G,ptWh)),'','warn'),kv('회사부담금 합계',money(sumBy(G,ptEr))),kv('총 인건비',money(sumBy(rows,r=>payGross(r)+payER(r))),'총지급 + 회사부담')])};
 // Contpaq lista de raya: header names vary by company setup, so columns are matched by pattern
 const RAYA_COLS=[
   ['code',/^(c[oó]d(igo)?|clave|no\.?\s*(de\s*)?emp|n[uú]m(\.|ero)?\s*(de\s*)?emp|n[oº°]\.?$)/i,'코드'],
@@ -5402,6 +5432,8 @@ async function ibScan(quiet){if(!IB.h||!IB.ok||IB.busy)return 0;IB.busy=true;let
       // Claude가 은행 계좌를 새로 만드는 경우: banks [{name,cur,open,since}] → 같은 이름이 없을 때만 추가 (upd:1 이면 기존 계좌의 기초잔고·기준일을 고침)
       if(j&&!isX&&Array.isArray(j.banks)){let nb=0;j.banks.forEach(b=>{if(!b||!b.name)return;const ex=BANKS().find(x=>x.name===b.name);if(ex){if(b.upd){['open','since'].forEach(k=>{if(b[k]!=null)ex[k]=k==='open'?+b[k]||0:String(b[k])});nb++}return}SET().banks=BANKS().concat({name:String(b.name),cur:b.cur==='USD'?'USD':'MXN',open:+b.open||0,since:b.since||''});nb++});if(nb){syncOpenCash();by.bank=(by.bank||0)+nb;n+=nb}j.rows=j.rows||{}}
       // Claude가 본사 경영회의자료(YSM)를 넣는 경우: mgmt {ym,...} → DB.mgmt[ym] (같은 달은 새 자료로 바꿈)
+      // Claude가 IMSS·INFONAVIT cédula(의료보험 폴더 PDF)를 부서별로 묶어 넣는 경우: cedula [{ym,kind:'imss'|'inf',file,total,rows}] → DB.sscedula[ym|kind] (같은 달·종류는 새 자료로 바꿈)
+      if(j&&!isX&&Array.isArray(j.cedula)){j.cedula.forEach(c=>{if(!c||!/^\d{4}-\d\d$/.test(c.ym||'')||!CED_IN[c.kind])return;DB.sscedula=Object.assign({},DB.sscedula||{},{[c.ym+'|'+c.kind]:c});by.paytax=(by.paytax||0)+1;n++});j.rows=j.rows||{}}
       if(j&&!isX&&j.mgmt&&j.mgmt.ym){DB.mgmt=Object.assign({},DB.mgmt||{},{[j.mgmt.ym]:j.mgmt});UI.mgym=j.mgmt.ym;by.repm=(by.repm||0)+1;n++;j.rows=j.rows||{}}
       if(!j||!j.rows)continue;files++;let k=0;IB_MODS.forEach(mod=>(j.rows[mod]||[]).forEach(x=>{const a=ibAdd(mod,x);k+=a;if(a)by[mod]=(by[mod]||0)+a}));n+=k;
       (DB.inboxLog=DB.inboxLog||[]).unshift({file:path+nm,at:new Date().toISOString(),n:k});DB.inboxLog=DB.inboxLog.slice(0,50);
@@ -5425,7 +5457,7 @@ document.addEventListener('change',e=>{const t=e.target;if(t&&t.dataset&&t.datas
 // 새로고침 뒤에는 Chrome이 폴더 권한을 다시 물을 수 있음: 화면을 처음 누를 때 자동으로 다시 연결 (권한 창에서 "방문할 때마다 허용"을 고르면 다음부터는 묻지 않음)
 let IB_TRY=false;document.addEventListener('pointerdown',()=>{if(IB.h&&!IB.ok&&!IB_TRY){IB_TRY=true;ibReconnect()}},true);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261126-162817';let VER_NEW=false;
+const APP_VER='20261126-164735';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
 /* ---------- 같은 화면을 다시 그릴 때(자동 번역·자료함·저장 등) 스크롤 위치를 그대로 유지. 다른 화면으로 이동할 때만 맨 위로 ---------- */
 const scrEls=()=>{const m=$('#main');return [document.scrollingElement,m,m&&m.parentElement].filter(Boolean)};
@@ -5626,7 +5658,7 @@ document.addEventListener('click',e=>{
   if(d.pedpay){modal={type:'pedpay',id:d.pedpay};renderModal();return}
   if(d.ptpay){const ks=[...selOf('paytax')].filter(k=>PTROWS.has(k));if(!ks.length){toast('지급할 줄을 먼저 체크해 주세요');return}const done=ks.filter(k=>ptBatchOf(k));if(done.length){toast(`이미 지급 완료된 줄 ${done.length}건이 있습니다. 체크를 풀고 다시 눌러 주세요`);return}modal={type:'ptpay',keys:ks};renderModal();return}
   if(d.ptview){modal={type:'ptview',id:d.ptview};renderModal();return}
-  if(d.ptundo){const id=d.ptundo,B=(DB.ptBatch||{})[id];if(!B)return;const n=DB.cash.length;DB.cash=DB.cash.filter(c=>!(c.linkMod==='paytax'&&c.link===id));const k=n-DB.cash.length;(B.keys||[]).forEach(x=>{if((DB.ptPay||{})[x]===id)delete DB.ptPay[x]});delete DB.ptBatch[id];save();closeModal();renderMain();toast(`지급 완료를 취소했습니다${k?` · 경리자료 전표 ${k}건 삭제`:''}`);return}
+  if(d.ptundo){const id=d.ptundo,B=(DB.ptBatch||{})[id];if(!B)return;const n=DB.cash.length;DB.cash=DB.cash.filter(c=>!(c.linkMod==='paytax'&&c.link===id));if(B.adopt){DB.ptAutoOff=DB.ptAutoOff||{};(B.keys||[]).forEach(x=>DB.ptAutoOff[String(x).slice(0,7)]=1)}const k=n-DB.cash.length;(B.keys||[]).forEach(x=>{if((DB.ptPay||{})[x]===id)delete DB.ptPay[x]});delete DB.ptBatch[id];save();closeModal();renderMain();toast(`지급 완료를 취소했습니다${k?` · 경리자료 전표 ${k}건 삭제`:''}`);return}
   if(d.pedundo){const r=DB.ped.find(x=>x.id===d.pedundo);if(!r)return;const n=DB.cash.length;DB.cash=DB.cash.filter(c=>!(c.link===r.id&&c.linkMod==='ped'));const k=n-DB.cash.length;delete r.pay;flashId=r.id;save();closeModal();renderMain();toast(`지급 완료를 취소했습니다${k?` · 경리자료 전표 ${k}건 삭제`:''}`);return}
   if(d.zm!==undefined){const v=+d.zm;UI.zm=v?Math.round(Math.min(1.6,Math.max(0.7,zmV()+v*0.1))*10)/10:1;saveUI();zmApply();renderMain();return}
   if(d.hcwt){const W=hcWeeks(),cur=hcSels(curPeriod());let S=d.hcwt==='*'?(cur.length===W.length?[W[W.length-1]]:W.slice()):cur.includes(d.hcwt)?cur.filter(w=>w!==d.hcwt):cur.concat(d.hcwt);if(!S.length)S=[d.hcwt];UI.hcws=S;saveUI();renderMain();return}
