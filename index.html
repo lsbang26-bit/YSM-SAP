@@ -5478,7 +5478,7 @@ function xmlQty(r,x,sub,sg){const L=x.lines||[];
   if(L.length>1&&Math.abs(L.reduce((s,l)=>s+l.qty*l.price,0)-sub)<0.05){r.lines=L.map(l=>({item:l.item,itemEs:l.item,qty:l.qty,price:sg*l.price}));if(Math.abs(r2(L.reduce((s,l)=>s+l.qty*l.price,0))-sub)>0.004){r.subFix=1;r.sub=r2(sg*sub)}}
   else if(L.length===1&&L[0].qty>0){const q=L[0].qty,p=Math.abs(r2(q*L[0].price)-sub)>0.004?sub/q:L[0].price;r.qty=q;r.price=sg*Math.round(p*1e6)/1e6;if(Math.abs(r2(q*Math.abs(r.price))-sub)>0.004){delete r.qty;delete r.price}}}
 // 예전에 단가를 소수 2자리로 잘라 금액이 틀어진 XML 건 고치기 (자료함 반영완료 폴더의 XML을 다시 읽어 SubTotal로 맞춤, 한 번만)
-async function ibXmlRepair(){if(DB.xmlFix1||!IB.h)return 0;const map=new Map();
+async function ibXmlRepair(){if(DB.xmlFix2||!IB.h)return 0;const map=new Map();
   const rd=async(dir,depth)=>{for await(const [nm,e] of dir.entries()){if(e.kind==='directory'){if(depth<3)await rd(e,depth+1);continue}if(!/\.xml$/i.test(nm))continue;
     try{const txt=(await (await e.getFile()).text()).replace(/^\uFEFF/,'');if(!/Comprobante/.test(txt))continue;const x=cfdiFromXml(txt);if(!x||!x.uuid)continue;const doc=new DOMParser().parseFromString(txt,'application/xml'),c=doc.getElementsByTagNameNS('*','Comprobante')[0];x.subT=numM(c.getAttribute('SubTotal'));map.set(x.uuid,x)}catch(_){}}};
   try{await rd(IB.h,0)}catch(_){return 0}let n=0;
@@ -5486,7 +5486,7 @@ async function ibXmlRepair(){if(DB.xmlFix1||!IB.h)return 0;const map=new Map();
     if(Array.isArray(r.lines)&&r.lines.length){if(!r.subFix&&Math.abs(cur-sub)<0.05){r.subFix=1;r.sub=r2(sg*sub);fixRow(MODS[mod],r);n++}return}
     const L=x.lines||[];if(L.length!==1||!(+r.qty>0)||Math.abs(+r.qty-L[0].qty)>1e-9||Math.abs(Math.abs(+r.price)-r2(L[0].price))>1e-9)return;
     const t={};xmlQty(t,x,sub,sg);r.sub=r2(sg*sub);if(t.qty){r.qty=t.qty;r.price=t.price}else{delete r.qty;delete r.price}fixRow(MODS[mod],r);n++}));
-  DB.xmlFix1=1;if(n){calcReset();save();toast(`Factura XML 금액 ${n}건을 원본 SubTotal에 맞게 고쳤습니다 (단가 소수점 반올림 오류)`)}return n}
+  DB.xmlFix2=1;save();if(n){calcReset();save();try{renderMain()}catch(_){}toast(`Factura XML 금액 ${n}건을 원본 SubTotal에 맞게 고쳤습니다 (단가 소수점 반올림 오류)`)}return n}
 function ibXml(txt,path){txt=String(txt).replace(/^\uFEFF/,'');if(!/Comprobante/.test(txt))return null;const x=cfdiFromXml(txt);if(!x)return null;
   if((DB.ibSkip||[]).includes(x.uuid))return {rows:{},skip:'dup'};
   const doc=new DOMParser().parseFromString(txt,'application/xml'),q=n=>doc.getElementsByTagNameNS('*',n)[0],a=(el,k)=>el?el.getAttribute(k)||'':'',c=q('Comprobante'),rc=q('Receptor');
@@ -5586,7 +5586,7 @@ async function ibScan(quiet){if(!IB.h||!IB.ok||IB.busy)return 0;IB.busy=true;let
       if(!j||!j.rows)continue;files++;let k=0;IB_MODS.forEach(mod=>(j.rows[mod]||[]).forEach(x=>{const a=ibAdd(mod,x);k+=a;if(a)by[mod]=(by[mod]||0)+a}));n+=k;
       (DB.inboxLog=DB.inboxLog||[]).unshift({file:path+nm,at:new Date().toISOString(),n:k});DB.inboxLog=DB.inboxLog.slice(0,50);
       try{done=done||await dir.getDirectoryHandle('반영완료',{create:true});const t=await (await done.getFileHandle(nm,{create:true})).createWritable();await t.write(txt);await t.close();await dir.removeEntry(nm)}catch(_){}}};
-  try{await walk(IB.h,'',0);await ibXmlRepair();
+  try{try{await ibXmlRepair()}catch(_){}await walk(IB.h,'',0);
     IB.last=new Date();if(files){if(by.payroll)hcSyncPay();save();quiet?bgRender():renderMain();if(n)koFix(false)}
     if(IB.dups&&IB.dups.length&&!modal){modal={type:'dup',src:'ib',list:IB.dups};IB.dups=[];renderModal()}
     if(IB.cum&&IB.cum.length){const c=uniq(IB.cum);IB.cum=[];toast(`누계 lista de raya ${c.length}개는 넣지 않았습니다 (${c.join(', ')}). 한 기간짜리 파일을 넣어 주세요`)}
@@ -5605,7 +5605,7 @@ document.addEventListener('change',e=>{const t=e.target;if(t&&t.dataset&&t.datas
 // 새로고침 뒤에는 Chrome이 폴더 권한을 다시 물을 수 있음: 화면을 처음 누를 때 자동으로 다시 연결 (권한 창에서 "방문할 때마다 허용"을 고르면 다음부터는 묻지 않음)
 let IB_TRY=false;document.addEventListener('pointerdown',()=>{if(IB.h&&!IB.ok&&!IB_TRY){IB_TRY=true;ibReconnect()}},true);
 /* ---------- 새 버전 자동 새로고침: 웹에 새 버전이 올라오면 입력 중이 아닐 때 자동으로 다시 불러옴 (자료는 브라우저에 그대로 남음) ---------- */
-const APP_VER='20261127-131428';let VER_NEW=false;
+const APP_VER='20261127-131810';let VER_NEW=false;
 async function verCheck(){if(!/^https?:/.test(location.protocol)||APP_VER.startsWith('__'))return;try{const t=await (await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER){VER_NEW=true;verTry()}}catch(_){}}
 /* ---------- 같은 화면을 다시 그릴 때(자동 번역·자료함·저장 등) 스크롤 위치를 그대로 유지. 다른 화면으로 이동할 때만 맨 위로 ---------- */
 const scrEls=()=>{const m=$('#main');return [document.scrollingElement,m,m&&m.parentElement].filter(Boolean)};
